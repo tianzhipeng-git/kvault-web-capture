@@ -1,0 +1,61 @@
+# Node.js / TypeScript
+node_modules/
+dist/
+build/
+lib/
+coverage/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment / local overrides
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+
+# Test and tool caches
+.cache/
+.tmp/
+tmp/
+temp/
+.vitest/
+.nyc_output/
+
+# SQLite and local business state
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+
+# Crawlee local storage and run state
+storage/
+crawlee_storage/
+datasets/
+key_value_stores/
+request_queues/
+session_pool/
+
+# Crawl artifacts and local outputs
+artifacts/
+output/
+outputs/
+captures/
+screenshots/
+markdown/
+downloads/
