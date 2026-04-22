@@ -102,180 +102,238 @@ Do not move on until the spike can clearly answer these questions:
 
 If any answer is "not really", fix the architecture before Phase 1.
 
-## Phase 1: Foundation After The Spike
-
-Only start this phase after the integration spike feels structurally right.
-
-### Workstream 1: Project Scaffold
-
-- initialize Node.js + TypeScript project
-- add Crawlee
-- add SQLite driver
-- add Vitest
-- add basic lint / typecheck / scripts
-
-### Workstream 2: Minimal Business Schema
-
-Start with the smallest schema that supports the spike and future growth:
-
-- `sites`
-- `site_pages`
-- `crawl_runs`
-- `page_runs`
-- `artifact_runs`
-
-Do not over-model configuration yet.
-
-### Workstream 3: Core Interfaces
-
-Define the thin interfaces that separate our code from Crawlee:
-
-- `RunPlanner`
-- `RuleDecision`
-- `MarkdownCaptureAdapter`
-- repository interfaces for run/page/artifact writes
-
-These interfaces should stay small and explicit.
-
-## Phase 2: Real Base Pipeline
-
-Expand the spike into the real `base` pipeline.
-
-### Deliverables
-
-- URL normalization
-- URL-rule allow / deny / undecided
-- base fetch and extraction
-- deterministic classifier stub
-- tag-rule evaluation
-- frozen `required_artifacts`
-- `pending_reason`
-
-### Main output
-
-At the end of this phase, `base` should be able to:
-
-- deny early
-- mark pending
-- allow and enqueue artifact work
-
-## Phase 3: Real Markdown Pipeline
-
-Replace the fake markdown adapter with the real external `url -> markdown` tool.
-
-### Deliverables
-
-- queue-specific `markdown requestHandler`
-- adapter wrapper around the external tool
-- artifact file output handling
-- `artifact_run` persistence
-- error mapping and retry behavior
+## Phase 1: Stabilize The M1 Core Model
 
 ### Goal
 
-Prove that a real external tool integrates cleanly through the queue boundary.
+Turn the spike into a durable M1 skeleton with the right business boundaries, while keeping the proven Crawlee seam intact.
 
-## Phase 4: Screenshot Pipeline
+### Scope
 
-Add the screenshot queue only after `base` and `markdown` are stable.
+- expand the SQLite schema from spike tables into M1 business tables and fields:
+  - `projects`
+  - `sites`
+  - `crawl_runs`
+  - `site_pages`
+  - `page_runs`
+  - `artifact_runs`
+- add the run metadata that later phases depend on:
+  - `run_type`
+  - config snapshots
+  - update policy
+  - status / timing fields
+  - durable page and artifact status fields
+- introduce typed site config loading and validation for:
+  - seed URLs
+  - sitemap inputs
+  - URL rules
+  - tag rules
+  - run options
+- refactor the Phase 0 code into explicit application modules:
+  - repositories
+  - rule engine
+  - artifact planner
+  - run planner
+  - queue factory / queue naming helpers
+- keep classifier and markdown capture behind interfaces so tests can continue using deterministic doubles
 
-### Deliverables
+### What this phase should NOT include
 
-- browser-backed screenshot `requestHandler`
-- narrow Crawlee hook usage where actually needed
-- screenshot artifact persistence
-- artifact failure handling
+- full inventory preview workflow
+- screenshot execution
+- multi-run update policy behavior
+- final CLI command surface
 
-## Phase 5: Config Snapshots And Update Modes
+## Exit Criteria For Phase 1
 
-Once all three pipelines work, add the heavier business policy layer.
+Do not move on until these are true:
 
-### Deliverables
+1. The schema can represent the M1 entities described in `m1-architecture.md`, not just the Phase 0 spike.
+2. A run can persist immutable config snapshots and run type metadata.
+3. Rule evaluation, run planning, and queue orchestration are separate modules, not blended into handlers.
+4. Phase 0 tests still pass after the refactor.
+5. Unit and integration tests cover the stabilized core model, especially URL normalization, repositories, and rule contracts.
 
-- typed config schema
-- `run_config_snapshot`
-- update modes:
+## Phase 2: Ship Inventory Preview
+
+### Goal
+
+Deliver the first real M1 operator workflow: create a site, run `inventory_preview`, and inspect durable inventory output from the CLI.
+
+### Scope
+
+- implement CLI flows for:
+  - create project
+  - create site
+  - import config into a site
+  - clone config from an existing site
+  - start `inventory_preview`
+- add input expansion for preview runs:
+  - seed URLs
+  - sitemap ingestion
+  - shallow discovery only
+- implement URL-rule evaluation before entering the `base` queue
+- implement Stage 1 base capture for preview runs:
+  - fetch lightweight page data
+  - normalize URL
+  - classify
+  - evaluate tag rules
+  - persist `site_pages` and `page_runs`
+- make preview-specific outcomes explicit:
+  - `url_rule_denied`
+  - `pending`
+  - `preview_run` pending reason where Stage 2 is intentionally not started
+- add CLI read paths for inventory review:
+  - site inventory summary
+  - pending pages
+  - denied pages
+  - sample base captures
+- wire a real classifier adapter only if it fits cleanly behind the existing classifier boundary; tests should still use deterministic stubs
+
+### What this phase should NOT include
+
+- full recursive crawl execution
+- Stage 2 artifact queues
+- resume / stop-condition behavior
+
+## Exit Criteria For Phase 2
+
+Do not move on until these are true:
+
+1. An operator can create a site config and run `inventory_preview` entirely through CLI commands.
+2. Preview runs cannot accidentally turn into full-site crawl runs.
+3. URL-rule denials, pending pages, and preview-only outcomes are stored explicitly and queryable.
+4. Inventory review works off SQLite business state rather than Crawlee internals.
+5. Integration tests cover preview ingestion, URL-rule gating, and pending persistence.
+
+## Phase 3: Add Crawl Planning Against History
+
+### Goal
+
+Make `crawl_run` a real business workflow that plans work from existing inventory and historical results instead of treating every run as a fresh spike.
+
+### Scope
+
+- implement explicit `crawl_run` creation with:
+  - config snapshot
+  - update policy
+  - target success count
+- add run-planning queries against historical `site_pages`, `page_runs`, and `artifact_runs`
+- implement the initial update policy set:
+  - `force_recrawl_all`
   - `skip_existing`
   - `rerun_failed_artifacts`
-  - `force_recrawl_all`
   - `stale_after_duration`
+- make runtime URL discovery follow the same business path as startup planning:
+  - normalize URL
+  - upsert inventory
+  - evaluate URL rules
+  - evaluate update policy
+  - enqueue only if eligible
+- ensure new runs use fresh run-scoped queues, while keeping SQLite as the source of cross-run truth
+- keep pending re-evaluation explicit:
+  - config changes alone do not re-evaluate pages
+  - pages are re-evaluated only through a new `crawl_run`
+
+### What this phase should NOT include
+
+- screenshot execution
+- full success accounting for all artifacts
+- final resume semantics within an interrupted run
+
+## Exit Criteria For Phase 3
+
+Do not move on until these are true:
+
+1. `crawl_run` planning is reproducible from stored business history.
+2. Update policy decisions happen before enqueue, not inside Crawlee hooks.
+3. Runtime-discovered URLs follow the same rule and policy gates as startup candidates.
+4. Starting a new run does not create split-brain behavior between SQLite state and Crawlee queues.
+5. Integration tests cover multi-run planning for `skip_existing`, `rerun_failed_artifacts`, `force_recrawl_all`, and `stale_after_duration`.
+
+## Phase 4: Complete Stage 2 Artifact Execution
 
 ### Goal
 
-Move from "one run works" to "multiple runs behave predictably".
+Finish the M1 execution model by supporting the full Stage 2 artifact set and the strict success semantics defined by the architecture.
 
-## Phase 6: CLI Surface And Operator Queries
+### Scope
 
-After pipeline correctness is established:
+- add the `screenshot` artifact type and queue
+- replace the Phase 0 fake markdown path with the real markdown capture integration, while keeping the adapter boundary
+- freeze `required_artifacts` in `page_runs` immediately after Stage 1 decision-making
+- create queue-specific handlers for:
+  - `markdown`
+  - `screenshot`
+- persist artifact execution records with:
+  - status
+  - timing
+  - output reference
+  - error message
+- aggregate artifact outcomes back into:
+  - `page_runs`
+  - `site_pages`
+  - `crawl_runs`
+- implement the strict M1 success rule:
+  - a page is successful only when all required artifacts for that run are complete
+- keep Crawlee hooks narrow and lifecycle-oriented; artifact decisions must stay in planners / handlers
 
-- improve CLI commands
-- add run status queries
-- add pending-page listing
-- add result inspection commands
+### What this phase should NOT include
 
-## Test Plan By Phase
+- broad CLI polish unrelated to artifact execution
+- performance tuning beyond what is needed to validate the model
 
-### Phase 0
+## Exit Criteria For Phase 4
 
-- one integration test for `base -> markdown`
-- one unit test for `RuleDecision`
-- one repository integration test for `page_runs` and `artifact_runs`
+Do not move on until these are true:
 
-### Phase 2
+1. A page can require `markdown`, `screenshot`, or both based on Stage 1 decision output.
+2. Partial artifact failure is recorded cleanly and does not count as page success.
+3. `required_artifacts` is frozen per run and not mutated by downstream workers.
+4. Run and site aggregates reflect pending, denied, partial, and successful outcomes accurately.
+5. Tests cover artifact success, artifact failure, and the strict all-required-artifacts success rule.
 
-- URL normalization tests
-- URL-rule tests
-- tag-rule tests
-- pending-state tests
+## Phase 5: Resume, Stop Conditions, And CLI Operations
 
-### Phase 3
+### Goal
 
-- markdown adapter integration tests
-- artifact failure / retry tests
+Make the CLI crawl engine operationally complete for M1 by supporting interruption recovery, progress tracking, and the iterative review loop described in the architecture.
 
-### Phase 4
+### Scope
 
-- screenshot artifact tests
-- browser failure tests
+- implement resume within the same `crawl_run` using:
+  - run-scoped queue names
+  - persisted Crawlee storage
+  - SQLite run / page / artifact state
+- implement stop conditions:
+  - `target_success_count`
+  - correct run finalization when the target is reached or no more eligible work remains
+- add operator-facing CLI commands for:
+  - resume run
+  - inspect run status
+  - inspect site status
+  - list pending pages
+  - list denied pages
+  - inspect artifact failures
+- polish config management flows:
+  - import
+  - clone
+  - snapshot visibility
+- close the M1 testing minimums from `m1-testing.md`, especially:
+  - resume within the same run
+  - new-run planning against prior business history
+  - success counting and stop conditions
 
-### Phase 5
+### Exit Criteria For Phase 5
 
-- update mode tests
-- multi-run history tests
-- stop-condition / success-count tests
+M1 is ready when these are all true:
 
-## Parallelization Strategy
-
-Initial implementation should be mostly sequential.
-
-The seam is the risk. Parallelizing too early just creates merge conflicts around the exact modules that are still being discovered.
-
-Suggested order:
-
-```text
-Lane A
-  Phase 0 spike
-    -> Phase 1 scaffold/schema
-    -> Phase 2 base pipeline
-    -> Phase 3 markdown pipeline
-    -> Phase 4 screenshot pipeline
-    -> Phase 5 config/update modes
-    -> Phase 6 CLI/status polish
-```
-
-Parallel work only becomes reasonable after Phase 0 succeeds.
-
-At that point:
-
-- one lane can deepen repositories / schema work
-- one lane can deepen pipeline handlers
-- one lane can deepen CLI/status commands
-
-## Definition Of Success
-
-This plan is successful if:
-
-1. The Phase 0 spike proves the Crawlee seam is clean.
-2. The project grows from a tested vertical slice, not from speculative abstractions.
-3. External tools such as `url -> markdown` fit naturally into queue-specific handlers.
-4. Business policy stays outside Crawlee internals.
+1. An interrupted run can resume without duplicating already-finished work in the same run.
+2. Operators can complete the review-adjust-run loop entirely through CLI workflows.
+3. Run status, site status, pending inventory, and artifact failures are queryable from business state.
+4. The minimum required unit and integration coverage in `m1-testing.md` is satisfied.
+5. The codebase still keeps the original Phase 0 promise:
+   - our code decides what should run
+   - Crawlee executes queue work
+   - handlers remain the execution seam
+   - SQLite remains the business source of truth

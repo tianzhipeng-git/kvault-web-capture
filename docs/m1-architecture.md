@@ -4,7 +4,9 @@
 
 This document turns the confirmed review decisions from `docs/init-prd.md` into an implementation-facing design for M1.
 
-M1 only covers the CLI crawl engine. Web UI belongs to M2.
+M1 only ships the CLI crawl engine. Web UI belongs to M2.
+
+Even though M1 does not ship a web module, M1 must still define the business entities, lifecycle transitions, and read-path contracts that a later web module will consume.
 
 ## M1 Scope
 
@@ -18,6 +20,8 @@ M1 only covers the CLI crawl engine. Web UI belongs to M2.
   - `screenshot`: independent capture path
 - Persistent run state and resume
 - User-editable crawl config
+- Config import / clone workflow through CLI
+- Inventory review and run / site status queries through CLI
 - Multi-run workflow with `pending` links carried forward
 
 ## Technology Stack
@@ -121,15 +125,18 @@ If classification fails:
 - base capture is still persisted
 - page status becomes `pending`
 - `pending_reason` must be explicit:
-  - `classifier_failed`
-  - `rule_unresolved`
-  - `manual_review_required`
+  - `classifier_failed`: 分类失败
+  - `rule_unmatched`: 规则无法判断
+  - `preview_run`: 初始的inventory_preview Run, 不会启动后续markdown/截图, 所以都进入pending状态.
 
-### 5. Config Snapshot
+### 5. Project / Site Management Model
 
-Each crawl run stores an immutable `run_config_snapshot`.
+M1 must treat `project` and `site` as first-class business entities, not just directory names.
 
-Site-level config may keep a current editable draft, but each run must point to a frozen snapshot so results are explainable later.
+- `project` groups sites for organization and migration, tag definations.
+- `site` is the execution and configuration boundary
+- a site owns its config, inventory, runs, and artifact storage roots
+- creating a new site from an existing site's config must be a supported CLI flow
 
 ### 6. Run Success Definition
 
@@ -137,6 +144,65 @@ The accepted M1 rule is strict:
 
 - a page only counts as successful for the run when all target artifacts for that page are complete
 - this follows the chosen `6C` decision
+
+### 7. Run Types
+
+M1 needs two explicit run types because the PRD describes two distinct operator intents.
+
+#### `inventory_preview`
+
+Purpose:
+
+- collect initial URLs from sitemap, seed URLs, and shallow discovery
+- capture lightweight base information
+- classify and tag
+- build the initial inventory for review
+
+Constraints:
+
+- non-recursive by default, or recursive only within sitemap.xml, 或只抓第一层页面.
+- must not fan out into the full site crawl accidentally
+- may stop after base capture and classification without scheduling downstream artifacts
+
+Outputs:
+
+- `site_pages` inventory rows
+- `page_runs` for previewed pages
+- enough data for rule tuning and manual review
+
+#### `crawl_run`
+
+Purpose:
+
+- execute a configured crawl against the site using a config snapshot
+- continue from existing inventory and discover more URLs during crawling
+- produce final artifacts for pages allowed by the rules
+
+Outputs:
+
+- `page_runs` for this run
+- `artifact_runs` for markdown / screenshot targets
+- run-level and site-level progress metrics
+
+Run type is part of `crawl_runs` metadata and must be queryable because M2 will need to distinguish "initial inventory preview" from "real crawl execution".
+
+## M1 Operational Workflow
+
+M1 should make the PRD workflow explicit even though it is exposed by CLI first.
+
+```text
+1. create project
+2. create site or import config into site config
+3. start inventory_preview
+4. inspect inventory / pending / denied / sample captures
+5. edit rule config
+6. start crawl_run with target success count and update policy
+7. inspect run result and site-wide aggregates
+8. review pending pages and revise config
+9. repeat from step 5 until site coverage is acceptable
+```
+
+This workflow is a product requirement, not a web-only convenience.
 
 ## Processing Pipeline
 
@@ -150,7 +216,6 @@ discovered URL
     - evaluate regex / pattern blacklist and whitelist
     - if URL rules can decide `deny`, do not enter base queue
     - if URL rules can decide `allow`, enter base queue directly
-    - if URL rules are undecided, still enter base queue
     │
     ▼
 [Stage 1: base queue]
@@ -186,9 +251,26 @@ These are based on the URL itself, before page fetch.
 
 Examples:
 
-- whitelist regex for product pages
-- blacklist regex for login / account / cart / logout
-- path-based include / exclude rules
+```yaml
+url_rules:
+  - name: block_logins
+    list_type: blacklist
+    rule_type: prefix
+    values: 
+      - "www.example.com/login"
+      - "www.example.com/logout"
+  - name: only_example.com
+    list_type: scopelist
+    rule_type: prefix
+    values: 
+      - "example.com"
+      - "www.example.com"
+  - name: block_xx
+    list_type: blacklist
+    rule_type: regex
+    values: 
+      - "www.example.com\/ab.*\/"
+```
 
 Use URL rules when a decision can be made from the link alone.
 
@@ -197,13 +279,20 @@ Evaluation point:
 - before entering the `base` queue
 
 Expected outcomes:
-
 - `deny`: do not enqueue for base capture
 - `allow`: enqueue for base capture
-- `undecided`: enqueue for base capture and defer final decision
+
+Decision precedence:
+- blacklist: 匹配了则deny
+- scopelist: 仅限匹配了的通过, 其他的deny
+- 其余的都是allow
+
+Rule Type:
+- prefix: 前缀匹配(不包含http/https://这部分)
+- regex: 正则匹配
+- 同一个规则下的多个values是"或"的关系.
 
 Important constraint:
-
 - URL-rule `allow` means "eligible for base processing"
 - it does not skip Stage 1 classification or tag-based rule evaluation
 
@@ -212,10 +301,32 @@ Important constraint:
 These are based on classification results after lightweight capture.
 
 Examples:
-
-- blacklist pages tagged as navigation / legal / account-only
-- whitelist pages tagged as product / docs / FAQ
-- choose artifact targets based on tags
+```
+tag_rules:
+  - name: product-full-capture
+    list_type: whitelist
+    when:
+      - key: content_type
+        op: any_of
+        values: [product]
+    artifacts: [markdown, screenshot]
+  - name: faq-markdown-only
+    list_type: blacklist
+    when:
+      - key: content_type
+        op: any_of
+        values: [faq]
+  - name: guest-docs-screenshot
+    list_type: whitelist
+    when:
+      - key: content_type
+        op: any_of
+        values: [docs]
+      - key: audience
+        op: any_of
+        values: [guest]
+    artifacts: [screenshot]
+```
 
 Use tag-based rules when the decision depends on page meaning rather than URL shape.
 
@@ -226,8 +337,25 @@ Evaluation point:
 Expected outcomes:
 
 - `deny`: page is not sent to artifact queues
-- `allow`: page is sent to configured artifact queues
+- `allow`: page is sent only to the artifact queues configured by the matched whitelist rule
 - `pending`: page stays in business-level review state
+
+Rule matching semantics:
+
+- a rule may constrain one or more tag keys
+- for a constrained tag key, the rule may require one or more values
+- page matching should use set semantics rather than single-value equality
+- M1 should support at least:
+  - `any_of`: page has at least one required value for that tag key
+  - `all_of`: page has all required values for that tag key
+  - `is_empty`: page selected no value for that tag key
+- 多个when之间是"且"的关系
+
+Decision precedence:
+
+- blacklist match wins over whitelist match
+- whitelist does not just mean "allowed"; it must also declare which artifacts become required
+- if no rule can produce a final decision, the page remains `pending`
 
 ### Combined Decision Order
 
@@ -236,13 +364,9 @@ The intended M1 order is:
 ```text
 discovered URL
     │
-    ├── URL blacklist match
-    │     └── deny immediately
+    ├── URL rule deny
     │
-    ├── URL whitelist match
-    │     └── enqueue base capture
-    │
-    └── URL undecided
+    ├── URL rule allow
           └── enqueue base capture
                 │
                 ▼
@@ -265,23 +389,26 @@ This gives each rule family a clear job:
 
 This is the intended M1 default because it keeps artifact scheduling behind Stage 1 and avoids doing heavy capture before semantic filtering.
 
-## Queue Topology
+## Queue Design
 
 M1 uses three execution queues.
 
 ```text
 Queue 1: base
   - input: sitemap URLs, seed URLs, discovered URLs
+  - enqueue: 启动时将初始url入队; 在页面发现的url判断url rule后入队;
   - crawler type: lightweight HTTP / HTML crawler
   - output: page_run + artifact planning
 
 Queue 2: markdown
   - input: pages allowed for markdown capture
+  - enqueue: 只能由Stage1判断后入队
   - crawler type: markdown-specific capture flow
   - output: markdown artifact_run
 
 Queue 3: screenshot
   - input: pages allowed for screenshot capture
+  - enqueue: 只能由Stage1判断后入队
   - crawler type: browser-backed screenshot flow
   - output: screenshot artifact_run
 ```
@@ -307,6 +434,28 @@ Suggested mapping:
 - `base` queue -> base capture `requestHandler`
 - `markdown` queue -> markdown capture `requestHandler`
 - `screenshot` queue -> screenshot capture `requestHandler`
+
+### URL discovery during a run / Enqueue
+
+When Crawlee discovers a URL during crawling, it should not blindly assume that the URL must be processed.
+
+The expected M1 behavior is:
+
+```text
+discovered link
+   │
+   ├── normalize URL
+   ├── upsert / record in SQLite inventory
+   ├── evaluate URL rules
+   ├── evaluate run update policy against existing business history
+   └── only then enqueue a base request for the current run if eligible
+```
+
+This avoids split-brain behavior where:
+
+- Crawlee thinks a URL is new because it is not yet in the current queue
+- but SQLite already knows the page exists and should be skipped for this run
+
 
 ## Request Model in Crawlee
 
@@ -334,7 +483,6 @@ Suggested request metadata:
 - `runId`
 - `pageId`
 - `pageRunId`
-- `configSnapshotId`
 - `artifactType`
 
 `requestHandler` is the main unit of Crawlee-side customization.
@@ -356,20 +504,18 @@ Important boundary:
 
 ## Business Data Model
 
-M1 uses four main business layers.
+M1 uses seven main business layers.
 
 ```text
-site_pages
-  - identity of a page within a site
-  - one row per site + normalized_url
+projects: logical grouping for multiple sites
 
-crawl_runs
-  - one row per crawl execution
-  - points to run_config_snapshot
+sites: execution and configuration boundary within a project
 
-page_runs
-  - one row per page per run
-  - holds base capture, classification, rule decision, pending reason
+crawl_runs: one row per crawl execution
+
+site_pages: identity of a page within a site, one row per site + normalized_url
+
+page_runs:  one row per page per run, holds base capture, classification, rule decision, pending reason
 
 artifact_runs
   - one row per artifact per page per run
@@ -379,24 +525,54 @@ artifact_runs
 Relationship sketch:
 
 ```text
-site_pages (1)
+projects (1)
    │
-   ├──< page_runs (many)
-   │         │
-   │         └──< artifact_runs (many)
-   │
-crawl_runs (1) ───────┘
+   └──< sites (many)
+          │
+          ├──< site_pages (many)
+          │      │
+          │      └──< page_runs (many)
+          │               │
+          │               └──< artifact_runs (many)
+          │
+          └──< crawl_runs (many) ───────┘
 ```
 
 ## Suggested Table Responsibilities
+
+### `projects`
+
+Logical grouping unit for multiple sites.
+
+Suggested fields:
+
+- `id`
+- `name`
+- `slug`
+- `created_at`
+- `tag_definitions`
+
+### `sites`
+
+Primary management unit for one crawl target.
+
+Suggested fields:
+
+- `id`
+- `project_id`
+- `name`
+- `base_url`
+- `storage_root`
+- `url_rules`
+- `tag_rules`
+- `updated_at`
+- `created_at`
 
 ### `site_pages`
 
 Long-lived page identity.
 
-Do not cache `current_*` fields in M1.
-
-Current status should be derived from `page_runs` and `artifact_runs` by query.
+也维护了当前页的状态和爬取记录状态.
 
 Suggested fields:
 
@@ -404,8 +580,38 @@ Suggested fields:
 - `site_id`
 - `discovered_url`
 - `normalized_url`
-- `last_successful_run_id`
-- `last_crawled_at`
+- `inventory_status`
+- `first_discovered_at`
+- `discovery_source`
+- `discovery_referrer_url`
+- `last_url_rule_decision`
+- `last_tag_rule_decision`
+- `last_base_status`
+- `last_base_run_id`
+- `last_base_at`
+- `last_markdown_status`
+- `last_markdown_run_id`
+- `last_markdown_at`
+- `last_screenshot_status`
+- `last_screenshot_run_id`
+- `last_screenshot_at`
+
+`site_pages` is the durable inventory backbone.
+
+It must preserve enough provenance for later review flows such as:
+
+- "where did this URL come from"
+- "why is this page still pending"
+- "was this URL only seen in preview or also in a real crawl"
+
+`inventory_status`:
+- `discovered_only`: 链接已发现, 未开始爬取.
+- `url_rule_denied`: 被基于url的规则拒绝, 不会执行后续动作.
+- `base_captured`: 基础信息已抓取.
+- `stage2_pending`: 无法决定阶段2重度爬取是否进行, 等待状态.
+- `stage2_skipped`: 阶段2跳过.
+- `stage2_captured`: 阶段2已爬取.
+- 其他更多状态需要再设计
 
 ### `crawl_runs`
 
@@ -415,12 +621,21 @@ Suggested fields:
 
 - `id`
 - `site_id`
-- `config_snapshot_id`
+- `tag_definitions_snapshot`
+- `url_rules_snapshot`
+- `tag_rules_snapshot`
+- `run_type`
+- `update_policy`
 - `status`
 - `started_at`
 - `finished_at`
 - `target_success_count`
 - `successful_page_count`
+- `candidate_page_count`
+- `pending_page_count`
+- `denied_page_count`
+- 其他的关于run的配置
+
 
 ### `page_runs`
 
@@ -431,11 +646,13 @@ Suggested fields:
 - `id`
 - `run_id`
 - `page_id`
-- `base_status`
-- `classification_status`
-- `decision_status`
-- `pending_reason`
+- `started_at`
+- `finished_at`
+- `base_capture_status`
 - `base_capture_path` or structured result reference
+- `classification_result`
+- `decision_result`
+- `pending_reason`
 - `required_artifacts`
 
 `required_artifacts` is a frozen per-run artifact plan snapshot.
@@ -461,48 +678,12 @@ Suggested fields:
 - `started_at`
 - `finished_at`
 - `output_path`
-- `error_code`
 - `error_message`
-
-## State Model
-
-### Page Decision State
-
-```text
-discovered
-   │
-   ├── denied_by_url_rule
-   ├── denied_by_tag_rule
-   ├── pending
-   └── allowed
-```
-
-### Artifact State
-
-```text
-queued
-   │
-   ├── running
-   │    ├── succeeded
-   │    └── failed
-   └── skipped
-```
-
-### Pending Reasons
-
-`pending` must not be a single catch-all bucket.
-
-At minimum:
-
-- `classifier_failed`
-- `rule_unresolved`
-- `manual_review_required`
-
 ## Resume and Multi-Run Behavior
 
 M1 must support:
 
-- resume after interruption
+- resume single crawl_run after interruption
 - stopping after a configured number of successful pages
 - carrying `pending` pages into later runs after config changes
 - updating previously crawled pages based on user policy
@@ -527,7 +708,6 @@ Recommended flow:
 start run
    │
    ├── create crawl_run
-   ├── freeze run_config_snapshot
    ├── query SQLite for candidate pages
    ├── apply update mode:
    │     - skip_existing
@@ -541,72 +721,28 @@ This means:
 
 - for a new run, Crawlee queues should be treated as fresh execution state
 - for resume within the same run, Crawlee queues should be reused
-- cross-run dedupe and freshness checks happen before enqueue, not inside Crawlee
+- cross-run dedupe and freshness checks happen before enqueue
 
-### URL discovery during a run
-
-When Crawlee discovers a URL during crawling, it should not blindly assume that the URL must be processed.
-
-The expected M1 behavior is:
-
-```text
-discovered link
-   │
-   ├── normalize URL
-   ├── upsert / record in SQLite inventory
-   ├── evaluate URL rules
-   ├── evaluate run update policy against existing business history
-   └── only then enqueue a base request for the current run if eligible
-```
-
-This avoids split-brain behavior where:
-
-- Crawlee thinks a URL is new because it is not yet in the current queue
-- but SQLite already knows the page exists and should be skipped for this run
+### Pending Re-evaluation
+- 不提供只是因为config修改,不跑crawl_run而重新evaluate这种功能. 
+- pending的要是修改了rule想要重新evaluate, 就要完整启动crawl_run, 经历Stage1/Stage2
 
 ### Update policy modes
 
 M1 should keep update policy explicit and small.
 
+Update policy在两个地方生效:
+- 创建run的时候, 哪些会直接入base队列
+- 运行过程中遇到url时, 入三个队列前判断Update policy
+
 Recommended initial modes:
 
-- `skip_existing`
-- `rerun_failed_artifacts`
-- `force_recrawl_all`
-- `stale_after_duration`
-
-Each mode must define behavior for:
-
-- whether `base` is re-enqueued
-- whether `markdown` is re-enqueued
-- whether `screenshot` is re-enqueued
-- how previously `pending` pages are treated
-
-These modes belong to SQLite-backed run planning, not to Crawlee queue semantics.
-
-## Decision Contract
-
-Rule evaluation should return one explicit decision object.
-
-Suggested shape:
-
-```text
-RuleDecision {
-  decision: allow | deny | pending
-  pendingReason: classifier_failed | rule_unresolved | manual_review_required | null
-  matchedRuleIds: string[]
-  requiredArtifacts: artifact_type[]
-}
-```
-
-Intent:
-
-- URL rules and tag rules both feed one normalized decision output
-- downstream code consumes this object instead of re-deriving partial logic
-- artifact planning is part of the decision contract, not a separate hidden branch
-
-The decision contract should be persisted or reproducible from persisted run data so later debugging can explain why a page was denied, marked pending, or assigned artifacts.
-
+- `force_recrawl_all`: 忽略之前的运行状态, 所有页面的Stage1/Stage2都要过一下.
+- `skip_existing`: 
+  - 什么结果都没有的, 正常流程走.
+  - 对于已有Stage1和两个Stage2结果的页面, 初始就不入base队列; 
+  - 对于已有Stage1, Stage2没有或者不全的, 初始入base队列, 后续判断markdown/截图是否有结果, 没有才入队.
+- `stale_after_duration`: 对于已有结果(Stage1/Stage2分别的结果)的页面, 入队前判断一下时间差
 ## External Capture Tool Integration
 
 External capture tools should be integrated behind queue-specific handlers or adapters, not embedded as ad hoc hook logic.
@@ -657,25 +793,6 @@ Do not use hooks for:
 
 Those belong in `run planner`, `rule engine / decision evaluator`, and `artifact planner`.
 
-## Config Schema
-
-M1 should use a fixed schema rather than an open-ended JSON blob.
-
-At minimum the schema must include:
-
-- `url_rules`
-- `tag_rules`
-- `artifact_policy`
-- `update_policy`
-
-The schema should prefer:
-
-- explicit field names
-- enum-like values for modes and decisions
-- stable versioning so config snapshots remain interpretable
-
-Do not let each module invent its own config sub-shape.
-
 ## What Already Exists
 
 The current repo does not yet contain implementation code.
@@ -689,7 +806,7 @@ The intended implementation should reuse Crawlee primitives rather than replacin
 
 ## Failure Modes To Design For
 
-### Base stage
+### Stage1: Base stage
 
 - URL matches blacklist before fetch
   - expected handling: do not enqueue base request, optionally persist inventory-only denial record
@@ -700,12 +817,12 @@ The intended implementation should reuse Crawlee primitives rather than replacin
 - run interrupted after base success but before artifact enqueue
   - expected handling: recover from persisted `page_run` and queue state
 
-### Markdown stage
+### Stage2: Markdown stage
 
 - markdown capture fails while base and screenshot succeed
   - expected handling: artifact failure recorded, page not counted successful under `6C`
 
-### Screenshot stage
+### Stage2: Screenshot stage
 
 - browser render fails or times out
   - expected handling: artifact failure recorded, page not counted successful under `6C`
@@ -715,46 +832,17 @@ The intended implementation should reuse Crawlee primitives rather than replacin
 These are still implementation topics, not yet fully specified:
 
 - exact SQLite schema and indexes
-- exact config schema shape
 - exact markdown capture mechanism
 - retry policy per queue
-- update policy semantics for previously crawled pages
-- whether `site_pages` current status is computed or denormalized
+- exact CLI command surface for config import / run / inspect
+- whether read models are implemented as SQL views or service-layer aggregations
 
 ## Implementation Shape
 
 Keep M1 boring and explicit.
 
 Recommended module boundaries:
-
-- CLI commands
-- config snapshot service
-- run planner
-- rule engine / decision evaluator
-- artifact planner
-- base crawl pipeline
-- markdown pipeline
-- screenshot pipeline
-- SQLite repositories
-- state aggregation / run accounting
-
-Module responsibilities:
-
-- `run planner`
-  - reads config snapshot and historical run data
-  - applies update policy
-  - decides which requests enter this run's queues
-- `rule engine / decision evaluator`
-  - evaluates URL rules and tag rules
-  - produces the unified `RuleDecision`
-- `artifact planner`
-  - consumes `RuleDecision`
-  - creates the frozen artifact plan for `page_runs`
-  - enqueues artifact requests
-- queue-specific `requestHandler`s
-  - execute the actual queue work
-  - call external capture tools where applicable
-  - write page / artifact execution results
+模块化设计
 
 Avoid a single giant hook/function that:
 
