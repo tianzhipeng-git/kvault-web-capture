@@ -1,0 +1,42 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4318/docs"
+  ],
+  "sitemaps": [
+    "http://127.0.0.1:4318/sitemap.xml"
+  ],
+  "urlRules": [
+    {
+      "name": "block-login",
+      "listType": "blacklist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4318/login"
+      ]
+    }
+  ],
+  "tagRules": [
+    {
+      "name": "allow-content-pages",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "docs",
+            "product",
+            "generic"
+          ]
+        }
+      ],
+      "artifacts": [
+        "markdown"
+      ]
+    }
+  ],
+  "runOptions": {
+    "previewMaxDepth": 1,
+    "crawlMaxDepth": 2
+  }
+}

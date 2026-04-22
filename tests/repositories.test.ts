@@ -2,10 +2,12 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createDefaultSiteConfig } from '../src/config/site-config.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
   ArtifactRunRepository,
   PageRunRepository,
+  ProjectRepository,
   RunRepository,
   SitePageRepository,
   SiteRepository,
@@ -23,53 +25,97 @@ describe('repositories', () => {
     openHandles.length = 0;
   });
 
-  it('persists page_runs and artifact_runs for one run', () => {
+  it('persists the M1 business model and inventory read paths', () => {
     const dir = createTempDir('kvault-repos-');
     const db = openDatabase(join(dir, 'state.db'));
     openHandles.push(db);
     initializeSchema(db);
 
     const clock = new SystemClock();
+    const projects = new ProjectRepository(db, clock);
     const sites = new SiteRepository(db, clock);
     const runs = new RunRepository(db, clock);
     const pages = new SitePageRepository(db, clock);
     const pageRuns = new PageRunRepository(db, clock);
     const artifactRuns = new ArtifactRunRepository(db, clock);
 
-    const siteId = sites.ensureSite('example', 'https://example.com');
-    const runId = runs.createRun(siteId, 'https://example.com/docs');
-    const sitePageId = pages.createOrGet(
-      siteId,
-      'https://example.com/docs',
-      'https://example.com/docs',
-    );
+    const project = projects.create('Example Project');
+    const site = sites.create({
+      projectId: project.id,
+      name: 'example-site',
+      baseUrl: 'https://example.com',
+      storageRoot: dir,
+      config: createDefaultSiteConfig('https://example.com/docs'),
+    });
+    const runId = runs.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+    const sitePageId = pages.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
+    });
 
     const pageRunId = pageRuns.create({
       runId,
       sitePageId,
-      status: 'succeeded',
+      baseCaptureStatus: 'succeeded',
       title: 'Docs',
       metaDescription: 'Example docs',
       bodyText: 'hello docs',
-      classifierTags: ['docs'],
-      ruleDecision: {
-        outcome: 'allow',
-        requiredArtifacts: ['markdown'],
-        reason: null,
+      classificationTags: {
+        content_type: ['docs'],
       },
+      tagRuleOutcome: 'allow',
+      decisionOutcome: 'allow',
+      decisionReason: null,
+      pendingReason: null,
+      requiredArtifacts: ['markdown'],
+    });
+
+    pages.recordBaseCapture({
+      sitePageId,
+      runId,
+      title: 'Docs',
+      tagOutcome: 'allow',
+      pageOutcome: 'allow',
+      pendingReason: null,
     });
 
     const artifactRunId = artifactRuns.create({
       runId,
+      pageRunId,
       sitePageId,
       artifactType: 'markdown',
       status: 'succeeded',
       content: '# Docs',
+      outputPath: null,
+      errorMessage: null,
+    });
+
+    pages.recordMarkdownResult({
+      sitePageId,
+      runId,
+      status: 'succeeded',
     });
 
     expect(pageRunId).toBeGreaterThan(0);
     expect(artifactRunId).toBeGreaterThan(0);
     expect(pageRuns.countByRun(runId)).toBe(1);
     expect(artifactRuns.countByRun(runId)).toBe(1);
+    expect(pages.summarizeInventory(site.id)).toEqual({
+      totalPages: 1,
+      pendingPages: 0,
+      deniedPages: 0,
+      capturedPages: 1,
+    });
   });
 });

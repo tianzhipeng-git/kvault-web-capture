@@ -1,0 +1,49 @@
+{
+  "seedUrls": [
+    "https://www.apple.com/"
+  ],
+  "sitemaps": [],
+  "urlRules": [
+    {
+      "name": "only-www-apple",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "www.apple.com"
+      ]
+    },
+    {
+      "name": "block-bag-and-buy",
+      "listType": "blacklist",
+      "ruleType": "regex",
+      "values": [
+        "www\\.apple\\.com\\/(shop|bag)",
+        "www\\.apple\\.com\\/.+\\/buy"
+      ]
+    }
+  ],
+  "tagRules": [
+    {
+      "name": "allow-homepage-content",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "docs",
+            "product",
+            "generic"
+          ]
+        }
+      ],
+      "artifacts": [
+        "markdown"
+      ]
+    }
+  ],
+  "runOptions": {
+    "previewMaxDepth": 0,
+    "crawlMaxDepth": 0
+  }
+}

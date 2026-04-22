@@ -1,0 +1,15 @@
+update-policy.tx:  if (history.lastTagRuleDecision === 'allow' && history.lastMarkdownStatus !== 'succeeded') {
+preview改名为seed
+rerun_failed_artifacts
+services.tx fetchSitemapUrls要放在这吗? 不递归吗?
+services.tx的executeRun把所有可能startupUrls都拿到挨个去planRequest对吗?
+
+services.tx: ts里await啥效果, 这样启动两个是咋玩的?       await baseCrawler.run();
+      if (input.runType === 'crawl_run') {
+        await markdownCrawler.run();
+      }
+
+
+
+
+CheerioCrawler

@@ -4,11 +4,13 @@ import { Configuration, RequestQueue } from 'crawlee';
 import { describe, expect, it } from 'vitest';
 
 import { FakeClassifier } from '../src/classification/fake-classifier.js';
+import { createDefaultSiteConfig } from '../src/config/site-config.js';
 import { createBaseRequestHandler, createMarkdownRequestHandler } from '../src/crawlee/handlers.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
   ArtifactRunRepository,
   PageRunRepository,
+  ProjectRepository,
   RunRepository,
   SitePageRepository,
   SiteRepository,
@@ -27,16 +29,36 @@ describe('integration spike', () => {
     const db = openDatabase(dbPath);
     initializeSchema(db);
     const clock = new SystemClock();
+    const projectRepository = new ProjectRepository(db, clock);
     const siteRepository = new SiteRepository(db, clock);
     const runRepository = new RunRepository(db, clock);
     const sitePageRepository = new SitePageRepository(db, clock);
     const pageRunRepository = new PageRunRepository(db, clock);
     const artifactRunRepository = new ArtifactRunRepository(db, clock);
-    const planner = new RunPlanner(siteRepository, runRepository, sitePageRepository);
-
-    const plannedRun = planner.plan({
-      seedUrl: baseUrl,
-      siteName: 'example-docs',
+    const planner = new RunPlanner(sitePageRepository, clock);
+    const project = projectRepository.create('Spike Project');
+    const site = siteRepository.create({
+      projectId: project.id,
+      name: 'example-docs',
+      baseUrl: 'https://example.com',
+      storageRoot: storageDir,
+      config: createDefaultSiteConfig(baseUrl),
+    });
+    const runId = runRepository.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+    const sitePageId = sitePageRepository.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: baseUrl,
+      normalizedUrl: 'https://example.com/docs',
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
     });
 
     const configuration = new Configuration({
@@ -47,25 +69,36 @@ describe('integration spike', () => {
       },
     });
 
-    const markdownQueue = await RequestQueue.open(`run-${plannedRun.runId}-markdown`, {
+    const baseQueue = await RequestQueue.open(`run-${runId}-base`, {
+      config: configuration,
+    });
+    const markdownQueue = await RequestQueue.open(`run-${runId}-markdown`, {
       config: configuration,
     });
 
     const baseHandler = createBaseRequestHandler({
       classifier: new FakeClassifier(),
+      siteConfig: site.config,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      baseQueue,
       markdownQueue,
       pageRunRepository,
       sitePageRepository,
+      runPlanner: planner,
     });
     const markdownHandler = createMarkdownRequestHandler({
       markdownAdapter: new FakeMarkdownCaptureAdapter(),
       artifactRunRepository,
+      sitePageRepository,
     });
 
     const fakeDom = createFakeCheerio({
       title: 'Example Docs',
       metaDescription: 'Tiny docs page',
       bodyText: 'Docs content for the Phase 0 spike.',
+      links: [],
     });
 
     try {
@@ -75,17 +108,15 @@ describe('integration spike', () => {
           loadedUrl: baseUrl,
           userData: {
             stage: 'base',
-            runId: plannedRun.runId,
-            siteId: plannedRun.siteId,
-            sitePageId: plannedRun.sitePageId,
-            normalizedUrl: plannedRun.normalizedUrl,
+            runId,
+            siteId: site.id,
+            sitePageId,
+            normalizedUrl: 'https://example.com/docs',
+            depth: 0,
+            runType: 'crawl_run',
           },
         },
         $: fakeDom,
-        enqueueLinks: async () => ({
-          processedRequests: [],
-          unprocessedRequests: [],
-        }),
       } as never);
 
       const markdownRequest = await markdownQueue.fetchNextRequest();
@@ -102,7 +133,7 @@ describe('integration spike', () => {
            FROM page_runs
            WHERE crawl_run_id = ?`,
         )
-        .get(plannedRun.runId) as {
+        .get(runId) as {
           title: string;
           meta_description: string;
           decision_outcome: string;
@@ -115,7 +146,7 @@ describe('integration spike', () => {
            FROM artifact_runs
            WHERE crawl_run_id = ?`,
         )
-        .get(plannedRun.runId) as {
+        .get(runId) as {
           artifact_type: string;
           status: string;
           content: string;
@@ -129,8 +160,8 @@ describe('integration spike', () => {
       expect(artifactRun.artifact_type).toBe('markdown');
       expect(artifactRun.status).toBe('succeeded');
       expect(artifactRun.content).toContain('https://example.com/docs');
-      expect(pageRunRepository.countByRun(plannedRun.runId)).toBe(1);
-      expect(artifactRunRepository.countByRun(plannedRun.runId)).toBe(1);
+      expect(pageRunRepository.countByRun(runId)).toBe(1);
+      expect(artifactRunRepository.countByRun(runId)).toBe(1);
     } finally {
       db.close();
     }
@@ -141,8 +172,49 @@ function createFakeCheerio(input: {
   title: string;
   metaDescription: string;
   bodyText: string;
+  links: string[];
 }) {
-  return (selector: string) => {
+  return (selector: string | { attr(name: string): string | undefined }) => {
+    if (typeof selector !== 'string') {
+      return {
+        first() {
+          return this;
+        },
+        text() {
+          return '';
+        },
+        attr(name: string) {
+          return selector.attr(name);
+        },
+        each() {
+          return undefined;
+        },
+      };
+    }
+
+    if (selector === 'a[href]') {
+      return {
+        first() {
+          return this;
+        },
+        text() {
+          return '';
+        },
+        attr() {
+          return undefined;
+        },
+        each(callback: (index: number, element: { attr(name: string): string | undefined }) => void) {
+          input.links.forEach((href, index) => {
+            callback(index, {
+              attr(name: string) {
+                return name === 'href' ? href : undefined;
+              },
+            });
+          });
+        },
+      };
+    }
+
     const value =
       selector === 'title'
         ? input.title
@@ -164,6 +236,9 @@ function createFakeCheerio(input: {
           return value;
         }
 
+        return undefined;
+      },
+      each() {
         return undefined;
       },
     };
