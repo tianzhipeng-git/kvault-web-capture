@@ -1,0 +1,21 @@
+{
+  "name": "kvault-web-capture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "spike": "node --import tsx src/cli.ts spike",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "crawlee": "^3.13.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
