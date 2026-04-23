@@ -1,31 +1,6 @@
 # M1 Development Plan
 
-## Purpose
-
-This plan is intentionally front-loaded around the seam between project code and Crawlee.
-
-The goal is not to fully build M1 immediately. The goal is to first prove that the integration boundary is clean:
-
-- our code decides what to run
-- Crawlee executes queue work
-- `requestHandler` is the main execution entry
-- SQLite records the business state we care about
-
-Only after that seam is proven should the rest of M1 be expanded.
-
-## Planning Principle
-
-Start with a hello-world vertical slice at the Crawlee boundary, not a broad horizontal build-out.
-
-That slice should prove:
-
-- one run can be created
-- one page can be enqueued
-- one `base` `requestHandler` can execute
-- one SQLite record path can be written
-- one artifact follow-up request can be planned and executed
-
-If that slice feels awkward, the architecture should be corrected before the project grows.
+当前项目还在初始开发状态, 无线上应用, 修改代码的时候不用考虑兼容性.
 
 ## Phase 0: Integration Spike First
 
@@ -139,7 +114,7 @@ Turn the spike into a durable M1 skeleton with the right business boundaries, wh
 
 ### What this phase should NOT include
 
-- full inventory preview workflow
+- full seed-run workflow
 - screenshot execution
 - multi-run update policy behavior
 - final CLI command surface
@@ -154,11 +129,11 @@ Do not move on until these are true:
 4. Phase 0 tests still pass after the refactor.
 5. Unit and integration tests cover the stabilized core model, especially URL normalization, repositories, and rule contracts.
 
-## Phase 2: Ship Inventory Preview
+## Phase 2: Ship Seed Run
 
 ### Goal
 
-Deliver the first real M1 operator workflow: create a site, run `inventory_preview`, and inspect durable inventory output from the CLI.
+Deliver the first real M1 operator workflow: create a site, run `seed_run`, and inspect durable inventory output from the CLI.
 
 ### Scope
 
@@ -167,22 +142,22 @@ Deliver the first real M1 operator workflow: create a site, run `inventory_previ
   - create site
   - import config into a site
   - clone config from an existing site
-  - start `inventory_preview`
-- add input expansion for preview runs:
+  - start `seed_run`
+- add input expansion for seed runs:
   - seed URLs
-  - sitemap ingestion
-  - shallow discovery only
+  - recursive sitemap expansion into real page URLs
+  - shallow page discovery only
 - implement URL-rule evaluation before entering the `base` queue
-- implement Stage 1 base capture for preview runs:
+- implement Stage 1 base capture for seed runs:
   - fetch lightweight page data
   - normalize URL
   - classify
   - evaluate tag rules
   - persist `site_pages` and `page_runs`
-- make preview-specific outcomes explicit:
+- make seed-specific outcomes explicit:
   - `url_rule_denied`
   - `pending`
-  - `preview_run` pending reason where Stage 2 is intentionally not started
+  - `seed_run` pending reason where Stage 2 is intentionally not started
 - add CLI read paths for inventory review:
   - site inventory summary
   - pending pages
@@ -200,11 +175,11 @@ Deliver the first real M1 operator workflow: create a site, run `inventory_previ
 
 Do not move on until these are true:
 
-1. An operator can create a site config and run `inventory_preview` entirely through CLI commands.
-2. Preview runs cannot accidentally turn into full-site crawl runs.
-3. URL-rule denials, pending pages, and preview-only outcomes are stored explicitly and queryable.
+1. An operator can create a site config and run `seed_run` entirely through CLI commands.
+2. Seed runs cannot accidentally turn into full-site crawl runs.
+3. URL-rule denials, pending pages, and seed-only outcomes are stored explicitly and queryable.
 4. Inventory review works off SQLite business state rather than Crawlee internals.
-5. Integration tests cover preview ingestion, URL-rule gating, and pending persistence.
+5. Integration tests cover sitemap expansion, URL-rule gating, and pending persistence.
 
 ## Phase 3: Add Crawl Planning Against History
 

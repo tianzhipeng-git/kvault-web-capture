@@ -17,7 +17,7 @@ This example is the best way to verify:
 
 - `site:create`
 - `site:import-config`
-- `run:preview`
+- `run:seed`
 - `run:crawl`
 - `site:inventory-summary`
 - `site:pending`
@@ -33,7 +33,7 @@ Use `https://www.apple.com/` as a real public site example.
 This example is intentionally conservative:
 
 - only the homepage is targeted by default
-- `previewMaxDepth` and `crawlMaxDepth` are both `0`
+- `seedMaxDepth` and `crawlMaxDepth` are both `0`
 - the config uses a `scopelist` rule to stay on `www.apple.com`
 
 See [examples/apple/README.md](/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/examples/apple/README.md).

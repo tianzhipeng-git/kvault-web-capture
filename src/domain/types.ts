@@ -4,7 +4,7 @@ export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
 export type UrlRuleDecision = 'allow' | 'deny';
 
-export type RunType = 'inventory_preview' | 'crawl_run';
+export type RunType = 'seed_run' | 'crawl_run';
 
 export type RunStatus = 'running' | 'succeeded' | 'failed';
 
@@ -26,7 +26,7 @@ export type InventoryStatus =
   | 'stage2_skipped'
   | 'stage2_captured';
 
-export type PendingReason = 'classifier_failed' | 'rule_unmatched' | 'preview_run';
+export type PendingReason = 'classifier_failed' | 'rule_unmatched' | 'seed_run';
 
 export interface ExtractedPage {
   url: string;
@@ -62,7 +62,7 @@ export interface TagRule {
 }
 
 export interface SiteRunOptions {
-  previewMaxDepth: number;
+  seedMaxDepth: number;
   crawlMaxDepth: number;
 }
 

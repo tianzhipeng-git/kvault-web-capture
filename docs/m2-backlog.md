@@ -21,7 +21,7 @@ Must return:
 
 ### 2. Inventory review list
 
-Used for initial preview validation and later manual review.
+Used for initial seed-run validation and later manual review.
 
 Must support filters by:
 

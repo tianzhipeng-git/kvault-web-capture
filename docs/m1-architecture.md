@@ -127,7 +127,7 @@ If classification fails:
 - `pending_reason` must be explicit:
   - `classifier_failed`: 分类失败
   - `rule_unmatched`: 规则无法判断
-  - `preview_run`: 初始的inventory_preview Run, 不会启动后续markdown/截图, 所以都进入pending状态.
+  - `seed_run`: 初始的 seed_run 只执行 Stage 1, 不会启动后续 markdown/截图, 所以命中 allow 的页面进入 pending.
 
 ### 5. Project / Site Management Model
 
@@ -149,7 +149,7 @@ The accepted M1 rule is strict:
 
 M1 needs two explicit run types because the PRD describes two distinct operator intents.
 
-#### `inventory_preview`
+#### `seed_run`
 
 Purpose:
 
@@ -160,14 +160,16 @@ Purpose:
 
 Constraints:
 
-- non-recursive by default, or recursive only within sitemap.xml, 或只抓第一层页面.
+- does not start Stage 2 artifact queues
+- page recursion is bounded by `seedMaxDepth`
+- sitemap expansion is recursive only inside sitemap / child sitemap documents
 - must not fan out into the full site crawl accidentally
 - may stop after base capture and classification without scheduling downstream artifacts
 
 Outputs:
 
 - `site_pages` inventory rows
-- `page_runs` for previewed pages
+- `page_runs` for seeded pages
 - enough data for rule tuning and manual review
 
 #### `crawl_run`
@@ -184,7 +186,7 @@ Outputs:
 - `artifact_runs` for markdown / screenshot targets
 - run-level and site-level progress metrics
 
-Run type is part of `crawl_runs` metadata and must be queryable because M2 will need to distinguish "initial inventory preview" from "real crawl execution".
+Run type is part of `crawl_runs` metadata and must be queryable because M2 will need to distinguish `seed_run` from `crawl_run`.
 
 ## M1 Operational Workflow
 
@@ -193,7 +195,7 @@ M1 should make the PRD workflow explicit even though it is exposed by CLI first.
 ```text
 1. create project
 2. create site or import config into site config
-3. start inventory_preview
+3. start seed_run
 4. inspect inventory / pending / denied / sample captures
 5. edit rule config
 6. start crawl_run with target success count and update policy
@@ -395,8 +397,8 @@ M1 uses three execution queues.
 
 ```text
 Queue 1: base
-  - input: sitemap URLs, seed URLs, discovered URLs
-  - enqueue: 启动时将初始url入队; 在页面发现的url判断url rule后入队;
+  - input: seed URLs, resolved sitemap page URLs, discovered URLs
+  - enqueue: 启动时将初始页面 URL 入队; 在页面发现的 URL 判断 url rule 后入队;
   - crawler type: lightweight HTTP / HTML crawler
   - output: page_run + artifact planning
 
@@ -421,6 +423,36 @@ Queue ownership rule:
 - starting a new run creates a new set of queues, even if it targets pages seen before
 
 This keeps Crawlee responsible for "what is left to execute in this run" and keeps SQLite responsible for "should this page be executed in this run at all"
+
+### Seed Input Expansion
+
+`seed_run` and `crawl_run` both accept two startup sources:
+
+- `seedUrls`: normal page URLs
+- `sitemaps`: sitemap entry URLs
+
+The expected startup behavior is:
+
+- if the startup input is a normal URL, enqueue that page into the `base` queue at depth `0`
+- if the startup input is a sitemap URL, resolve that sitemap and any child sitemap recursively before enqueue
+- only actual page URLs discovered from sitemap documents enter the `base` queue
+- actual page URLs discovered from sitemap enter the `base` queue at depth `0`
+- page-link recursion after base capture is controlled by run depth (`seedMaxDepth` or `crawlMaxDepth`)
+
+This means sitemap recursion is a planning concern, not a page-crawl depth concern.
+
+### Why sitemap expansion stays before Crawlee page tasks
+
+Sitemap expansion should stay in the application planning layer before page requests are enqueued.
+
+Reasons:
+
+- sitemap XML is an input source, not a business page that should produce `site_pages` / `page_runs`
+- URL-rule gating and update-policy gating should run on the final page URL candidates, not on sitemap documents
+- it avoids polluting the `base` queue with sitemap XML fetches that are not Stage 1 page captures
+- startup planning and runtime link discovery then share the same `RunPlanner.planRequest(...)` gate once a real page URL exists
+
+If later M1 needs very large sitemap handling, the system can still model sitemap fetch as a dedicated "seed expansion" queue, but it should remain separate from the page-capture queues.
 
 Important constraint:
 
@@ -602,7 +634,7 @@ It must preserve enough provenance for later review flows such as:
 
 - "where did this URL come from"
 - "why is this page still pending"
-- "was this URL only seen in preview or also in a real crawl"
+- "was this URL only seen in seed_run or also in a real crawl"
 
 `inventory_status`:
 - `discovered_only`: 链接已发现, 未开始爬取.

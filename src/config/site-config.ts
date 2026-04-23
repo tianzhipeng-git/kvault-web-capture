@@ -88,16 +88,16 @@ function parseTagRules(value: unknown): TagRule[] {
 function parseRunOptions(value: unknown): SiteRunOptions {
   assert(isRecord(value), 'runOptions must be an object');
 
-  const previewMaxDepth =
-    typeof value.previewMaxDepth === 'number' ? value.previewMaxDepth : 1;
+  const seedMaxDepth =
+    typeof value.seedMaxDepth === 'number' ? value.seedMaxDepth : 1;
   const crawlMaxDepth =
     typeof value.crawlMaxDepth === 'number' ? value.crawlMaxDepth : 2;
 
-  assert(previewMaxDepth >= 0, 'runOptions.previewMaxDepth must be >= 0');
+  assert(seedMaxDepth >= 0, 'runOptions.seedMaxDepth must be >= 0');
   assert(crawlMaxDepth >= 0, 'runOptions.crawlMaxDepth must be >= 0');
 
   return {
-    previewMaxDepth,
+    seedMaxDepth,
     crawlMaxDepth,
   };
 }
@@ -139,7 +139,7 @@ export function createDefaultSiteConfig(baseUrl: string): SiteConfig {
       },
     ],
     runOptions: {
-      previewMaxDepth: 1,
+      seedMaxDepth: 1,
       crawlMaxDepth: 2,
     },
   };

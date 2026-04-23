@@ -21,8 +21,8 @@ import {
 import { RunPlanner } from '../planner/run-planner.js';
 
 function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
-  return runType === 'inventory_preview'
-    ? siteConfig.runOptions.previewMaxDepth
+  return runType === 'seed_run'
+    ? siteConfig.runOptions.seedMaxDepth
     : siteConfig.runOptions.crawlMaxDepth;
 }
 

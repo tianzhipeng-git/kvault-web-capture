@@ -51,9 +51,9 @@ describe('rule decision', () => {
     });
   });
 
-  it('turns preview allow decisions into preview_run pending pages', () => {
+  it('turns seed allow decisions into seed_run pending pages', () => {
     const result = buildStageDecision({
-      runType: 'inventory_preview',
+      runType: 'seed_run',
       siteConfig: {
         seedUrls: ['https://example.com/docs'],
         sitemaps: [],
@@ -73,7 +73,7 @@ describe('rule decision', () => {
           },
         ],
         runOptions: {
-          previewMaxDepth: 1,
+          seedMaxDepth: 1,
           crawlMaxDepth: 2,
         },
       },
@@ -89,7 +89,7 @@ describe('rule decision', () => {
       pageOutcome: 'pending',
       requiredArtifacts: ['markdown'],
       reason: null,
-      pendingReason: 'preview_run',
+      pendingReason: 'seed_run',
       matchedRuleNames: ['docs-markdown'],
     });
   });

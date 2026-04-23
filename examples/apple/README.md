@@ -7,8 +7,8 @@ Run the CLI commands one by one against the same `--db` file. Do not start multi
 The config is intentionally conservative:
 
 - only `https://www.apple.com/` is seeded
-- `previewMaxDepth = 0`
-- `crawlMaxDepth = 0`
+- `seedMaxDepth = 1`
+- `crawlMaxDepth = 1`
 - `scopelist` keeps requests on `www.apple.com`
 
 That means the default example only processes the homepage itself.
@@ -39,15 +39,15 @@ node --import tsx src/cli.ts site:import-config \
   --file examples/apple/site-config.json
 ```
 
-## Run preview
+## Run seed pass
 
 ```bash
-node --import tsx src/cli.ts run:preview \
+node --import tsx src/cli.ts run:seed \
   --db examples/apple/.local/state.db \
   --site 1
 ```
 
-Inspect preview state:
+Inspect seed state:
 
 ```bash
 node --import tsx src/cli.ts site:inventory-summary \
@@ -61,10 +61,10 @@ node --import tsx src/cli.ts site:pending \
   --site 1
 ```
 
-Expected shape after preview:
+Expected shape after the seed run:
 
 - one homepage inventory row
-- pending reason should be `preview_run`
+- pending reason should be `seed_run`
 
 ## Run crawl
 
@@ -84,10 +84,10 @@ node --import tsx src/cli.ts site:sample-captures \
   --limit 5
 ```
 
-If you run both preview and crawl before reading sample captures, the same homepage can appear more than once because the command reads historical `page_runs`.
+If you run both seed and crawl before reading sample captures, the same homepage can appear more than once because the command reads historical `page_runs`.
 
 ## Notes
 
-- If you want discovery from the Apple homepage, increase `previewMaxDepth` or `crawlMaxDepth`.
+- If you want discovery from the Apple homepage, increase `seedMaxDepth` or `crawlMaxDepth`.
 - Increasing depth can expand to many more URLs, so start small.
 - Because the current implementation still uses the fake classifier and fake markdown adapter, this example is mainly for validating the workflow, not real content quality.

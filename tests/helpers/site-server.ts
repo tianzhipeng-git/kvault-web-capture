@@ -38,6 +38,15 @@ function handleRequest(
   if (url === '/sitemap.xml') {
     res.writeHead(200, { 'content-type': 'application/xml' });
     res.end(`<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>http://127.0.0.1:${port}/content-sitemap.xml</loc></sitemap>
+</sitemapindex>`);
+    return;
+  }
+
+  if (url === '/content-sitemap.xml') {
+    res.writeHead(200, { 'content-type': 'application/xml' });
+    res.end(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>http://127.0.0.1:${port}/docs</loc></url>
   <url><loc>http://127.0.0.1:${port}/login</loc></url>

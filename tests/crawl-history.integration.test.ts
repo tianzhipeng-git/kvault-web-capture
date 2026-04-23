@@ -78,7 +78,7 @@ async function createConfiguredApp(input: {
           },
         ],
         runOptions: {
-          previewMaxDepth: 1,
+          seedMaxDepth: 1,
           crawlMaxDepth: 2,
         },
       },

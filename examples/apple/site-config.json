@@ -43,7 +43,7 @@
     }
   ],
   "runOptions": {
-    "previewMaxDepth": 0,
-    "crawlMaxDepth": 0
+    "seedMaxDepth": 1,
+    "crawlMaxDepth": 1
   }
 }

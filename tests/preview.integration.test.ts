@@ -7,7 +7,7 @@ import { M1App } from '../src/app/services.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
-describe('inventory preview', () => {
+describe('seed run', () => {
   const servers: TestSiteServer[] = [];
   const apps: M1App[] = [];
 
@@ -21,8 +21,8 @@ describe('inventory preview', () => {
     }
   });
 
-  it('ingests seeds and sitemap urls, applies url rules, and persists preview pending state', async () => {
-    const dir = createTempDir('kvault-preview-');
+  it('ingests nested sitemap urls, applies url rules, and persists seed pending state', async () => {
+    const dir = createTempDir('kvault-seed-');
     const server = await startTestSiteServer();
     servers.push(server);
 
@@ -31,7 +31,7 @@ describe('inventory preview', () => {
     const app = new M1App({ dbPath });
     apps.push(app);
 
-    const project = app.createProject('Preview Project');
+    const project = app.createProject('Seed Project');
     const site = app.createSite({
       projectSlug: project.slug,
       name: 'preview-site',
@@ -70,7 +70,7 @@ describe('inventory preview', () => {
             },
           ],
           runOptions: {
-            previewMaxDepth: 1,
+            seedMaxDepth: 1,
             crawlMaxDepth: 2,
           },
         },
@@ -81,7 +81,7 @@ describe('inventory preview', () => {
     );
 
     app.importSiteConfig(site.id, configPath);
-    await app.runInventoryPreview(site.id);
+    await app.runSeed(site.id);
 
     expect(app.getInventorySummary(site.id)).toEqual({
       totalPages: 3,
@@ -101,11 +101,11 @@ describe('inventory preview', () => {
     ).toEqual([
       {
         url: `${server.baseUrl}/docs`,
-        reason: 'preview_run',
+        reason: 'seed_run',
       },
       {
         url: `${server.baseUrl}/product`,
-        reason: 'preview_run',
+        reason: 'seed_run',
       },
     ]);
     expect(app.listSampleCaptures(site.id, 5)[0]?.normalizedUrl).toBe(`${server.baseUrl}/product`);

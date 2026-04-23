@@ -31,7 +31,7 @@ function printUsage(): void {
   node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/m1.db]
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/m1.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts run:preview --site <site-id> [--db ./.local/m1.db]
+  node --import tsx src/cli.ts run:seed --site <site-id> [--db ./.local/m1.db]
   node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--db ./.local/m1.db]
   node --import tsx src/cli.ts site:inventory-summary --site <site-id> [--db ./.local/m1.db]
   node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/m1.db]
@@ -97,8 +97,8 @@ async function main(): Promise<void> {
         console.log(JSON.stringify({ status: 'ok' }, null, 2));
         return;
       }
-      case 'run:preview': {
-        const result = await app.runInventoryPreview(Number(getRequiredArg('--site')));
+      case 'run:seed':{
+        const result = await app.runSeed(Number(getRequiredArg('--site')));
         console.log(JSON.stringify(result, null, 2));
         return;
       }

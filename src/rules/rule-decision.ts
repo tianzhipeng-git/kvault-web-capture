@@ -158,13 +158,13 @@ export function buildStageDecision(input: {
     };
   }
 
-  if (input.runType === 'inventory_preview') {
+  if (input.runType === 'seed_run') {
     return {
       tagOutcome: tagEvaluation.outcome,
       pageOutcome: 'pending',
       requiredArtifacts: tagEvaluation.requiredArtifacts,
       reason: tagEvaluation.reason,
-      pendingReason: 'preview_run',
+      pendingReason: 'seed_run',
       matchedRuleNames: tagEvaluation.matchedRuleNames,
     };
   }
@@ -211,7 +211,7 @@ export function getDefaultSpikeConfig(seedUrl: string): SiteConfig {
       },
     ],
     runOptions: {
-      previewMaxDepth: 1,
+      seedMaxDepth: 1,
       crawlMaxDepth: url.hostname.endsWith('.local') ? 1 : 2,
     },
   };

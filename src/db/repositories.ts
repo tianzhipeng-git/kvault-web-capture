@@ -52,7 +52,7 @@ export interface SiteRecord {
 export interface CrawlRunRecord {
   id: number;
   siteId: number;
-  runType: 'inventory_preview' | 'crawl_run';
+  runType: 'seed_run' | 'crawl_run';
   updatePolicy: UpdatePolicy;
   status: RunStatus;
   configSnapshot: SiteConfig;
@@ -262,7 +262,7 @@ export class RunRepository {
       | {
           id: number;
           site_id: number;
-          run_type: 'inventory_preview' | 'crawl_run';
+          run_type: 'seed_run' | 'crawl_run';
           update_policy: UpdatePolicy;
           status: RunStatus;
           config_snapshot_json: string;

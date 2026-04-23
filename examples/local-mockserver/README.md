@@ -25,6 +25,72 @@ The server exposes:
 - `http://127.0.0.1:4318/login`
 - `http://127.0.0.1:4318/sitemap.xml`
 
+## Page tree
+
+The mock site structure in [mock-server.ts](/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/examples/local-mockserver/mock-server.ts) is:
+
+```text
+/
+└── /docs
+    ├── /product
+    │   └── /support
+    ├── /support
+    └── /login
+
+sitemap.xml
+├── /docs
+└── /login
+```
+
+Important details for this example:
+
+- `/` links to `/docs`, but `/` is not in the example `seedUrls` or `sitemaps`, so it is not part of the default run.
+- `sitemap.xml` directly lists `/docs` and `/login`.
+- the example config seeds `/docs` and also provides `sitemap.xml`, so startup input is:
+  - `seedUrls`: `/docs`
+  - `sitemaps`: `/docs`, `/login`
+- `/login` is blocked by the URL blacklist, so it is discovered but not crawled.
+
+## How `seedMaxDepth` and `crawlMaxDepth` work
+
+These two parameters control page-link recursion depth after a startup page has entered the `base` queue.
+
+- `seedMaxDepth` applies only to `run:seed`
+- `crawlMaxDepth` applies only to `run:crawl`
+- sitemap expansion happens before page crawling, so sitemap recursion is not counted by either depth
+- startup pages from `seedUrls` or `sitemaps` enter the `base` queue at depth `0`
+- links found on a depth `0` page are depth `1`
+- links found on a depth `1` page are depth `2`
+
+Using the current example config:
+
+- `seedMaxDepth = 1`
+- `crawlMaxDepth = 2`
+
+That means:
+
+- `run:seed` will crawl startup pages at depth `0`, then follow one layer of page links
+- `run:crawl` will crawl startup pages at depth `0`, then follow up to two layers of page links
+
+In this mock tree, the concrete effect is:
+
+- with depth `0`
+  - crawled pages: `/docs`
+  - discovered but not followed from page links: `/product`, `/support`, `/login`
+  - startup sitemap `/login` is still seen, but denied by URL rules
+- with depth `1`
+  - crawled pages: `/docs`, `/product`, `/support`
+  - `/support` is reached from `/docs`
+  - `/login` is still denied, so it never enters base capture
+- with depth `2`
+  - crawled pages are still `/docs`, `/product`, `/support`
+  - `/product -> /support` adds no new page because `/support` was already discovered at depth `1`
+
+So for this specific mock site:
+
+- `seedMaxDepth = 1` is already enough to cover every allowed page in the tree
+- `crawlMaxDepth = 2` behaves the same as `1` for coverage, but proves the crawler can continue one more level if the tree grows later
+
 ## Create project and site
 
 From the repo root, in terminal 2:
@@ -53,15 +119,15 @@ node --import tsx src/cli.ts site:import-config \
   --file examples/local-mockserver/site-config.json
 ```
 
-## Run inventory preview
+## Run seed pass
 
 ```bash
-node --import tsx src/cli.ts run:preview \
+node --import tsx src/cli.ts run:seed \
   --db examples/local-mockserver/.local/state.db \
   --site 1
 ```
 
-Useful read commands after preview:
+Useful read commands after the seed run:
 
 ```bash
 node --import tsx src/cli.ts site:inventory-summary \
@@ -81,11 +147,11 @@ node --import tsx src/cli.ts site:denied \
   --site 1
 ```
 
-Expected shape after preview:
+Expected shape after the seed run:
 
 - `/login` should be `url_rule_denied`
 - `/docs`, `/product`, `/support` should be `pending`
-- pending reason should be `preview_run`
+- pending reason should be `seed_run`
 
 ## Run crawl
 
@@ -110,4 +176,4 @@ Expected shape after crawl:
 - `/docs`, `/product`, `/support` should have base captures
 - allowed pages should also have markdown artifact runs
 - `/login` should still stay denied
-- `site:sample-captures` reads historical `page_runs`, so if you ran both preview and crawl, duplicate URLs are expected in the output
+- `site:sample-captures` reads historical `page_runs`, so if you ran both seed and crawl, duplicate URLs are expected in the output

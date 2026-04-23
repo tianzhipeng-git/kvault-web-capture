@@ -31,22 +31,8 @@ import type {
 import { FakeMarkdownCaptureAdapter, type MarkdownCaptureAdapter } from '../markdown/fake-markdown-adapter.js';
 import { openRunQueue } from '../planner/queue-factory.js';
 import { RunPlanner } from '../planner/run-planner.js';
+import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 import { SystemClock } from '../utils/clock.js';
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
-async function fetchSitemapUrls(sitemapUrl: string): Promise<string[]> {
-  const response = await fetch(sitemapUrl);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch sitemap ${sitemapUrl}: ${response.status}`);
-  }
-
-  const xml = await response.text();
-  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
-}
 
 export interface M1AppOptions {
   dbPath: string;
@@ -144,10 +130,10 @@ export class M1App {
     this.sites.cloneConfig(sourceSiteId, targetSiteId);
   }
 
-  async runInventoryPreview(siteId: number): Promise<SpikeRunSummary> {
+  async runSeed(siteId: number): Promise<SpikeRunSummary> {
     return this.executeRun({
       siteId,
-      runType: 'inventory_preview',
+      runType: 'seed_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
       staleAfterMs: null,
@@ -218,22 +204,23 @@ export class M1App {
 
     const baseQueue = await openRunQueue(runId, 'base', configuration);
     const markdownQueue = await openRunQueue(runId, 'markdown', configuration);
-    const startupUrls = unique([
-      ...site.config.seedUrls,
-      ...(await Promise.all(site.config.sitemaps.map(fetchSitemapUrls))).flat(),
-      ...(input.runType === 'crawl_run'
-        ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
-        : []),
-    ]);
+    const startupCandidates = await expandStartupUrlCandidates({
+      seedUrls: site.config.seedUrls,
+      sitemapUrls: site.config.sitemaps,
+      knownUrls:
+        input.runType === 'crawl_run'
+          ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
+          : [],
+    });
 
     let firstSitePageId = 0;
     let firstNormalizedUrl = '';
 
-    for (const url of startupUrls) {
+    for (const candidate of startupCandidates) {
       const planned = this.planner.planRequest({
         siteId: site.id,
-        discoveredUrl: url,
-        discoverySource: site.config.seedUrls.includes(url) ? 'seed_url' : 'sitemap',
+        discoveredUrl: candidate.url,
+        discoverySource: candidate.discoverySource,
         discoveryReferrerUrl: null,
         siteConfig: site.config,
         runType: input.runType,
@@ -251,7 +238,7 @@ export class M1App {
       }
 
       await baseQueue.addRequest({
-        url,
+        url: candidate.url,
         uniqueKey: `base:${runId}:${planned.sitePageId}`,
         userData: {
           stage: 'base',

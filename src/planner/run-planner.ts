@@ -54,7 +54,7 @@ export class RunPlanner {
       };
     }
 
-    if (input.runType === 'inventory_preview') {
+    if (input.runType === 'seed_run') {
       return {
         siteId: input.siteId,
         sitePageId,

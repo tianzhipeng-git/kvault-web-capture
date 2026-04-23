@@ -60,7 +60,7 @@ flowchart LR
 - `src/rules/rule-decision.ts` handles:
   - URL rule evaluation before base queue
   - tag rule evaluation after classification
-  - final stage decision for `inventory_preview` vs `crawl_run`
+  - final stage decision for `seed_run` vs `crawl_run`
 - `src/planner/run-planner.ts` is the enqueue gate:
   - normalize URL
   - upsert / find `site_pages`
@@ -155,24 +155,24 @@ flowchart TD
     MQ --> CRAWLEE
 ```
 
-## Runtime Flow: Inventory Preview
+## Runtime Flow: Seed Run
 
-Current implementation uses `M1App.runInventoryPreview(siteId)`.
+Current implementation uses `M1App.runSeed(siteId)`.
 
 Key behavior:
 
-- `run_type = inventory_preview`
+- `run_type = seed_run`
 - `update_policy = force_recrawl_all`
 - base queue runs
 - markdown queue is created but not executed
-- pages that would otherwise be `allow` become `pending` with `pending_reason = preview_run`
+- pages that would otherwise be `allow` become `pending` with `pending_reason = seed_run`
 
 ```mermaid
 flowchart TD
-    A["CLI: run:preview"] --> B["M1App.executeRun(runType=inventory_preview)"]
+    A["CLI: run:seed"] --> B["M1App.executeRun(runType=seed_run)"]
     B --> C["load site config"]
     C --> D["create crawl_runs row"]
-    D --> E["expand startup URLs\nseedUrls + sitemap locs"]
+    D --> E["expand startup URLs\nseedUrls + recursive sitemap page URLs"]
     E --> F["RunPlanner.planRequest for each URL"]
     F --> G{"URL rule deny?"}
     G -- yes --> H["mark site_pages as url_rule_denied\nskip enqueue"]
@@ -182,8 +182,8 @@ flowchart TD
     K --> L["classify"]
     L --> M["buildStageDecision"]
     M --> N["write page_runs"]
-    N --> O["update site_pages\nstage2_pending + preview_run"]
-    O --> P{"depth < previewMaxDepth?"}
+    N --> O["update site_pages\nstage2_pending + seed_run"]
+    O --> P{"depth < seedMaxDepth?"}
     P -- no --> Q["done"]
     P -- yes --> R["plan discovered links through RunPlanner"]
     R --> S["eligible links enter base queue"]
@@ -197,7 +197,7 @@ Key behavior:
 
 - startup candidates come from:
   - `seedUrls`
-  - sitemap URLs
+  - recursively resolved sitemap page URLs
   - existing `site_pages` inventory
 - runtime-discovered URLs go through the same planner path
 - `crawl_run` may enqueue markdown requests
@@ -245,7 +245,7 @@ flowchart LR
     N --> R["evaluateUrlRules"]
     R --> D{"deny?"}
     D -- yes --> X["markUrlRuleDenied\nreturn enqueue=false"]
-    D -- no --> Y{"runType=inventory_preview?"}
+    D -- no --> Y{"runType=seed_run?"}
     Y -- yes --> Z["return enqueue=true"]
     Y -- no --> P["shouldEnqueueByUpdatePolicy"]
     P --> Q["return enqueue true/false"]
@@ -328,7 +328,7 @@ sequenceDiagram
 - project/site creation
 - site config import and clone
 - config validation for seed URLs, sitemaps, URL rules, tag rules, run options
-- inventory preview flow
+- seed-run flow
 - crawl flow with history-aware planning
 - runtime link discovery through the same planner path
 - markdown artifact execution
