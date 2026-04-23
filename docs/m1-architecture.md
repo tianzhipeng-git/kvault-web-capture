@@ -272,34 +272,39 @@ M1 currently defines two execution points:
 
 Config shape:
 
-```yaml
-rulesBeforeBaseEq:
-  - name: block_logins
-    matchType: url
-    listType: blacklist
-    ruleType: prefix
-    values: ["www.example.com/login"]
-  - name: allow_docs_by_url
-    matchType: url
-    listType: whitelist
-    ruleType: prefix
-    values: ["www.example.com/docs"]
-    artifacts: [markdown]
-
-rulesBeforeStage2Eq:
-  - name: block_blog_stage2
-    matchType: url
-    listType: blacklist
-    ruleType: prefix
-    values: ["www.example.com/blog"]
-  - name: allow_docs
-    matchType: tag
-    listType: whitelist
-    when:
-      - key: content_type
-        op: any_of
-        values: [docs]
-    artifacts: [markdown]
+```
+"rulesBeforeBaseEq": [
+    {
+      "name": "block-login",
+      "matchType": "url",
+      "listType": "blacklist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4318/login"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "allow-content-pages",
+      "matchType": "tag",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "docs",
+            "product",
+            "generic"
+          ]
+        }
+      ],
+      "artifacts": [
+        "markdown"
+      ]
+    }
+  ]
 ```
 
 If the same logical rule should run at both execution points, it must be declared in both arrays. Rules are not shared across execution points.
