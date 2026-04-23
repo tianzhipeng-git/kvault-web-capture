@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 
-import type { ArtifactType, SiteConfig, SiteRunOptions, TagRule, UrlRule } from '../domain/types.js';
+import type {
+  ArtifactType,
+  SiteConfig,
+  SiteRunOptions,
+  TagRule,
+  UrlRule,
+} from '../domain/types.js';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -18,21 +24,13 @@ function asStringArray(value: unknown, fieldName: string): string[] {
   return value;
 }
 
-function parseUrlRules(value: unknown): UrlRule[] {
-  assert(Array.isArray(value), 'urlRules must be an array');
+function assertUniqueRuleNames(rules: Array<{ name: string }>, fieldName: string): void {
+  const names = new Set<string>();
 
-  return value.map((rule, index) => {
-    assert(isRecord(rule), `urlRules[${index}] must be an object`);
-    assert(rule.listType === 'blacklist' || rule.listType === 'scopelist', `urlRules[${index}].listType must be blacklist or scopelist`);
-    assert(rule.ruleType === 'prefix' || rule.ruleType === 'regex', `urlRules[${index}].ruleType must be prefix or regex`);
-
-    return {
-      name: typeof rule.name === 'string' ? rule.name : `url-rule-${index + 1}`,
-      listType: rule.listType,
-      ruleType: rule.ruleType,
-      values: asStringArray(rule.values, `urlRules[${index}].values`),
-    };
-  });
+  for (const rule of rules) {
+    assert(!names.has(rule.name), `${fieldName} contains duplicate rule name ${rule.name}`);
+    names.add(rule.name);
+  }
 }
 
 function parseArtifacts(value: unknown, fieldName: string): ArtifactType[] {
@@ -44,45 +42,108 @@ function parseArtifacts(value: unknown, fieldName: string): ArtifactType[] {
   return artifacts as ArtifactType[];
 }
 
-function parseTagRules(value: unknown): TagRule[] {
-  assert(Array.isArray(value), 'tagRules must be an array');
+function parseUrlRule(rule: unknown, fieldName: string): UrlRule {
+  assert(isRecord(rule), `${fieldName} must be an object`);
+  assert(
+    rule.matchType === 'url' || rule.matchType === undefined,
+    `${fieldName}.matchType must be url`,
+  );
+  assert(
+    rule.listType === 'blacklist' ||
+      rule.listType === 'scopelist' ||
+      rule.listType === 'whitelist',
+    `${fieldName}.listType must be blacklist, scopelist, or whitelist`,
+  );
+  assert(
+    rule.ruleType === 'prefix' || rule.ruleType === 'regex',
+    `${fieldName}.ruleType must be prefix or regex`,
+  );
 
-  return value.map((rule, index) => {
-    assert(isRecord(rule), `tagRules[${index}] must be an object`);
-    assert(rule.listType === 'blacklist' || rule.listType === 'whitelist', `tagRules[${index}].listType must be blacklist or whitelist`);
-    assert(Array.isArray(rule.when), `tagRules[${index}].when must be an array`);
+  return {
+    name: typeof rule.name === 'string' ? rule.name : fieldName,
+    matchType: 'url',
+    listType: rule.listType,
+    ruleType: rule.ruleType,
+    values: asStringArray(rule.values, `${fieldName}.values`),
+    artifacts:
+      rule.artifacts === undefined
+        ? undefined
+        : parseArtifacts(rule.artifacts, `${fieldName}.artifacts`),
+  };
+}
 
-    return {
-      name: typeof rule.name === 'string' ? rule.name : `tag-rule-${index + 1}`,
-      listType: rule.listType,
-      when: rule.when.map((condition, conditionIndex) => {
-        assert(
-          isRecord(condition),
-          `tagRules[${index}].when[${conditionIndex}] must be an object`,
-        );
-        assert(typeof condition.key === 'string', `tagRules[${index}].when[${conditionIndex}].key must be a string`);
-        assert(
-          condition.op === 'any_of' ||
-            condition.op === 'all_of' ||
-            condition.op === 'is_empty',
-          `tagRules[${index}].when[${conditionIndex}].op must be any_of, all_of, or is_empty`,
-        );
+function parseTagRule(rule: unknown, fieldName: string): TagRule {
+  assert(isRecord(rule), `${fieldName} must be an object`);
+  assert(rule.matchType === 'tag', `${fieldName}.matchType must be tag`);
+  assert(
+    rule.listType === 'blacklist' ||
+      rule.listType === 'scopelist' ||
+      rule.listType === 'whitelist',
+    `${fieldName}.listType must be blacklist, scopelist, or whitelist`,
+  );
+  assert(Array.isArray(rule.when), `${fieldName}.when must be an array`);
 
-        return {
-          key: condition.key,
-          op: condition.op,
-          values:
-            condition.op === 'is_empty'
-              ? undefined
-              : asStringArray(
-                  condition.values,
-                  `tagRules[${index}].when[${conditionIndex}].values`,
-                ),
-        };
-      }),
-      artifacts: parseArtifacts(rule.artifacts ?? ['markdown'], `tagRules[${index}].artifacts`),
-    };
+  return {
+    name: typeof rule.name === 'string' ? rule.name : fieldName,
+    matchType: 'tag',
+    listType: rule.listType,
+    when: rule.when.map((condition, conditionIndex) => {
+      assert(
+        isRecord(condition),
+        `${fieldName}.when[${conditionIndex}] must be an object`,
+      );
+      assert(
+        typeof condition.key === 'string',
+        `${fieldName}.when[${conditionIndex}].key must be a string`,
+      );
+      assert(
+        condition.op === 'any_of' ||
+          condition.op === 'all_of' ||
+          condition.op === 'is_empty',
+        `${fieldName}.when[${conditionIndex}].op must be any_of, all_of, or is_empty`,
+      );
+
+      return {
+        key: condition.key,
+        op: condition.op,
+        values:
+          condition.op === 'is_empty'
+            ? undefined
+            : asStringArray(
+                condition.values,
+                `${fieldName}.when[${conditionIndex}].values`,
+              ),
+      };
+    }),
+    artifacts: parseArtifacts(rule.artifacts ?? ['markdown'], `${fieldName}.artifacts`),
+  };
+}
+
+function parseRulesBeforeBaseEq(value: unknown): UrlRule[] {
+  assert(Array.isArray(value), 'rulesBeforeBaseEq must be an array');
+
+  const rules = value.map((rule, index) =>
+    parseUrlRule(rule, `rulesBeforeBaseEq[${index}]`),
+  );
+  assertUniqueRuleNames(rules, 'rulesBeforeBaseEq');
+  return rules;
+}
+
+function parseRulesBeforeStage2Eq(value: unknown): Array<UrlRule | TagRule> {
+  assert(Array.isArray(value), 'rulesBeforeStage2Eq must be an array');
+
+  const rules = value.map((rule, index) => {
+    assert(isRecord(rule), `rulesBeforeStage2Eq[${index}] must be an object`);
+
+    if (rule.matchType === 'tag') {
+      return parseTagRule(rule, `rulesBeforeStage2Eq[${index}]`);
+    }
+
+    return parseUrlRule(rule, `rulesBeforeStage2Eq[${index}]`);
   });
+
+  assertUniqueRuleNames(rules, 'rulesBeforeStage2Eq');
+  return rules;
 }
 
 function parseRunOptions(value: unknown): SiteRunOptions {
@@ -108,8 +169,12 @@ export function parseSiteConfig(input: unknown): SiteConfig {
   return {
     seedUrls: asStringArray(input.seedUrls, 'seedUrls'),
     sitemaps: asStringArray(input.sitemaps ?? [], 'sitemaps'),
-    urlRules: parseUrlRules(input.urlRules ?? []),
-    tagRules: parseTagRules(input.tagRules ?? []),
+    rulesBeforeBaseEq: parseRulesBeforeBaseEq(
+      input.rulesBeforeBaseEq ?? input.rules_before_base_eq ?? [],
+    ),
+    rulesBeforeStage2Eq: parseRulesBeforeStage2Eq(
+      input.rulesBeforeStage2Eq ?? input.rules_before_stage2_eq ?? [],
+    ),
     runOptions: parseRunOptions(input.runOptions ?? {}),
   };
 }
@@ -123,10 +188,11 @@ export function createDefaultSiteConfig(baseUrl: string): SiteConfig {
   return {
     seedUrls: [baseUrl],
     sitemaps: [],
-    urlRules: [],
-    tagRules: [
+    rulesBeforeBaseEq: [],
+    rulesBeforeStage2Eq: [
       {
         name: 'default-markdown',
+        matchType: 'tag',
         listType: 'whitelist',
         when: [
           {

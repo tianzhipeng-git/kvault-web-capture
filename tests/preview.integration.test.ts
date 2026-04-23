@@ -47,17 +47,19 @@ describe('seed run', () => {
         {
           seedUrls: [`${server.baseUrl}/docs`],
           sitemaps: [`${server.baseUrl}/sitemap.xml`],
-          urlRules: [
+          rulesBeforeBaseEq: [
             {
               name: 'block-login',
+              matchType: 'url',
               listType: 'blacklist',
               ruleType: 'prefix',
               values: [`${host}/login`],
             },
           ],
-          tagRules: [
+          rulesBeforeStage2Eq: [
             {
               name: 'allow-content',
+              matchType: 'tag',
               listType: 'whitelist',
               when: [
                 {

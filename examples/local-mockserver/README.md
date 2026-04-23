@@ -177,3 +177,31 @@ Expected shape after crawl:
 - allowed pages should also have markdown artifact runs
 - `/login` should still stay denied
 - `site:sample-captures` reads historical `page_runs`, so if you ran both seed and crawl, duplicate URLs are expected in the output
+
+
+## 手动模拟更新策略
+1. seed运行后: 4个pages, 1次crawl run, 3次page runs, 0次artifact runs
+2. skip_existing模型crawl: 2次crawl run, 6次page runs, 3次artifact runs(都是markdown)
+3. 再次skip_existing模型crawl: 3次crawl run, 6次page runs, 3次artifact runs(都是markdown)
+4. force_recrawl_all: 4次crawl run, 9次page runs, 6次artifact runs(都是markdown)
+5. 修改config, 加入如下, 启动skip_existing
+  ```
+    {
+      "name": "screenshot_product",
+      "matchType": "tag",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "product"
+          ]
+        }
+      ],
+      "artifacts": [
+        "screenshot"
+      ]
+    }
+  ```
+  5次crawl run, 10次page runs, 6次artifact runs(1次screenshot)

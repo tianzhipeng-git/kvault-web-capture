@@ -3,9 +3,10 @@
     "https://www.apple.com/"
   ],
   "sitemaps": [],
-  "urlRules": [
+  "rulesBeforeBaseEq": [
     {
       "name": "only-www-apple",
+      "matchType": "url",
       "listType": "scopelist",
       "ruleType": "prefix",
       "values": [
@@ -14,6 +15,7 @@
     },
     {
       "name": "block-bag-and-buy",
+      "matchType": "url",
       "listType": "blacklist",
       "ruleType": "regex",
       "values": [
@@ -22,9 +24,10 @@
       ]
     }
   ],
-  "tagRules": [
+  "rulesBeforeStage2Eq": [
     {
       "name": "allow-homepage-content",
+      "matchType": "tag",
       "listType": "whitelist",
       "when": [
         {

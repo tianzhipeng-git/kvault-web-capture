@@ -24,17 +24,19 @@ function writeSiteConfig(input: {
       {
         seedUrls: [`${input.baseUrl}/docs`],
         sitemaps: [],
-        urlRules: [
+        rulesBeforeBaseEq: [
           {
             name: 'block-login',
+            matchType: 'url',
             listType: 'blacklist',
             ruleType: 'prefix',
             values: [`${host}/login`],
           },
         ],
-        tagRules: [
+        rulesBeforeStage2Eq: [
           {
             name: 'allow-docs',
+            matchType: 'tag',
             listType: 'whitelist',
             when: [
               {
@@ -47,6 +49,7 @@ function writeSiteConfig(input: {
           },
           {
             name: 'allow-product',
+            matchType: 'tag',
             listType: 'whitelist',
             when: [
               {
@@ -59,6 +62,7 @@ function writeSiteConfig(input: {
           },
           {
             name: 'allow-generic',
+            matchType: 'tag',
             listType: 'whitelist',
             when: [
               {

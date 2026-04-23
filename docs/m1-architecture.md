@@ -216,10 +216,12 @@ This is the key M1 flow.
 discovered URL
     │
     ▼
-[URL rule evaluation]
-    - evaluate regex / pattern blacklist and whitelist
-    - if URL rules can decide `deny`, do not enter base queue
-    - if URL rules can decide `allow`, enter base queue directly
+[Execution point: rulesBeforeBaseEq]
+    - evaluate only URL rules
+    - fixed precedence:
+      - any blacklist match -> deny
+      - every scopelist must match -> otherwise deny
+      - default -> allow
     │
     ▼
 [Stage 1: base queue]
@@ -227,7 +229,7 @@ discovered URL
     - extract Meta / Title / body text
     - normalize URL
     - classify
-    - evaluate tag-based blacklist / whitelist rules
+    - evaluate `rulesBeforeStage2Eq`
     - persist page_run
     - decide required artifact targets
     │
@@ -247,11 +249,68 @@ discovered URL
 
 ## Rule Evaluation Model
 
-M1 has two rule families with different timing and different input data.
+M1 has two execution points, and each execution point directly owns its own rules:
 
-### 1. URL rules
+- `rulesBeforeBaseEq`
+- `rulesBeforeStage2Eq`
 
-These are based on the URL itself, before page fetch.
+The earlier attempt to split "execution point", "rule type", and "hit action" into three separate configurable layers is not the accepted design.
+
+The accepted M1 model is narrower:
+
+- the top-level config directly stores rules under the execution point where they run
+- there is no separate `ruleExecutions` layer
+- there is no rule-step ordering concept
+- each execution point uses a fixed precedence implemented in code
+
+### Execution points
+
+M1 currently defines two execution points:
+
+- `rulesBeforeBaseEq`: before a page enters the `base` queue
+- `rulesBeforeStage2Eq`: after Stage 1 base capture/classification and before markdown/screenshot queues
+
+Config shape:
+
+```yaml
+rulesBeforeBaseEq:
+  - name: block_logins
+    matchType: url
+    listType: blacklist
+    ruleType: prefix
+    values: ["www.example.com/login"]
+  - name: allow_docs_by_url
+    matchType: url
+    listType: whitelist
+    ruleType: prefix
+    values: ["www.example.com/docs"]
+    artifacts: [markdown]
+
+rulesBeforeStage2Eq:
+  - name: block_blog_stage2
+    matchType: url
+    listType: blacklist
+    ruleType: prefix
+    values: ["www.example.com/blog"]
+  - name: allow_docs
+    matchType: tag
+    listType: whitelist
+    when:
+      - key: content_type
+        op: any_of
+        values: [docs]
+    artifacts: [markdown]
+```
+
+If the same logical rule should run at both execution points, it must be declared in both arrays. Rules are not shared across execution points.
+
+### Match types
+
+M1 currently supports two rule match types with different input data.
+
+#### 1. URL rules
+
+These are based on the URL itself.
 
 Examples:
 
@@ -278,17 +337,22 @@ url_rules:
 
 Use URL rules when a decision can be made from the link alone.
 
-Evaluation point:
+Allowed placement:
 
-- before entering the `base` queue
+- `rulesBeforeBaseEq`
+- `rulesBeforeStage2Eq`
 
-Expected outcomes:
-- `deny`: do not enqueue for base capture
-- `allow`: enqueue for base capture
+Optional artifact behavior:
+
+- URL rules may declare optional `artifacts`
+- this is only meaningful in `rulesBeforeStage2Eq`
+- artifacts from matched URL `whitelist` rules are merged into the page's required artifacts
+- artifacts on URL `scopelist` rules are also supported, but `whitelist` is the clearer way to express URL-based artifact selection
 
 Decision precedence:
 - blacklist: 匹配了则deny
-- scopelist: 仅限匹配了的通过, 其他的deny
+- scopelist: 每个scopelist都要判断, 任意一个不匹配就deny
+- whitelist: 每个whitelist都要判断, 匹配到的规则合并结果
 - 其余的都是allow
 
 Rule Type:
@@ -296,11 +360,7 @@ Rule Type:
 - regex: 正则匹配
 - 同一个规则下的多个values是"或"的关系.
 
-Important constraint:
-- URL-rule `allow` means "eligible for base processing"
-- it does not skip Stage 1 classification or tag-based rule evaluation
-
-### 2. Tag-based rules
+#### 2. Tag-based rules
 
 These are based on classification results after lightweight capture.
 
@@ -334,15 +394,15 @@ tag_rules:
 
 Use tag-based rules when the decision depends on page meaning rather than URL shape.
 
-Evaluation point:
+Allowed placement:
 
-- after Stage 1 base capture and classification
+- only `rulesBeforeStage2Eq`
 
-Expected outcomes:
+Supported list types:
 
-- `deny`: page is not sent to artifact queues
-- `allow`: page is sent only to the artifact queues configured by the matched whitelist rule
-- `pending`: page stays in business-level review state
+- `blacklist`
+- `scopelist`
+- `whitelist`
 
 Rule matching semantics:
 
@@ -358,38 +418,53 @@ Rule matching semantics:
 Decision precedence:
 
 - blacklist match wins over whitelist match
+- every tag scopelist must match, otherwise the page is denied
 - whitelist does not just mean "allowed"; it must also declare which artifacts become required
 - if no rule can produce a final decision, the page remains `pending`
 
+### Fixed precedence per execution point
+
+Rules inside an execution point are not ordered manually. The engine always evaluates them in this order:
+
+1. all blacklist rules
+2. all scopelist rules
+3. all whitelist rules
+4. the fixed default action for that execution point
+
+The fixed defaults are:
+
+- `rulesBeforeBaseEq`: default `allow`
+- `rulesBeforeStage2Eq`: default `pending`
+
 ### Combined Decision Order
 
-The intended M1 order is:
+The intended M1 default order is:
 
 ```text
 discovered URL
     │
-    ├── URL rule deny
+    ├── rulesBeforeBaseEq
+    │     ├── any blacklist match -> deny
+    │     ├── any scopelist mismatch -> deny
+    │     └── otherwise allow
     │
-    ├── URL rule allow
-          └── enqueue base capture
-                │
-                ▼
-              classify + tag
-                │
-                ├── tag-rule deny
-                │     └── stop before artifact queues
-                │
-                ├── tag-rule allow
-                │     └── enqueue markdown / screenshot as configured
-                │
-                └── tag-rule unresolved or classifier failed
-                      └── pending
+    └── enqueue base capture
+          │
+          ▼
+        classify + tag
+          │
+          └── rulesBeforeStage2Eq
+                ├── any url/tag blacklist match -> deny
+                ├── any scopelist mismatch -> deny
+                ├── matching url/tag whitelists -> enqueue markdown / screenshot as configured
+                └── no whitelist match -> pending
 ```
 
-This gives each rule family a clear job:
+This gives M1 a simpler rule engine shape:
 
-- URL rules are an early cheap filter
-- tag rules are the semantic decision layer
+- execution points decide when rules run
+- each execution point directly owns the rules that apply there
+- precedence is fixed in code, not configured per rule
 
 This is the intended M1 default because it keeps artifact scheduling behind Stage 1 and avoids doing heavy capture before semantic filtering.
 
@@ -400,7 +475,7 @@ M1 uses three execution queues.
 ```text
 Queue 1: base
   - input: seed URLs, resolved sitemap page URLs, discovered URLs
-  - enqueue: 启动时将初始页面 URL 入队; 在页面发现的 URL 判断 url rule 后入队;
+  - enqueue: 启动时将初始页面 URL 经过 `rulesBeforeBaseEq` 后入队; 运行中发现的 URL 也经过同一个执行点后入队;
   - crawler type: lightweight HTTP / HTML crawler
   - output: page_run + artifact planning
 

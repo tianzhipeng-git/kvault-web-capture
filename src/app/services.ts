@@ -32,7 +32,7 @@ import type {
   UpdatePolicy,
 } from '../domain/types.js';
 import { FakeMarkdownCaptureAdapter, type MarkdownCaptureAdapter } from '../markdown/fake-markdown-adapter.js';
-import { openRunQueue } from '../planner/queue-factory.js';
+import { openRunQueue } from '../crawlee/queue-factory.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 import {

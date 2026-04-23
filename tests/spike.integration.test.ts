@@ -45,10 +45,21 @@ describe('integration spike', () => {
     const planner = new RunPlanner(sitePageRepository, clock);
     const project = projectRepository.create('Spike Project');
     const siteConfig = createDefaultSiteConfig(baseUrl);
-    siteConfig.tagRules[0] = {
-      ...siteConfig.tagRules[0],
-      artifacts: ['markdown', 'screenshot'],
-    };
+    siteConfig.rulesBeforeStage2Eq = [
+      {
+        name: 'default-markdown',
+        matchType: 'tag',
+        listType: 'whitelist',
+        when: [
+          {
+            key: 'content_type',
+            op: 'any_of',
+            values: ['docs', 'product', 'generic'],
+          },
+        ],
+        artifacts: ['markdown', 'screenshot'],
+      },
+    ];
     const site = siteRepository.create({
       projectId: project.id,
       name: 'example-docs',
@@ -203,6 +214,168 @@ describe('integration spike', () => {
       expect(existsSync(artifactRuns[1]!.output_path)).toBe(true);
       expect(pageRunRepository.countByRun(runId)).toBe(1);
       expect(artifactRunRepository.countByRun(runId)).toBe(2);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('supports applying url rules again before stage2 enqueue', async () => {
+    const dir = createTempDir('kvault-spike-stage2-url-');
+    const dbPath = join(dir, 'spike.db');
+    const storageDir = join(dir, 'storage');
+    const baseUrl = 'https://example.com/blog/post';
+    const db = openDatabase(dbPath);
+    initializeSchema(db);
+    const clock = new SystemClock();
+    const projectRepository = new ProjectRepository(db, clock);
+    const siteRepository = new SiteRepository(db, clock);
+    const runRepository = new RunRepository(db, clock);
+    const sitePageRepository = new SitePageRepository(db, clock);
+    const pageRunRepository = new PageRunRepository(db, clock);
+    const artifactRunRepository = new ArtifactRunRepository(db, clock);
+    const planner = new RunPlanner(sitePageRepository, clock);
+    const project = projectRepository.create('Spike Project');
+    const siteConfig = createDefaultSiteConfig(baseUrl);
+
+    siteConfig.rulesBeforeBaseEq = [
+      {
+        name: 'allow-site',
+        matchType: 'url',
+        listType: 'scopelist',
+        ruleType: 'prefix',
+        values: ['example.com'],
+      },
+    ];
+    siteConfig.rulesBeforeStage2Eq = [
+      {
+        name: 'deny-stage2-blog',
+        matchType: 'url',
+        listType: 'blacklist',
+        ruleType: 'prefix',
+        values: ['example.com/blog'],
+      },
+      {
+        name: 'allow-generic',
+        matchType: 'tag',
+        listType: 'whitelist',
+        when: [
+          {
+            key: 'content_type',
+            op: 'any_of',
+            values: ['generic'],
+          },
+        ],
+        artifacts: ['markdown', 'screenshot'],
+      },
+    ];
+
+    const site = siteRepository.create({
+      projectId: project.id,
+      name: 'example-blog',
+      baseUrl: 'https://example.com',
+      storageRoot: storageDir,
+      config: siteConfig,
+    });
+    const runId = runRepository.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+    const sitePageId = sitePageRepository.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: baseUrl,
+      normalizedUrl: baseUrl,
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
+    });
+
+    const configuration = new Configuration({
+      persistStorage: true,
+      purgeOnStart: false,
+      storageClientOptions: {
+        localDataDirectory: storageDir,
+      },
+    });
+
+    const baseQueue = await RequestQueue.open(`run-${runId}-base`, {
+      config: configuration,
+    });
+    const markdownQueue = await RequestQueue.open(`run-${runId}-markdown`, {
+      config: configuration,
+    });
+    const screenshotQueue = await RequestQueue.open(`run-${runId}-screenshot`, {
+      config: configuration,
+    });
+    const artifactWriter = new FileArtifactWriter(storageDir);
+
+    const baseHandler = createBaseRequestHandler({
+      classifier: new FakeClassifier(),
+      siteConfig: site.config,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      baseQueue,
+      markdownQueue,
+      screenshotQueue,
+      artifactWriter,
+      pageRunRepository,
+      sitePageRepository,
+      runPlanner: planner,
+    });
+
+    const fakeDom = createFakeCheerio({
+      title: 'Example Blog',
+      metaDescription: 'Tiny blog page',
+      bodyText: 'Generic content for stage2 filtering.',
+      links: [],
+    });
+
+    try {
+      await baseHandler({
+        request: {
+          url: baseUrl,
+          loadedUrl: baseUrl,
+          userData: {
+            stage: 'base',
+            runId,
+            siteId: site.id,
+            sitePageId,
+            normalizedUrl: baseUrl,
+            depth: 0,
+            runType: 'crawl_run',
+          },
+        },
+        $: fakeDom,
+      } as never);
+
+      expect(await markdownQueue.fetchNextRequest()).toBeNull();
+      expect(await screenshotQueue.fetchNextRequest()).toBeNull();
+      expect(pageRunRepository.countByRun(runId)).toBe(1);
+      expect(artifactRunRepository.countByRun(runId)).toBe(0);
+
+      const pageRun = db
+        .prepare(
+          `SELECT rule_outcome, decision_outcome, decision_reason, required_artifacts_json
+           FROM page_runs
+           WHERE crawl_run_id = ?`,
+        )
+        .get(runId) as {
+          rule_outcome: string;
+          decision_outcome: string;
+          decision_reason: string | null;
+          required_artifacts_json: string;
+        };
+
+      expect(pageRun).toEqual({
+        rule_outcome: 'deny',
+        decision_outcome: 'deny',
+        decision_reason: 'matched blacklist rule deny-stage2-blog',
+        required_artifacts_json: '[]',
+      });
     } finally {
       db.close();
     }

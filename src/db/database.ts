@@ -94,7 +94,7 @@ export function initializeSchema(db: DatabaseSync): void {
       meta_description TEXT NOT NULL,
       body_text TEXT NOT NULL,
       classification_tags_json TEXT NOT NULL,
-      tag_rule_outcome TEXT NOT NULL,
+      rule_outcome TEXT NOT NULL,
       decision_outcome TEXT NOT NULL,
       decision_reason TEXT,
       pending_reason TEXT,

@@ -60,13 +60,13 @@ flowchart LR
 
 - `src/config/site-config.ts` validates and loads `SiteConfig`.
 - `src/rules/rule-decision.ts` handles:
-  - URL rule evaluation before base queue
-  - tag rule evaluation after classification
+  - fixed-precedence evaluation for `rulesBeforeBaseEq`
+  - fixed-precedence evaluation for `rulesBeforeStage2Eq`
   - final stage decision for `seed_run` vs `crawl_run`
 - `src/planner/run-planner.ts` is the enqueue gate:
   - normalize URL
   - upsert / find `site_pages`
-  - evaluate URL rules
+  - evaluate `rulesBeforeBaseEq`
   - for `crawl_run`, apply update policy
 - `src/planner/update-policy.ts` evaluates historical eligibility for:
   - `force_recrawl_all`
@@ -79,7 +79,7 @@ flowchart LR
 - `createBaseRequestHandler` does:
   - base extraction
   - classification
-  - tag-rule decision
+  - evaluate `rulesBeforeStage2Eq`
   - `page_runs` write
   - `site_pages` status update
   - artifact enqueue for `crawl_run`
@@ -343,7 +343,7 @@ sequenceDiagram
 
 - project/site creation
 - site config import and clone
-- config validation for seed URLs, sitemaps, URL rules, tag rules, run options
+- config validation for seed URLs, sitemaps, `rulesBeforeBaseEq`, `rulesBeforeStage2Eq`, and run options
 - seed-run flow
 - crawl flow with history-aware planning
 - runtime link discovery through the same planner path

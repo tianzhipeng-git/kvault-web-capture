@@ -1,44 +1,14 @@
 import type {
-  ClassificationResult,
   PlannedRequest,
   RunType,
   SiteConfig,
-  StageDecisionSnapshot,
   UpdatePolicy,
 } from '../domain/types.js';
 import { SitePageRepository } from '../db/repositories.js';
 import { shouldEnqueueByUpdatePolicy } from './update-policy.js';
-import { evaluateTagRules, evaluateUrlRules } from '../rules/rule-decision.js';
+import { buildBaseEnqueueDecision, buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import { normalizeUrl } from '../utils/url.js';
 import type { Clock } from '../utils/clock.js';
-
-function buildCurrentStageDecision(
-  classificationTags: Record<string, string[]> | null,
-  siteConfig: SiteConfig,
-): StageDecisionSnapshot | null {
-  if (classificationTags === null) {
-    return null;
-  }
-
-  const tagEvaluation = evaluateTagRules(
-    {
-      tags: classificationTags,
-    } satisfies ClassificationResult,
-    siteConfig.tagRules,
-  );
-
-  if (tagEvaluation.outcome === 'allow') {
-    return {
-      outcome: 'allow',
-      requiredArtifacts: tagEvaluation.requiredArtifacts,
-    };
-  }
-
-  return {
-    outcome: tagEvaluation.outcome,
-    requiredArtifacts: [],
-  };
-}
 
 export class RunPlanner {
   constructor(
@@ -57,7 +27,12 @@ export class RunPlanner {
     staleAfterMs: number | null;
   }): PlannedRequest {
     const normalizedUrl = normalizeUrl(input.discoveredUrl);
-    const urlRuleDecision = evaluateUrlRules(normalizedUrl, input.siteConfig.urlRules);
+
+    // 规则执行点1, rulesBeforeBaseEq
+    const baseDecision = buildBaseEnqueueDecision({
+      url: normalizedUrl,
+      siteConfig: input.siteConfig,
+    });
     const existingState = this.sitePageRepository.getHistoricalState(input.siteId, normalizedUrl);
     const sitePageId =
       existingState?.sitePageId ??
@@ -68,11 +43,11 @@ export class RunPlanner {
         discoverySource: input.discoverySource,
         discoveryReferrerUrl: input.discoveryReferrerUrl,
         inventoryStatus:
-          urlRuleDecision.outcome === 'deny' ? 'url_rule_denied' : 'discovered_only',
-        urlRuleDecision: urlRuleDecision.outcome,
+          baseDecision.urlRuleDecision === 'deny' ? 'url_rule_denied' : 'discovered_only',
+        urlRuleDecision: baseDecision.urlRuleDecision,
       });
 
-    if (urlRuleDecision.outcome === 'deny') {
+    if (!baseDecision.enqueue) {
       this.sitePageRepository.markUrlRuleDenied(sitePageId);
       return {
         siteId: input.siteId,
@@ -80,7 +55,7 @@ export class RunPlanner {
         normalizedUrl,
         enqueue: false,
         urlRuleDecision: 'deny',
-        skipReason: urlRuleDecision.reason,
+        skipReason: baseDecision.skipReason,
       };
     }
 
@@ -95,13 +70,33 @@ export class RunPlanner {
       };
     }
 
+    const classificationTags = existingState?.latestClassificationTags ?? null;
+
+    // 虽然此处是判断是否要入Base队列, 但是为了应用Update Policy, 需要判断Stage2的规则结果
+    const currentStageDecision =
+      classificationTags === null
+        ? null
+        : (() => {
+            const decision = buildStage2EnqueueDecision({
+              runType: 'crawl_run',
+              url: normalizedUrl,
+              siteConfig: input.siteConfig,
+              classification: {
+                tags: classificationTags,
+              },
+            });
+
+            return {
+              outcome: decision.pageOutcome,
+              requiredArtifacts: decision.requiredArtifacts,
+            };
+          })();
+
+    // 判断Update Policy是否允许入队
     const policyDecision = shouldEnqueueByUpdatePolicy({
       policy: input.updatePolicy,
       history: existingState,
-      currentStageDecision: buildCurrentStageDecision(
-        existingState?.latestClassificationTags ?? null,
-        input.siteConfig,
-      ),
+      currentStageDecision,
       nowIsoString: this.clock.now(),
       staleAfterMs: input.staleAfterMs,
     });

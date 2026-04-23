@@ -21,7 +21,7 @@ import {
 } from '../db/repositories.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
-import { buildStageDecision } from '../rules/rule-decision.js';
+import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/fake-screenshot-adapter.js';
 
 function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
@@ -83,8 +83,9 @@ export function createBaseRequestHandler(deps: {
       classificationError = error instanceof Error ? error : new Error(String(error));
     }
 
-    const decision = buildStageDecision({
+    const decision = buildStage2EnqueueDecision({
       runType: deps.runType,
+      url: extracted.normalizedUrl,
       siteConfig: deps.siteConfig,
       classification,
       classificationError,
@@ -109,7 +110,7 @@ export function createBaseRequestHandler(deps: {
       metaDescription: extracted.metaDescription,
       bodyText: extracted.bodyText,
       classificationTags: classification?.tags ?? {},
-      tagRuleOutcome: decision.tagOutcome,
+      ruleOutcome: decision.ruleOutcome,
       decisionOutcome: decision.pageOutcome,
       decisionReason: decision.reason,
       pendingReason: decision.pendingReason,

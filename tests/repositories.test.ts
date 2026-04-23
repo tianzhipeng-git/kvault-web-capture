@@ -75,7 +75,7 @@ describe('repositories', () => {
       classificationTags: {
         content_type: ['docs'],
       },
-      tagRuleOutcome: 'allow',
+      ruleOutcome: 'allow',
       decisionOutcome: 'allow',
       decisionReason: null,
       pendingReason: null,

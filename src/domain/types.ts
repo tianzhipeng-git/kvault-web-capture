@@ -4,6 +4,8 @@ export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
 export type UrlRuleDecision = 'allow' | 'deny';
 
+export type RuleMatchType = 'url' | 'tag';
+
 export type RunType = 'seed_run' | 'crawl_run';
 
 export type RunStatus = 'running' | 'succeeded' | 'failed';
@@ -42,9 +44,11 @@ export interface ClassificationResult {
 
 export interface UrlRule {
   name: string;
-  listType: 'blacklist' | 'scopelist';
+  matchType: 'url';
+  listType: 'blacklist' | 'scopelist' | 'whitelist';
   ruleType: 'prefix' | 'regex';
   values: string[];
+  artifacts?: ArtifactType[];
 }
 
 export interface TagRuleCondition {
@@ -55,7 +59,8 @@ export interface TagRuleCondition {
 
 export interface TagRule {
   name: string;
-  listType: 'blacklist' | 'whitelist';
+  matchType: 'tag';
+  listType: 'blacklist' | 'scopelist' | 'whitelist';
   when: TagRuleCondition[];
   artifacts: ArtifactType[];
 }
@@ -68,18 +73,12 @@ export interface SiteRunOptions {
 export interface SiteConfig {
   seedUrls: string[];
   sitemaps: string[];
-  urlRules: UrlRule[];
-  tagRules: TagRule[];
+  rulesBeforeBaseEq: UrlRule[];
+  rulesBeforeStage2Eq: Array<UrlRule | TagRule>;
   runOptions: SiteRunOptions;
 }
 
-export interface UrlRuleEvaluation {
-  outcome: UrlRuleDecision;
-  matchedRuleName: string | null;
-  reason: string | null;
-}
-
-export interface TagRuleEvaluation {
+export interface RuleEvaluation {
   outcome: RuleOutcome;
   matchedRuleNames: string[];
   requiredArtifacts: ArtifactType[];
@@ -87,7 +86,7 @@ export interface TagRuleEvaluation {
 }
 
 export interface StageDecision {
-  tagOutcome: RuleOutcome;
+  ruleOutcome: RuleOutcome;
   pageOutcome: RuleOutcome;
   requiredArtifacts: ArtifactType[];
   reason: string | null;

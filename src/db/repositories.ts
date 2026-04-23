@@ -742,7 +742,7 @@ export class PageRunRepository {
     metaDescription: string;
     bodyText: string;
     classificationTags: Record<string, string[]>;
-    tagRuleOutcome: RuleOutcome;
+    ruleOutcome: RuleOutcome;
     decisionOutcome: RuleOutcome;
     decisionReason: string | null;
     pendingReason: string | null;
@@ -762,7 +762,7 @@ export class PageRunRepository {
           meta_description,
           body_text,
           classification_tags_json,
-          tag_rule_outcome,
+          rule_outcome,
           decision_outcome,
           decision_reason,
           pending_reason,
@@ -780,7 +780,7 @@ export class PageRunRepository {
         input.metaDescription,
         input.bodyText,
         JSON.stringify(input.classificationTags),
-        input.tagRuleOutcome,
+        input.ruleOutcome,
         input.decisionOutcome,
         input.decisionReason,
         input.pendingReason,

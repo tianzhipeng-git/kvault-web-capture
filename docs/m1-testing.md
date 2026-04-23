@@ -59,6 +59,8 @@ Unit and integration coverage should at minimum exercise:
 - URL normalization
 - URL-rule allow / deny / undecided behavior
 - tag-rule allow / deny / pending behavior
+- fixed precedence inside each execution point
+- stage2 applying URL and tag rules in the same execution point
 - `RuleDecision` generation
 - run planning for:
   - `skip_existing`

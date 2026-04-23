@@ -5,9 +5,10 @@
   "sitemaps": [
     "http://127.0.0.1:4318/sitemap.xml"
   ],
-  "urlRules": [
+  "rulesBeforeBaseEq": [
     {
       "name": "block-login",
+      "matchType": "url",
       "listType": "blacklist",
       "ruleType": "prefix",
       "values": [
@@ -15,9 +16,10 @@
       ]
     }
   ],
-  "tagRules": [
+  "rulesBeforeStage2Eq": [
     {
       "name": "allow-content-pages",
+      "matchType": "tag",
       "listType": "whitelist",
       "when": [
         {
@@ -36,6 +38,7 @@
     },
     {
       "name": "screenshot_product",
+      "matchType": "tag",
       "listType": "whitelist",
       "when": [
         {
