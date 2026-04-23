@@ -38,8 +38,8 @@ function parseUrlRules(value: unknown): UrlRule[] {
 function parseArtifacts(value: unknown, fieldName: string): ArtifactType[] {
   const artifacts = asStringArray(value, fieldName);
   assert(
-    artifacts.every((artifact) => artifact === 'markdown'),
-    `${fieldName} only supports markdown in Phase 1-3`,
+    artifacts.every((artifact) => artifact === 'markdown' || artifact === 'screenshot'),
+    `${fieldName} only supports markdown or screenshot`,
   );
   return artifacts as ArtifactType[];
 }

@@ -1,5 +1,7 @@
 import type {
+  ArtifactType,
   HistoricalPageState,
+  StageDecisionSnapshot,
   UpdatePolicy,
 } from '../domain/types.js';
 
@@ -11,9 +13,85 @@ function isOlderThan(lastAt: string | null, now: Date, staleAfterMs: number): bo
   return now.getTime() - new Date(lastAt).getTime() >= staleAfterMs;
 }
 
+function getRequiredArtifacts(history: HistoricalPageState): ArtifactType[] {
+  return history.lastStageDecision?.requiredArtifacts ?? [];
+}
+
+function getArtifactStatus(history: HistoricalPageState, artifactType: ArtifactType): string | null {
+  return artifactType === 'markdown'
+    ? history.lastMarkdownStatus
+    : history.lastScreenshotStatus;
+}
+
+function getArtifactTimestamp(history: HistoricalPageState, artifactType: ArtifactType): string | null {
+  return artifactType === 'markdown' ? history.lastMarkdownAt : history.lastScreenshotAt;
+}
+
+function hasMissingOrFailedRequiredArtifact(history: HistoricalPageState): boolean {
+  return getRequiredArtifacts(history).some((artifactType) => {
+    const status = getArtifactStatus(history, artifactType);
+    return status === null || status === 'failed';
+  });
+}
+
+function matchesStageDecision(
+  left: StageDecisionSnapshot | null,
+  right: StageDecisionSnapshot | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (left === null || right === null) {
+    return false;
+  }
+
+  return (
+    left.outcome === right.outcome &&
+    left.requiredArtifacts.length === right.requiredArtifacts.length &&
+    left.requiredArtifacts.every((artifactType) => right.requiredArtifacts.includes(artifactType))
+  );
+}
+
+export function shouldEnqueueArtifactByUpdatePolicy(input: {
+  policy: UpdatePolicy;
+  history: HistoricalPageState | null;
+  artifactType: ArtifactType;
+  nowIsoString: string;
+  staleAfterMs: number | null;
+}): boolean {
+  if (
+    input.history === null ||
+    input.history.lastBaseStatus === null ||
+    input.history.lastBaseStatus === 'failed' ||
+    input.history.lastStageDecision === null ||
+    input.history.lastStageDecision.outcome !== 'allow'
+  ) {
+    return true;
+  }
+
+  switch (input.policy) {
+    case 'force_recrawl_all':
+      return true;
+    case 'skip_existing':
+      return getArtifactStatus(input.history, input.artifactType) !== 'succeeded';
+    case 'stale_after_duration':
+      return isOlderThan(
+        getArtifactTimestamp(input.history, input.artifactType),
+        new Date(input.nowIsoString),
+        input.staleAfterMs ?? 0,
+      );
+    default: {
+      const exhaustive: never = input.policy;
+      return exhaustive;
+    }
+  }
+}
+
 export function shouldEnqueueByUpdatePolicy(input: {
   policy: UpdatePolicy;
   history: HistoricalPageState | null;
+  currentStageDecision: StageDecisionSnapshot | null;
   nowIsoString: string;
   staleAfterMs: number | null;
 }): { enqueue: boolean; reason: string | null } {
@@ -40,16 +118,25 @@ export function shouldEnqueueByUpdatePolicy(input: {
         };
       }
 
-      if (history.lastTagRuleDecision === 'allow' && history.lastMarkdownStatus !== 'succeeded') {
+      if (!matchesStageDecision(history.lastStageDecision, input.currentStageDecision)) {
         return {
           enqueue: true,
-          reason: 'missing required markdown artifact',
+          reason: 'config change requires reevaluation',
+        };
+      }
+
+      if (hasMissingOrFailedRequiredArtifact(history)) {
+        return {
+          enqueue: true,
+          reason: 'missing required artifact',
         };
       }
 
       if (
-        history.lastTagRuleDecision === 'pending' ||
+        history.lastStageDecision?.outcome === 'pending' ||
+        history.lastStageDecision === null ||
         history.lastBaseStatus === 'failed' ||
+        history.lastScreenshotStatus === 'failed' ||
         history.lastMarkdownStatus === 'failed'
       ) {
         return {
@@ -62,33 +149,15 @@ export function shouldEnqueueByUpdatePolicy(input: {
         enqueue: false,
         reason: 'already captured',
       };
-    case 'rerun_failed_artifacts':
-      if (history.lastBaseStatus === null || history.lastBaseStatus === 'failed') {
-        return {
-          enqueue: true,
-          reason: 'missing or failed base capture',
-        };
-      }
-
-      if (history.lastMarkdownStatus === 'failed') {
-        return {
-          enqueue: true,
-          reason: 'failed markdown artifact',
-        };
-      }
-
-      return {
-        enqueue: false,
-        reason: 'no failed artifacts to rerun',
-      };
     case 'stale_after_duration': {
       const staleAfterMs = input.staleAfterMs ?? 0;
       const now = new Date(input.nowIsoString);
 
       if (
         isOlderThan(history.lastBaseAt, now, staleAfterMs) ||
-        (history.lastTagRuleDecision === 'allow' &&
-          isOlderThan(history.lastMarkdownAt, now, staleAfterMs))
+        getRequiredArtifacts(history).some((artifactType) =>
+          isOlderThan(getArtifactTimestamp(history, artifactType), now, staleAfterMs),
+        )
       ) {
         return {
           enqueue: true,

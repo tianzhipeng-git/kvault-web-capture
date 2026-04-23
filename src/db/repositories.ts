@@ -10,6 +10,7 @@ import type {
   RuleOutcome,
   RunStatus,
   SiteConfig,
+  StageDecisionSnapshot,
   UpdatePolicy,
 } from '../domain/types.js';
 import type { Clock } from '../utils/clock.js';
@@ -24,6 +25,35 @@ function toId(result: RowIdResult): number {
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
+}
+
+function hasCompleteArtifactSet(input: {
+  requiredArtifacts: ArtifactType[];
+  artifactStatuses: Partial<Record<ArtifactType, ArtifactRunStatus | null>>;
+}): boolean {
+  return input.requiredArtifacts.every(
+    (artifactType) => input.artifactStatuses[artifactType] === 'succeeded',
+  );
+}
+
+function deriveInventoryStatus(input: {
+  pageOutcome: RuleOutcome;
+  requiredArtifacts: ArtifactType[];
+  artifactStatuses: Partial<Record<ArtifactType, ArtifactRunStatus | null>>;
+}): InventoryStatus {
+  if (input.pageOutcome === 'deny') {
+    return 'stage2_skipped';
+  }
+
+  if (input.pageOutcome === 'pending') {
+    return 'stage2_pending';
+  }
+
+  return hasCompleteArtifactSet(input)
+    ? 'stage2_captured'
+    : input.requiredArtifacts.length === 0
+      ? 'base_captured'
+      : 'stage2_pending';
 }
 
 function slugify(name: string): string {
@@ -75,6 +105,7 @@ export interface InventoryPageRow {
 
 export interface SampleCaptureRow {
   normalizedUrl: string;
+  baseCapturePath: string | null;
   title: string;
   metaDescription: string;
   bodyText: string;
@@ -307,22 +338,48 @@ export class RunRepository {
       .prepare('SELECT COUNT(*) AS count FROM page_runs WHERE crawl_run_id = ?')
       .get(runId) as { count: number };
 
-    const successfulRow = this.db
+    const pageRuns = this.db
       .prepare(
-        `SELECT COUNT(*) AS count
+        `SELECT id, decision_outcome, required_artifacts_json
          FROM page_runs
-         WHERE crawl_run_id = ?
-           AND decision_outcome = 'allow'
-           AND required_artifacts_json = '["markdown"]'
-           AND EXISTS (
-             SELECT 1
-             FROM artifact_runs
-             WHERE artifact_runs.page_run_id = page_runs.id
-               AND artifact_runs.artifact_type = 'markdown'
-               AND artifact_runs.status = 'succeeded'
-           )`,
+         WHERE crawl_run_id = ?`,
       )
-      .get(runId) as { count: number };
+      .all(runId) as Array<{
+      id: number;
+      decision_outcome: RuleOutcome;
+      required_artifacts_json: string;
+    }>;
+
+    const artifactRows = this.db
+      .prepare(
+        `SELECT page_run_id, artifact_type, status
+         FROM artifact_runs
+         WHERE crawl_run_id = ?`,
+      )
+      .all(runId) as Array<{
+      page_run_id: number;
+      artifact_type: ArtifactType;
+      status: ArtifactRunStatus;
+    }>;
+
+    const artifactStatuses = new Map<number, Partial<Record<ArtifactType, ArtifactRunStatus>>>();
+
+    for (const artifactRow of artifactRows) {
+      const current = artifactStatuses.get(artifactRow.page_run_id) ?? {};
+      current[artifactRow.artifact_type] = artifactRow.status;
+      artifactStatuses.set(artifactRow.page_run_id, current);
+    }
+
+    const successfulCount = pageRuns.filter((pageRun) => {
+      if (pageRun.decision_outcome !== 'allow') {
+        return false;
+      }
+
+      return hasCompleteArtifactSet({
+        requiredArtifacts: parseJson<ArtifactType[]>(pageRun.required_artifacts_json),
+        artifactStatuses: artifactStatuses.get(pageRun.id) ?? {},
+      });
+    }).length;
 
     this.db
       .prepare(
@@ -337,7 +394,7 @@ export class RunRepository {
         candidateRow.count,
         row.pending_count ?? 0,
         row.denied_count ?? 0,
-        successfulRow.count,
+        successfulCount,
         runId,
       );
   }
@@ -429,9 +486,18 @@ export class SitePageRepository {
            inventory_status,
            last_base_status,
            last_base_at,
-           last_tag_rule_decision,
+           (
+             SELECT classification_tags_json
+             FROM page_runs
+             WHERE page_runs.site_page_id = site_pages.id
+             ORDER BY page_runs.id DESC
+             LIMIT 1
+           ) AS latest_classification_tags_json,
+           last_stage_decision_json,
            last_markdown_status,
-           last_markdown_at
+           last_markdown_at,
+           last_screenshot_status,
+           last_screenshot_at
          FROM site_pages
          WHERE site_id = ? AND normalized_url = ?`,
       )
@@ -442,9 +508,12 @@ export class SitePageRepository {
           inventory_status: InventoryStatus;
           last_base_status: BaseCaptureStatus | null;
           last_base_at: string | null;
-          last_tag_rule_decision: RuleOutcome | null;
+          latest_classification_tags_json: string | null;
+          last_stage_decision_json: string | null;
           last_markdown_status: ArtifactRunStatus | null;
           last_markdown_at: string | null;
+          last_screenshot_status: ArtifactRunStatus | null;
+          last_screenshot_at: string | null;
         }
       | undefined;
 
@@ -458,9 +527,18 @@ export class SitePageRepository {
       inventoryStatus: row.inventory_status,
       lastBaseStatus: row.last_base_status,
       lastBaseAt: row.last_base_at,
-      lastTagRuleDecision: row.last_tag_rule_decision,
+      latestClassificationTags:
+        row.latest_classification_tags_json === null
+          ? null
+          : parseJson<Record<string, string[]>>(row.latest_classification_tags_json),
+      lastStageDecision:
+        row.last_stage_decision_json === null
+          ? null
+          : parseJson<StageDecisionSnapshot>(row.last_stage_decision_json),
       lastMarkdownStatus: row.last_markdown_status,
       lastMarkdownAt: row.last_markdown_at,
+      lastScreenshotStatus: row.last_screenshot_status,
+      lastScreenshotAt: row.last_screenshot_at,
     };
   }
 
@@ -480,23 +558,22 @@ export class SitePageRepository {
     sitePageId: number;
     runId: number;
     title: string;
-    tagOutcome: RuleOutcome;
     pageOutcome: RuleOutcome;
+    requiredArtifacts: ArtifactType[];
     pendingReason: string | null;
   }): void {
-    const inventoryStatus =
-      input.pageOutcome === 'deny'
-        ? 'stage2_skipped'
-        : input.pageOutcome === 'allow'
-          ? 'base_captured'
-          : 'stage2_pending';
+    const inventoryStatus = deriveInventoryStatus({
+      pageOutcome: input.pageOutcome,
+      requiredArtifacts: input.requiredArtifacts,
+      artifactStatuses: {},
+    });
 
     this.db
       .prepare(
         `UPDATE site_pages
          SET latest_title = ?,
              inventory_status = ?,
-             last_tag_rule_decision = ?,
+             last_stage_decision_json = ?,
              last_pending_reason = ?,
              last_base_status = 'succeeded',
              last_base_run_id = ?,
@@ -507,7 +584,10 @@ export class SitePageRepository {
       .run(
         input.title,
         inventoryStatus,
-        input.tagOutcome,
+        JSON.stringify({
+          outcome: input.pageOutcome,
+          requiredArtifacts: input.requiredArtifacts,
+        } satisfies StageDecisionSnapshot),
         input.pendingReason,
         input.runId,
         this.clock.now(),
@@ -516,31 +596,72 @@ export class SitePageRepository {
       );
   }
 
-  recordMarkdownResult(input: {
+  recordArtifactResult(input: {
     sitePageId: number;
     runId: number;
+    artifactType: ArtifactType;
     status: ArtifactRunStatus;
   }): void {
-    const inventoryStatus = input.status === 'succeeded' ? 'stage2_captured' : 'stage2_pending';
+    const row = this.db
+      .prepare(
+        `SELECT
+           last_stage_decision_json,
+           last_markdown_status,
+           last_screenshot_status
+         FROM site_pages
+         WHERE id = ?`,
+      )
+      .get(input.sitePageId) as
+      | {
+          last_stage_decision_json: string | null;
+          last_markdown_status: ArtifactRunStatus | null;
+          last_screenshot_status: ArtifactRunStatus | null;
+        }
+      | undefined;
+
+    if (!row || row.last_stage_decision_json === null) {
+      throw new Error(`Missing stage decision for site page ${input.sitePageId}`);
+    }
+
+    const stageDecision = parseJson<StageDecisionSnapshot>(row.last_stage_decision_json);
+    const artifactStatuses: Partial<Record<ArtifactType, ArtifactRunStatus | null>> = {
+      markdown: row.last_markdown_status,
+      screenshot: row.last_screenshot_status,
+      [input.artifactType]: input.status,
+    };
+    const inventoryStatus = deriveInventoryStatus({
+      pageOutcome: stageDecision.outcome,
+      requiredArtifacts: stageDecision.requiredArtifacts,
+      artifactStatuses,
+    });
+    const now = this.clock.now();
+
+    if (input.artifactType === 'markdown') {
+      this.db
+        .prepare(
+          `UPDATE site_pages
+           SET inventory_status = ?,
+               last_markdown_status = ?,
+               last_markdown_run_id = ?,
+               last_markdown_at = ?,
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(inventoryStatus, input.status, input.runId, now, now, input.sitePageId);
+      return;
+    }
 
     this.db
       .prepare(
         `UPDATE site_pages
          SET inventory_status = ?,
-             last_markdown_status = ?,
-             last_markdown_run_id = ?,
-             last_markdown_at = ?,
+             last_screenshot_status = ?,
+             last_screenshot_run_id = ?,
+             last_screenshot_at = ?,
              updated_at = ?
          WHERE id = ?`,
       )
-      .run(
-        inventoryStatus,
-        input.status,
-        input.runId,
-        this.clock.now(),
-        this.clock.now(),
-        input.sitePageId,
-      );
+      .run(inventoryStatus, input.status, input.runId, now, now, input.sitePageId);
   }
 
   summarizeInventory(siteId: number): InventorySummary {
@@ -616,6 +737,7 @@ export class PageRunRepository {
     runId: number;
     sitePageId: number;
     baseCaptureStatus: BaseCaptureStatus;
+    baseCapturePath: string | null;
     title: string;
     metaDescription: string;
     bodyText: string;
@@ -635,6 +757,7 @@ export class PageRunRepository {
           started_at,
           finished_at,
           base_capture_status,
+          base_capture_path,
           title,
           meta_description,
           body_text,
@@ -644,7 +767,7 @@ export class PageRunRepository {
           decision_reason,
           pending_reason,
           required_artifacts_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -652,6 +775,7 @@ export class PageRunRepository {
         now,
         now,
         input.baseCaptureStatus,
+        input.baseCapturePath,
         input.title,
         input.metaDescription,
         input.bodyText,
@@ -676,7 +800,7 @@ export class PageRunRepository {
   listSampleCaptures(siteId: number, limit: number): SampleCaptureRow[] {
     return this.db
       .prepare(
-        `SELECT sp.normalized_url, pr.title, pr.meta_description, pr.body_text
+        `SELECT sp.normalized_url, pr.base_capture_path, pr.title, pr.meta_description, pr.body_text
          FROM page_runs pr
          INNER JOIN site_pages sp ON sp.id = pr.site_page_id
          WHERE sp.site_id = ?
@@ -686,6 +810,9 @@ export class PageRunRepository {
       .all(siteId, limit)
       .map((row) => ({
         normalizedUrl: String((row as Record<string, unknown>).normalized_url),
+        baseCapturePath:
+          ((row as Record<string, unknown>).base_capture_path as string | null | undefined) ??
+          null,
         title: String((row as Record<string, unknown>).title),
         metaDescription: String((row as Record<string, unknown>).meta_description),
         bodyText: String((row as Record<string, unknown>).body_text),

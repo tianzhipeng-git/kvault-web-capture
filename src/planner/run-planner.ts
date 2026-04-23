@@ -1,14 +1,44 @@
 import type {
+  ClassificationResult,
   PlannedRequest,
   RunType,
   SiteConfig,
+  StageDecisionSnapshot,
   UpdatePolicy,
 } from '../domain/types.js';
 import { SitePageRepository } from '../db/repositories.js';
 import { shouldEnqueueByUpdatePolicy } from './update-policy.js';
-import { evaluateUrlRules } from '../rules/rule-decision.js';
+import { evaluateTagRules, evaluateUrlRules } from '../rules/rule-decision.js';
 import { normalizeUrl } from '../utils/url.js';
 import type { Clock } from '../utils/clock.js';
+
+function buildCurrentStageDecision(
+  classificationTags: Record<string, string[]> | null,
+  siteConfig: SiteConfig,
+): StageDecisionSnapshot | null {
+  if (classificationTags === null) {
+    return null;
+  }
+
+  const tagEvaluation = evaluateTagRules(
+    {
+      tags: classificationTags,
+    } satisfies ClassificationResult,
+    siteConfig.tagRules,
+  );
+
+  if (tagEvaluation.outcome === 'allow') {
+    return {
+      outcome: 'allow',
+      requiredArtifacts: tagEvaluation.requiredArtifacts,
+    };
+  }
+
+  return {
+    outcome: tagEvaluation.outcome,
+    requiredArtifacts: [],
+  };
+}
 
 export class RunPlanner {
   constructor(
@@ -68,6 +98,10 @@ export class RunPlanner {
     const policyDecision = shouldEnqueueByUpdatePolicy({
       policy: input.updatePolicy,
       history: existingState,
+      currentStageDecision: buildCurrentStageDecision(
+        existingState?.latestClassificationTags ?? null,
+        input.siteConfig,
+      ),
       nowIsoString: this.clock.now(),
       staleAfterMs: input.staleAfterMs,
     });

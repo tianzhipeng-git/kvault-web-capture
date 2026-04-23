@@ -34,6 +34,8 @@ flowchart LR
     H --> RULES["src/rules/rule-decision.ts\nURL rules / tag rules / stage decision"]
     H --> CLS["src/classification/classifier.ts\nClassifier interface"]
     H --> MD["src/markdown/fake-markdown-adapter.ts\nMarkdown adapter interface + fake impl"]
+    H --> SS["src/screenshot/fake-screenshot-adapter.ts\nScreenshot adapter interface + fake impl"]
+    H --> AW["src/export/file-artifact-writer.ts\nArtifact export writer"]
 
     REPOS --> SQLITE[("SQLite")]
     QF --> CRAWLEE["Crawlee RequestQueue\nCheerioCrawler / BasicCrawler"]
@@ -69,7 +71,6 @@ flowchart LR
 - `src/planner/update-policy.ts` evaluates historical eligibility for:
   - `force_recrawl_all`
   - `skip_existing`
-  - `rerun_failed_artifacts`
   - `stale_after_duration`
 
 ### Crawlee execution seam
@@ -81,10 +82,10 @@ flowchart LR
   - tag-rule decision
   - `page_runs` write
   - `site_pages` status update
-  - markdown enqueue for `crawl_run`
+  - artifact enqueue for `crawl_run`
   - runtime-discovered URL planning
-- `createMarkdownRequestHandler` does markdown capture and success persistence.
-- `createMarkdownFailedRequestHandler` records the final failed markdown attempt after Crawlee retries are exhausted.
+- `createMarkdownRequestHandler` and `createScreenshotRequestHandler` do capture, export, and success persistence.
+- queue-specific `failedRequestHandler`s record the final failed artifact attempt after Crawlee retries are exhausted.
 
 ### Persistence
 
@@ -115,12 +116,17 @@ flowchart TD
     subgraph Execution
       BQ["base queue"]
       MQ["markdown queue"]
+      SQ["screenshot queue"]
       BH["base requestHandler"]
       MH["markdown requestHandler"]
       MF["markdown failedRequestHandler"]
+      SH["screenshot requestHandler"]
+      SF["screenshot failedRequestHandler"]
       EXT["extract page"]
       CLS["Classifier"]
       MDA["Markdown adapter"]
+      SDA["Screenshot adapter"]
+      AW["Artifact writer"]
     end
 
     subgraph State
@@ -135,6 +141,7 @@ flowchart TD
     APP --> REPOS
     APP --> BQ
     APP --> MQ
+    APP --> SQ
     RP --> URL
     RP --> RULES
     RP --> UP
@@ -142,14 +149,21 @@ flowchart TD
     BQ --> BH
     MQ --> MH
     MQ --> MF
+    SQ --> SH
+    SQ --> SF
     BH --> EXT
     BH --> CLS
     BH --> RULES
     BH --> RP
     BH --> REPOS
     MH --> MDA
+    MH --> AW
     MH --> REPOS
     MF --> REPOS
+    SH --> SDA
+    SH --> AW
+    SH --> REPOS
+    SF --> REPOS
     REPOS --> SQLITE
     BQ --> CRAWLEE
     MQ --> CRAWLEE
@@ -164,7 +178,7 @@ Key behavior:
 - `run_type = seed_run`
 - `update_policy = force_recrawl_all`
 - base queue runs
-- markdown queue is created but not executed
+- markdown/screenshot queues are created but not executed
 - pages that would otherwise be `allow` become `pending` with `pending_reason = seed_run`
 
 ```mermaid
@@ -200,10 +214,11 @@ Key behavior:
   - recursively resolved sitemap page URLs
   - existing `site_pages` inventory
 - runtime-discovered URLs go through the same planner path
-- `crawl_run` may enqueue markdown requests
-- base and markdown are executed sequentially:
+- `crawl_run` may enqueue markdown/screenshot requests
+- base, markdown, and screenshot are executed sequentially:
   - base crawler first
   - markdown crawler second
+  - screenshot crawler third
 
 ```mermaid
 flowchart TD
@@ -219,15 +234,15 @@ flowchart TD
     J --> K["base handler"]
     K --> L["extract + classify + tag-rule decision"]
     L --> M["persist page_runs + site_pages"]
-    M --> N{"decision allow markdown?"}
-    N -- no --> O["stop page at Stage 1"]
-    N -- yes --> P["enqueue markdown request"]
-    P --> Q["BasicCrawler markdown handler"]
+    M --> N{"artifact policy says enqueue?"}
+    N -- no --> O["skip already-fresh artifacts"]
+    N -- yes --> P["enqueue markdown/screenshot requests"]
+    P --> Q["BasicCrawler artifact handlers"]
     Q --> R{"capture success?"}
-    R -- yes --> S["artifact_runs success\nsite_pages last_markdown_status=succeeded"]
+    R -- yes --> S["artifact_runs success\nsite_pages aggregate stage2 status"]
     R -- no --> T["Crawlee retries"]
     T --> U["failedRequestHandler"]
-    U --> V["artifact_runs failed\nsite_pages last_markdown_status=failed"]
+    U --> V["artifact_runs failed\nsite_pages aggregate stage2 status"]
     K --> W["discovered links -> RunPlanner.planRequest"]
     W --> X["eligible links re-enter base queue"]
 ```
@@ -256,14 +271,11 @@ flowchart LR
 - `force_recrawl_all`
   - always enqueue
 - `skip_existing`
-  - skip when base and required markdown already succeeded
-  - enqueue when base is missing, pending, failed, or markdown is missing/failed
-- `rerun_failed_artifacts`
-  - enqueue when base is missing/failed or markdown failed
-  - skip otherwise
+  - skip when base and every required artifact already succeeded
+  - enqueue when base is missing, pending, failed, or any required artifact is missing/failed
 - `stale_after_duration`
   - enqueue when base is stale
-  - enqueue when markdown is required and stale
+  - enqueue when a required artifact is stale
 
 ## SQLite Business Model
 
@@ -280,7 +292,7 @@ Current schema:
 - `page_runs`
   - Stage 1 result per page per run
 - `artifact_runs`
-  - markdown execution result per page per run
+  - per-artifact execution result per page per run
 
 ```mermaid
 erDiagram
@@ -304,6 +316,7 @@ sequenceDiagram
     participant Rules as RuleDecision
     participant Repos as Repositories
     participant MD as MarkdownHandler
+    participant SS as ScreenshotHandler
 
     CLI->>App: run:crawl --site --update-policy
     App->>Repos: createRun(config snapshot)
@@ -314,10 +327,13 @@ sequenceDiagram
     Base->>Rules: buildStageDecision(classification, runType)
     Base->>Repos: create page_runs
     Base->>Repos: recordBaseCapture
-    Base->>App: enqueue markdown request
+    Base->>App: enqueue artifact requests
     App->>MD: markdown request
     MD->>Repos: create artifact_runs success
-    MD->>Repos: recordMarkdownResult
+    MD->>Repos: recordArtifactResult
+    App->>SS: screenshot request
+    SS->>Repos: create artifact_runs success
+    SS->>Repos: recordArtifactResult
     App->>Repos: refreshCounts / finishRun
 ```
 
@@ -331,17 +347,16 @@ sequenceDiagram
 - seed-run flow
 - crawl flow with history-aware planning
 - runtime link discovery through the same planner path
-- markdown artifact execution
+- markdown/screenshot artifact execution
+- exported artifact files with stored `output_path`
 - SQLite-backed inventory query commands
 
 ### Still deferred or partial
 
-- screenshot artifact and screenshot queue
-- strict multi-artifact success semantics beyond markdown
 - resume semantics for interrupted run
 - stop when `target_success_count` is reached
 - full run status / site status operational commands
-- real classifier and real markdown integration
+- real classifier and real capture-tool integrations
 
 ## Practical Read Order For Current Code
 

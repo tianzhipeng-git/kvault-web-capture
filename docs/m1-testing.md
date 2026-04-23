@@ -62,7 +62,6 @@ Unit and integration coverage should at minimum exercise:
 - `RuleDecision` generation
 - run planning for:
   - `skip_existing`
-  - `rerun_failed_artifacts`
   - `force_recrawl_all`
   - `stale_after_duration`
 - frozen `required_artifacts` planning

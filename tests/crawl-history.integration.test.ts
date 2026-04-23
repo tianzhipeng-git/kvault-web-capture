@@ -5,55 +5,24 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { M1App } from '../src/app/services.js';
 import { openDatabase } from '../src/db/database.js';
+import type { ArtifactType } from '../src/domain/types.js';
 import type { MarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
+import type { ScreenshotCaptureAdapter, ScreenshotCaptureResult } from '../src/screenshot/fake-screenshot-adapter.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
-class SwitchableMarkdownAdapter implements MarkdownCaptureAdapter {
-  private failedUrls = new Set<string>();
-
-  fail(url: string): void {
-    this.failedUrls.add(url);
-  }
-
-  recover(url: string): void {
-    this.failedUrls.delete(url);
-  }
-
-  async capture(url: string): Promise<string> {
-    if (this.failedUrls.has(url)) {
-      throw new Error(`forced markdown failure for ${url}`);
-    }
-
-    return `# Markdown\n\nSource: ${url}\n`;
-  }
-}
-
-async function createConfiguredApp(input: {
-  dir: string;
-  server: TestSiteServer;
-  markdownAdapter?: MarkdownCaptureAdapter;
-}): Promise<{ app: M1App; siteId: number; dbPath: string }> {
-  const dbPath = join(input.dir, 'state.db');
-  const storageRoot = join(input.dir, 'storage');
-  const app = new M1App({
-    dbPath,
-    markdownAdapter: input.markdownAdapter,
-  });
-  const project = app.createProject('Crawl Project');
-  const site = app.createSite({
-    projectSlug: project.slug,
-    name: 'crawl-site',
-    baseUrl: input.server.baseUrl,
-    storageRoot,
-  });
-  const host = new URL(input.server.baseUrl).host;
-  const configPath = join(input.dir, 'site-config.json');
+function writeSiteConfig(input: {
+  configPath: string;
+  baseUrl: string;
+  docsArtifacts: ArtifactType[];
+  productArtifacts: ArtifactType[];
+}): void {
+  const host = new URL(input.baseUrl).host;
   writeFileSync(
-    configPath,
+    input.configPath,
     JSON.stringify(
       {
-        seedUrls: [`${input.server.baseUrl}/docs`],
+        seedUrls: [`${input.baseUrl}/docs`],
         sitemaps: [],
         urlRules: [
           {
@@ -65,13 +34,37 @@ async function createConfiguredApp(input: {
         ],
         tagRules: [
           {
-            name: 'allow-content',
+            name: 'allow-docs',
             listType: 'whitelist',
             when: [
               {
                 key: 'content_type',
                 op: 'any_of',
-                values: ['docs', 'product', 'generic'],
+                values: ['docs'],
+              },
+            ],
+            artifacts: input.docsArtifacts,
+          },
+          {
+            name: 'allow-product',
+            listType: 'whitelist',
+            when: [
+              {
+                key: 'content_type',
+                op: 'any_of',
+                values: ['product'],
+              },
+            ],
+            artifacts: input.productArtifacts,
+          },
+          {
+            name: 'allow-generic',
+            listType: 'whitelist',
+            when: [
+              {
+                key: 'content_type',
+                op: 'any_of',
+                values: ['generic'],
               },
             ],
             artifacts: ['markdown'],
@@ -87,12 +80,44 @@ async function createConfiguredApp(input: {
     ),
     'utf8',
   );
+}
+
+async function createConfiguredApp(input: {
+  dir: string;
+  server: TestSiteServer;
+  markdownAdapter?: MarkdownCaptureAdapter;
+  screenshotAdapter?: ScreenshotCaptureAdapter;
+  docsArtifacts?: ArtifactType[];
+  productArtifacts?: ArtifactType[];
+}): Promise<{ app: M1App; siteId: number; dbPath: string; configPath: string }> {
+  const dbPath = join(input.dir, 'state.db');
+  const storageRoot = join(input.dir, 'storage');
+  const app = new M1App({
+    dbPath,
+    markdownAdapter: input.markdownAdapter,
+    screenshotAdapter: input.screenshotAdapter,
+  });
+  const project = app.createProject('Crawl Project');
+  const site = app.createSite({
+    projectSlug: project.slug,
+    name: 'crawl-site',
+    baseUrl: input.server.baseUrl,
+    storageRoot,
+  });
+  const configPath = join(input.dir, 'site-config.json');
+  writeSiteConfig({
+    configPath,
+    baseUrl: input.server.baseUrl,
+    docsArtifacts: input.docsArtifacts ?? ['markdown', 'screenshot'],
+    productArtifacts: input.productArtifacts ?? ['markdown', 'screenshot'],
+  });
   app.importSiteConfig(site.id, configPath);
 
   return {
     app,
     siteId: site.id,
     dbPath,
+    configPath,
   };
 }
 
@@ -131,44 +156,83 @@ describe('crawl history planning', () => {
     });
 
     expect(firstRun.pageRuns).toBe(2);
-    expect(firstRun.artifactRuns).toBe(2);
+    expect(firstRun.artifactRuns).toBe(4);
     expect(secondRun.pageRuns).toBe(0);
     expect(secondRun.artifactRuns).toBe(0);
   });
 
-  it('replans pages with failed artifacts for rerun_failed_artifacts', async () => {
-    const dir = createTempDir('kvault-rerun-failed-');
+  it('replans only screenshot when skip_existing sees a page gain screenshot in config', async () => {
+    const dir = createTempDir('kvault-skip-existing-partial-artifacts-');
     const server = await startTestSiteServer();
     servers.push(server);
-    const adapter = new SwitchableMarkdownAdapter();
-    adapter.fail(`${server.baseUrl}/product`);
-    const { app, siteId } = await createConfiguredApp({
+    const { app, siteId, dbPath, configPath } = await createConfiguredApp({
       dir,
       server,
-      markdownAdapter: adapter,
+      docsArtifacts: ['markdown'],
+      productArtifacts: ['markdown'],
     });
     apps.push(app);
 
-    const failedRun = await app.runCrawl({
+    const firstRun = await app.runCrawl({
       siteId,
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
       staleAfterMs: null,
     });
 
-    adapter.recover(`${server.baseUrl}/product`);
+    writeSiteConfig({
+      configPath,
+      baseUrl: server.baseUrl,
+      docsArtifacts: ['markdown'],
+      productArtifacts: ['markdown', 'screenshot'],
+    });
+    app.importSiteConfig(siteId, configPath);
 
-    const rerun = await app.runCrawl({
+    const secondRun = await app.runCrawl({
       siteId,
-      updatePolicy: 'rerun_failed_artifacts',
+      updatePolicy: 'skip_existing',
       targetSuccessCount: null,
       staleAfterMs: null,
     });
 
-    expect(failedRun.pageRuns).toBe(2);
-    expect(failedRun.artifactRuns).toBe(2);
-    expect(rerun.pageRuns).toBe(1);
-    expect(rerun.artifactRuns).toBe(1);
+    const db = openDatabase(dbPath);
+    try {
+      const rerunPageRows = db.prepare(
+        `SELECT sp.normalized_url, pr.required_artifacts_json
+         FROM page_runs pr
+         INNER JOIN site_pages sp ON sp.id = pr.site_page_id
+         WHERE pr.crawl_run_id = ?`,
+      ).all(secondRun.runId) as Array<{
+        normalized_url: string;
+        required_artifacts_json: string;
+      }>;
+
+      const rerunArtifactRows = db.prepare(
+        `SELECT artifact_type
+         FROM artifact_runs
+         WHERE crawl_run_id = ?`,
+      ).all(secondRun.runId) as Array<{
+        artifact_type: string;
+      }>;
+
+      expect(firstRun.pageRuns).toBe(2);
+      expect(firstRun.artifactRuns).toBe(2);
+      expect(secondRun.pageRuns).toBe(1);
+      expect(secondRun.artifactRuns).toBe(1);
+      expect(rerunPageRows).toEqual([
+        {
+          normalized_url: `${server.baseUrl}/product`,
+          required_artifacts_json: '["markdown","screenshot"]',
+        },
+      ]);
+      expect(rerunArtifactRows).toEqual([
+        {
+          artifact_type: 'screenshot',
+        },
+      ]);
+    } finally {
+      db.close();
+    }
   });
 
   it('always replans known inventory for force_recrawl_all', async () => {
@@ -192,7 +256,7 @@ describe('crawl history planning', () => {
     });
 
     expect(rerun.pageRuns).toBe(2);
-    expect(rerun.artifactRuns).toBe(2);
+    expect(rerun.artifactRuns).toBe(4);
   });
 
   it('replans stale inventory for stale_after_duration', async () => {
@@ -213,9 +277,14 @@ describe('crawl history planning', () => {
     try {
       db.prepare(
         `UPDATE site_pages
-         SET last_base_at = ?, last_markdown_at = ?
+         SET last_base_at = ?, last_markdown_at = ?, last_screenshot_at = ?
          WHERE site_id = ?`,
-      ).run('2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', siteId);
+      ).run(
+        '2020-01-01T00:00:00.000Z',
+        '2020-01-01T00:00:00.000Z',
+        '2020-01-01T00:00:00.000Z',
+        siteId,
+      );
     } finally {
       db.close();
     }
@@ -228,6 +297,6 @@ describe('crawl history planning', () => {
     });
 
     expect(rerun.pageRuns).toBe(2);
-    expect(rerun.artifactRuns).toBe(2);
+    expect(rerun.artifactRuns).toBe(4);
   });
 });

@@ -1,5 +1,7 @@
 # M1 Architecture
 
+当前项目还在初始开发状态, 无线上应用, 修改代码的时候不用考虑兼容性.
+
 ## Purpose
 
 This document turns the confirmed review decisions from `docs/init-prd.md` into an implementation-facing design for M1.

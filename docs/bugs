@@ -1,8 +1,4 @@
-把inventory_preview/preview_run改名为seed_run, 它和普通的run的区别只是跑不跑stage 2;
-services.tx fetchSitemapUrls要放在这吗? 不递归吗?
 
-update-policy.tx:  if (history.lastTagRuleDecision === 'allow' && history.lastMarkdownStatus !== 'succeeded') {
-rerun_failed_artifacts
 services.tx的executeRun把所有可能startupUrls都拿到挨个去planRequest对吗?
 
 services.tx: ts里await啥效果, 这样启动两个是咋玩的?       await baseCrawler.run();

@@ -1,11 +1,17 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Configuration, RequestQueue } from 'crawlee';
 import { describe, expect, it } from 'vitest';
 
+import { FileArtifactWriter } from '../src/export/file-artifact-writer.js';
 import { FakeClassifier } from '../src/classification/fake-classifier.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
-import { createBaseRequestHandler, createMarkdownRequestHandler } from '../src/crawlee/handlers.js';
+import {
+  createBaseRequestHandler,
+  createMarkdownRequestHandler,
+  createScreenshotRequestHandler,
+} from '../src/crawlee/handlers.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
   ArtifactRunRepository,
@@ -17,11 +23,12 @@ import {
 } from '../src/db/repositories.js';
 import { FakeMarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
 import { RunPlanner } from '../src/planner/run-planner.js';
+import { FakeScreenshotCaptureAdapter } from '../src/screenshot/fake-screenshot-adapter.js';
 import { SystemClock } from '../src/utils/clock.js';
 import { createTempDir } from './helpers/tmp.js';
 
 describe('integration spike', () => {
-  it('executes base -> markdown through the queue boundary and persists both layers', async () => {
+  it('executes base -> artifact queues through the queue boundary and persists exported outputs', async () => {
     const dir = createTempDir('kvault-spike-');
     const dbPath = join(dir, 'spike.db');
     const storageDir = join(dir, 'storage');
@@ -37,12 +44,17 @@ describe('integration spike', () => {
     const artifactRunRepository = new ArtifactRunRepository(db, clock);
     const planner = new RunPlanner(sitePageRepository, clock);
     const project = projectRepository.create('Spike Project');
+    const siteConfig = createDefaultSiteConfig(baseUrl);
+    siteConfig.tagRules[0] = {
+      ...siteConfig.tagRules[0],
+      artifacts: ['markdown', 'screenshot'],
+    };
     const site = siteRepository.create({
       projectId: project.id,
       name: 'example-docs',
       baseUrl: 'https://example.com',
       storageRoot: storageDir,
-      config: createDefaultSiteConfig(baseUrl),
+      config: siteConfig,
     });
     const runId = runRepository.createRun({
       siteId: site.id,
@@ -75,6 +87,10 @@ describe('integration spike', () => {
     const markdownQueue = await RequestQueue.open(`run-${runId}-markdown`, {
       config: configuration,
     });
+    const screenshotQueue = await RequestQueue.open(`run-${runId}-screenshot`, {
+      config: configuration,
+    });
+    const artifactWriter = new FileArtifactWriter(storageDir);
 
     const baseHandler = createBaseRequestHandler({
       classifier: new FakeClassifier(),
@@ -84,6 +100,8 @@ describe('integration spike', () => {
       staleAfterMs: null,
       baseQueue,
       markdownQueue,
+      screenshotQueue,
+      artifactWriter,
       pageRunRepository,
       sitePageRepository,
       runPlanner: planner,
@@ -92,6 +110,13 @@ describe('integration spike', () => {
       markdownAdapter: new FakeMarkdownCaptureAdapter(),
       artifactRunRepository,
       sitePageRepository,
+      artifactWriter,
+    });
+    const screenshotHandler = createScreenshotRequestHandler({
+      screenshotAdapter: new FakeScreenshotCaptureAdapter(),
+      artifactRunRepository,
+      sitePageRepository,
+      artifactWriter,
     });
 
     const fakeDom = createFakeCheerio({
@@ -120,48 +145,64 @@ describe('integration spike', () => {
       } as never);
 
       const markdownRequest = await markdownQueue.fetchNextRequest();
+      const screenshotRequest = await screenshotQueue.fetchNextRequest();
 
       expect(markdownRequest).not.toBeNull();
+      expect(screenshotRequest).not.toBeNull();
 
       await markdownHandler({
         request: markdownRequest!,
       });
+      await screenshotHandler({
+        request: screenshotRequest!,
+      });
 
       const pageRun = db
         .prepare(
-          `SELECT title, meta_description, decision_outcome, required_artifacts_json
+          `SELECT base_capture_path, title, meta_description, decision_outcome, required_artifacts_json
            FROM page_runs
            WHERE crawl_run_id = ?`,
         )
         .get(runId) as {
+          base_capture_path: string | null;
           title: string;
           meta_description: string;
           decision_outcome: string;
           required_artifacts_json: string;
         };
 
-      const artifactRun = db
+      const artifactRuns = db
         .prepare(
-          `SELECT artifact_type, status, content
+          `SELECT artifact_type, status, content, output_path
            FROM artifact_runs
-           WHERE crawl_run_id = ?`,
+           WHERE crawl_run_id = ?
+           ORDER BY artifact_type`,
         )
-        .get(runId) as {
+        .all(runId) as Array<{
           artifact_type: string;
           status: string;
-          content: string;
-        };
+          content: string | null;
+          output_path: string;
+        }>;
 
       expect(pageRun.title).toBe('Example Docs');
       expect(pageRun.meta_description).toBe('Tiny docs page');
       expect(pageRun.decision_outcome).toBe('allow');
-      expect(pageRun.required_artifacts_json).toBe('["markdown"]');
+      expect(pageRun.required_artifacts_json).toBe('["markdown","screenshot"]');
+      expect(pageRun.base_capture_path).toBeTruthy();
+      expect(existsSync(pageRun.base_capture_path!)).toBe(true);
 
-      expect(artifactRun.artifact_type).toBe('markdown');
-      expect(artifactRun.status).toBe('succeeded');
-      expect(artifactRun.content).toContain('https://example.com/docs');
+      expect(artifactRuns).toHaveLength(2);
+      expect(artifactRuns[0]?.artifact_type).toBe('markdown');
+      expect(artifactRuns[0]?.status).toBe('succeeded');
+      expect(artifactRuns[0]?.content).toContain('https://example.com/docs');
+      expect(existsSync(artifactRuns[0]!.output_path)).toBe(true);
+      expect(artifactRuns[1]?.artifact_type).toBe('screenshot');
+      expect(artifactRuns[1]?.status).toBe('succeeded');
+      expect(artifactRuns[1]?.content).toBeNull();
+      expect(existsSync(artifactRuns[1]!.output_path)).toBe(true);
       expect(pageRunRepository.countByRun(runId)).toBe(1);
-      expect(artifactRunRepository.countByRun(runId)).toBe(1);
+      expect(artifactRunRepository.countByRun(runId)).toBe(2);
     } finally {
       db.close();
     }

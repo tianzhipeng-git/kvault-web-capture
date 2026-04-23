@@ -1,4 +1,4 @@
-export type ArtifactType = 'markdown';
+export type ArtifactType = 'markdown' | 'screenshot';
 
 export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
@@ -11,7 +11,6 @@ export type RunStatus = 'running' | 'succeeded' | 'failed';
 export type UpdatePolicy =
   | 'force_recrawl_all'
   | 'skip_existing'
-  | 'rerun_failed_artifacts'
   | 'stale_after_duration';
 
 export type BaseCaptureStatus = 'succeeded' | 'failed';
@@ -115,7 +114,24 @@ export interface MarkdownRequestUserData {
   normalizedUrl: string;
 }
 
-export type CrawlRequestUserData = BaseRequestUserData | MarkdownRequestUserData;
+export interface ScreenshotRequestUserData {
+  stage: 'screenshot';
+  runId: number;
+  siteId: number;
+  sitePageId: number;
+  pageRunId: number;
+  normalizedUrl: string;
+}
+
+export type CrawlRequestUserData =
+  | BaseRequestUserData
+  | MarkdownRequestUserData
+  | ScreenshotRequestUserData;
+
+export interface StageDecisionSnapshot {
+  outcome: RuleOutcome;
+  requiredArtifacts: ArtifactType[];
+}
 
 export interface PlannedRequest {
   siteId: number;
@@ -132,9 +148,12 @@ export interface HistoricalPageState {
   inventoryStatus: InventoryStatus;
   lastBaseStatus: BaseCaptureStatus | null;
   lastBaseAt: string | null;
-  lastTagRuleDecision: RuleOutcome | null;
+  latestClassificationTags: Record<string, string[]> | null;
+  lastStageDecision: StageDecisionSnapshot | null;
   lastMarkdownStatus: ArtifactRunStatus | null;
   lastMarkdownAt: string | null;
+  lastScreenshotStatus: ArtifactRunStatus | null;
+  lastScreenshotAt: string | null;
 }
 
 export interface CrawlRunCreateInput {

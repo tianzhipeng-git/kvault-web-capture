@@ -1,7 +1,7 @@
 import type { Configuration, RequestQueue } from 'crawlee';
 import { RequestQueue as CrawleeRequestQueue } from 'crawlee';
 
-export type QueueStage = 'base' | 'markdown';
+export type QueueStage = 'base' | 'markdown' | 'screenshot';
 
 export function buildQueueName(runId: number, stage: QueueStage): string {
   return `run-${runId}-${stage}`;

@@ -33,6 +33,22 @@
       "artifacts": [
         "markdown"
       ]
+    },
+    {
+      "name": "screenshot_product",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "product"
+          ]
+        }
+      ],
+      "artifacts": [
+        "screenshot"
+      ]
     }
   ],
   "runOptions": {

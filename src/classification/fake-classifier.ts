@@ -13,6 +13,10 @@ export class FakeClassifier implements Classifier {
       return { tags: { content_type: ['product'] } };
     }
 
+    if (/www\.apple\.com\/iphone-[^/]+\/?$/.test(page.url)) {
+      return { tags: { content_type: ['iphone'] } };
+    }
+
     return { tags: { content_type: ['generic'] } };
   }
 }

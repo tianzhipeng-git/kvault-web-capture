@@ -197,7 +197,6 @@ Make `crawl_run` a real business workflow that plans work from existing inventor
 - implement the initial update policy set:
   - `force_recrawl_all`
   - `skip_existing`
-  - `rerun_failed_artifacts`
   - `stale_after_duration`
 - make runtime URL discovery follow the same business path as startup planning:
   - normalize URL
@@ -224,7 +223,7 @@ Do not move on until these are true:
 2. Update policy decisions happen before enqueue, not inside Crawlee hooks.
 3. Runtime-discovered URLs follow the same rule and policy gates as startup candidates.
 4. Starting a new run does not create split-brain behavior between SQLite state and Crawlee queues.
-5. Integration tests cover multi-run planning for `skip_existing`, `rerun_failed_artifacts`, `force_recrawl_all`, and `stale_after_duration`.
+5. Integration tests cover multi-run planning for `skip_existing`, `force_recrawl_all`, and `stale_after_duration`.
 
 ## Phase 4: Complete Stage 2 Artifact Execution
 

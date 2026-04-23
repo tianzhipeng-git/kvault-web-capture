@@ -60,7 +60,7 @@ export function initializeSchema(db: DatabaseSync): void {
       discovery_source TEXT NOT NULL,
       discovery_referrer_url TEXT,
       last_url_rule_decision TEXT,
-      last_tag_rule_decision TEXT,
+      last_stage_decision_json TEXT,
       last_pending_reason TEXT,
       latest_title TEXT,
       last_base_status TEXT,
@@ -69,13 +69,17 @@ export function initializeSchema(db: DatabaseSync): void {
       last_markdown_status TEXT,
       last_markdown_run_id INTEGER,
       last_markdown_at TEXT,
+      last_screenshot_status TEXT,
+      last_screenshot_run_id INTEGER,
+      last_screenshot_at TEXT,
       first_discovered_at TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(site_id, normalized_url),
       FOREIGN KEY (site_id) REFERENCES sites(id),
       FOREIGN KEY (last_base_run_id) REFERENCES crawl_runs(id),
-      FOREIGN KEY (last_markdown_run_id) REFERENCES crawl_runs(id)
+      FOREIGN KEY (last_markdown_run_id) REFERENCES crawl_runs(id),
+      FOREIGN KEY (last_screenshot_run_id) REFERENCES crawl_runs(id)
     );
 
     CREATE TABLE IF NOT EXISTS page_runs (
@@ -85,6 +89,7 @@ export function initializeSchema(db: DatabaseSync): void {
       started_at TEXT NOT NULL,
       finished_at TEXT,
       base_capture_status TEXT NOT NULL,
+      base_capture_path TEXT,
       title TEXT NOT NULL,
       meta_description TEXT NOT NULL,
       body_text TEXT NOT NULL,

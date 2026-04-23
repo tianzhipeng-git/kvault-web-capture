@@ -68,6 +68,7 @@ describe('repositories', () => {
       runId,
       sitePageId,
       baseCaptureStatus: 'succeeded',
+      baseCapturePath: '/tmp/base.md',
       title: 'Docs',
       metaDescription: 'Example docs',
       bodyText: 'hello docs',
@@ -78,19 +79,19 @@ describe('repositories', () => {
       decisionOutcome: 'allow',
       decisionReason: null,
       pendingReason: null,
-      requiredArtifacts: ['markdown'],
+      requiredArtifacts: ['markdown', 'screenshot'],
     });
 
     pages.recordBaseCapture({
       sitePageId,
       runId,
       title: 'Docs',
-      tagOutcome: 'allow',
       pageOutcome: 'allow',
+      requiredArtifacts: ['markdown', 'screenshot'],
       pendingReason: null,
     });
 
-    const artifactRunId = artifactRuns.create({
+    const markdownArtifactRunId = artifactRuns.create({
       runId,
       pageRunId,
       sitePageId,
@@ -101,16 +102,36 @@ describe('repositories', () => {
       errorMessage: null,
     });
 
-    pages.recordMarkdownResult({
+    pages.recordArtifactResult({
       sitePageId,
       runId,
+      artifactType: 'markdown',
+      status: 'succeeded',
+    });
+
+    const screenshotArtifactRunId = artifactRuns.create({
+      runId,
+      pageRunId,
+      sitePageId,
+      artifactType: 'screenshot',
+      status: 'succeeded',
+      content: null,
+      outputPath: '/tmp/fake.png',
+      errorMessage: null,
+    });
+
+    pages.recordArtifactResult({
+      sitePageId,
+      runId,
+      artifactType: 'screenshot',
       status: 'succeeded',
     });
 
     expect(pageRunId).toBeGreaterThan(0);
-    expect(artifactRunId).toBeGreaterThan(0);
+    expect(markdownArtifactRunId).toBeGreaterThan(0);
+    expect(screenshotArtifactRunId).toBeGreaterThan(0);
     expect(pageRuns.countByRun(runId)).toBe(1);
-    expect(artifactRuns.countByRun(runId)).toBe(1);
+    expect(artifactRuns.countByRun(runId)).toBe(2);
     expect(pages.summarizeInventory(site.id)).toEqual({
       totalPages: 1,
       pendingPages: 0,
