@@ -7,10 +7,13 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "spike": "node --import tsx src/cli.ts spike",
+    "web": "node --import tsx src/web/server.ts",
     "test": "vitest run"
   },
   "dependencies": {
-    "crawlee": "^3.13.8"
+    "@fastify/cookie": "^11.0.2",
+    "crawlee": "^3.13.8",
+    "fastify": "^5.6.1"
   },
   "devDependencies": {
     "@types/node": "^24.6.1",
