@@ -11,7 +11,7 @@ import {
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
-import { createDefaultSiteConfig, loadSiteConfig } from '../config/site-config.js';
+import { createDefaultSiteConfig, loadSiteConfig, parseSiteConfig } from '../config/site-config.js';
 import {
   createBaseRequestHandler,
   createMarkdownFailedRequestHandler,
@@ -34,6 +34,7 @@ import {
 import type {
   BaseRequestUserData,
   RunType,
+  SiteConfig,
   SpikeRunSummary,
   UpdatePolicy,
 } from '../domain/types.js';
@@ -150,6 +151,26 @@ export class M1App {
 
   cloneSiteConfig(sourceSiteId: number, targetSiteId: number): void {
     this.sites.cloneConfig(sourceSiteId, targetSiteId);
+  }
+
+  getSiteConfig(siteId: number): SiteConfig {
+    const site = this.sites.getById(siteId);
+
+    if (!site) {
+      throw new Error(`Site ${siteId} not found`);
+    }
+
+    return site.config;
+  }
+
+  updateSiteConfig(siteId: number, config: SiteConfig): void {
+    const site = this.sites.getById(siteId);
+
+    if (!site) {
+      throw new Error(`Site ${siteId} not found`);
+    }
+
+    this.sites.updateConfig(siteId, parseSiteConfig(config));
   }
 
   async runSeed(siteId: number): Promise<SpikeRunSummary> {
