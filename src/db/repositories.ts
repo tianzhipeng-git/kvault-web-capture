@@ -123,13 +123,16 @@ export class ProjectRepository {
   ) {}
 
   create(name: string): ProjectRecord {
-    const slug = slugify(name);
-    const existing = this.db
-      .prepare('SELECT id, name, slug FROM projects WHERE slug = ?')
-      .get(slug) as ProjectRecord | undefined;
+    let slug = slugify(name);
 
-    if (existing) {
-      return existing;
+    if (slug) {
+      const existing = this.db
+        .prepare('SELECT id, name, slug FROM projects WHERE slug = ?')
+        .get(slug) as ProjectRecord | undefined;
+
+      if (existing) {
+        return existing;
+      }
     }
 
     const result = this.db
@@ -138,11 +141,14 @@ export class ProjectRepository {
       )
       .run(name, slug, '[]', this.clock.now()) as RowIdResult;
 
-    return {
-      id: toId(result),
-      name,
-      slug,
-    };
+    const id = toId(result);
+
+    if (!slug) {
+      slug = `proj-${id}`;
+      this.db.prepare('UPDATE projects SET slug = ? WHERE id = ?').run(slug, id);
+    }
+
+    return { id, name, slug };
   }
 
   getBySlug(slug: string): ProjectRecord | null {
@@ -150,6 +156,14 @@ export class ProjectRepository {
       (this.db
         .prepare('SELECT id, name, slug FROM projects WHERE slug = ?')
         .get(slug) as ProjectRecord | undefined) ?? null
+    );
+  }
+
+  getById(id: number): ProjectRecord | null {
+    return (
+      (this.db
+        .prepare('SELECT id, name, slug FROM projects WHERE id = ?')
+        .get(id) as ProjectRecord | undefined) ?? null
     );
   }
 }

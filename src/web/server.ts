@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ import { mapConfigFormToSiteConfig, mapRunForm } from './services/config-mapper.
 import { RunCoordinator } from './services/run-coordinator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const frontendDir = join(__dirname, 'frontend');
+const frontendDir = join(__dirname, 'frontend/dist');
 
 function parseSiteId(value: string): number {
   const siteId = Number(value);
@@ -98,6 +99,15 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     reply.type('text/css; charset=utf-8').send(readFrontendAsset('styles.css'));
   });
 
+  server.get('/assets/:file', async (request, reply) => {
+    const params = request.params as { file: string };
+    try {
+      reply.send(readFileSync(join(frontendDir, 'assets', params.file)));
+    } catch {
+      reply.code(404).send('Not found');
+    }
+  });
+
   server.post('/api/auth/login', async (request, reply) => {
     const body = (request.body ?? {}) as { password?: string };
     auth.login(request, reply, body.password ?? '');
@@ -139,24 +149,19 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.post('/api/sites', async (request, reply) => {
     const body = (request.body ?? {}) as {
-      projectSlug?: string;
-      projectId?: number;
+      projectId?: unknown;
       name?: string;
       baseUrl?: string;
       storageRoot?: string;
     };
 
-    const projectSlug = body.projectSlug ?? (
-      typeof body.projectId === 'number'
-        ? (
-            queryDb.prepare('SELECT slug FROM projects WHERE id = ?').get(body.projectId) as
-              | { slug?: string }
-              | undefined
-          )?.slug
-        : undefined
-    );
+    const projectId = typeof body.projectId === 'number'
+      ? body.projectId
+      : typeof body.projectId === 'string'
+        ? Number(body.projectId)
+        : NaN;
 
-    if (!projectSlug) {
+    if (!Number.isInteger(projectId) || projectId <= 0) {
       reply.code(400);
       throw new Error('需要提供所属项目。');
     }
@@ -167,7 +172,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     }
 
     return app.createSite({
-      projectSlug,
+      projectId,
       name: body.name.trim(),
       baseUrl: body.baseUrl.trim(),
       storageRoot: body.storageRoot.trim(),
@@ -218,7 +223,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.post('/api/sites/:siteId/runs/seed', async (request, reply) => {
     const params = request.params as { siteId: string };
     const siteId = parseSiteId(params.siteId);
-    void coordinator.startSeed(app, siteId).catch(() => {});
+    void coordinator.startSeed(app, siteId).catch(() => { });
     const latestRun = runQuery.getLatestRunForSite(siteId, 'seed_run');
 
     if (!latestRun) {
@@ -239,7 +244,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     void coordinator.startCrawl(app, {
       siteId,
       ...input,
-    }).catch(() => {});
+    }).catch(() => { });
     const latestRun = runQuery.getLatestRunForSite(siteId, 'crawl_run');
 
     if (!latestRun) {

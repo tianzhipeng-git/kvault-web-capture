@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { resolve } from 'node:path';
 
 import { M1App } from './app/services.js';

@@ -45,7 +45,7 @@ import { RunPlanner } from '../planner/run-planner.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screenshot-adapter.js';
-import { loadDefaultEnvFile } from '../utils/env.js';
+
 import { SystemClock } from '../utils/clock.js';
 
 const HAS_SYSTEM_CHROME =
@@ -95,7 +95,7 @@ export class M1App {
     this.planner = new RunPlanner(this.sitePages, this.clock);
     initializeSchema(this.db);
     this.classifier = options.classifier ?? new FakeClassifier();
-    loadDefaultEnvFile();
+
     this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
     this.screenshotAdapter =
       options.screenshotAdapter ?? new PlaywrightScreenshotCaptureAdapter();
@@ -114,15 +114,20 @@ export class M1App {
   }
 
   createSite(input: {
-    projectSlug: string;
+    projectId?: number;
+    projectSlug?: string;
     name: string;
     baseUrl: string;
     storageRoot: string;
   }): { id: number; name: string } {
-    const project = this.projects.getBySlug(input.projectSlug);
+    const project = input.projectId != null
+      ? this.projects.getById(input.projectId)
+      : input.projectSlug != null
+        ? this.projects.getBySlug(input.projectSlug)
+        : null;
 
     if (!project) {
-      throw new Error(`Project ${input.projectSlug} not found`);
+      throw new Error(`Project not found`);
     }
 
     const site = this.sites.create({

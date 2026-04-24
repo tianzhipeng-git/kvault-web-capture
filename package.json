@@ -11,12 +11,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "crawlee": "^3.13.8",
-    "fastify": "^5.6.1",
     "@fastify/cookie": "^11.0.2",
+    "crawlee": "^3.13.8",
     "defuddle": "^0.18.1",
-    "playwright": "^1.59.1",
-    "jsdom": "^29.0.2"
+    "dotenv": "^17.4.2",
+    "fastify": "^5.6.1",
+    "jsdom": "^29.0.2",
+    "playwright": "^1.59.1"
   },
   "devDependencies": {
     "@types/node": "^24.6.1",

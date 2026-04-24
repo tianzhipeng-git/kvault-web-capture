@@ -153,9 +153,9 @@ export class ProjectListQuery {
            s.id,
            s.name,
            s.base_url,
-           COUNT(sp.id) AS total_pages,
-           SUM(CASE WHEN sp.inventory_status = 'stage2_pending' THEN 1 ELSE 0 END) AS pending_pages,
-           SUM(CASE WHEN sp.inventory_status = 'stage2_captured' THEN 1 ELSE 0 END) AS captured_pages,
+           COUNT(DISTINCT sp.id) AS total_pages,
+           COUNT(DISTINCT CASE WHEN sp.inventory_status = 'stage2_pending' THEN sp.id END) AS pending_pages,
+           COUNT(DISTINCT CASE WHEN sp.inventory_status = 'stage2_captured' THEN sp.id END) AS captured_pages,
            MAX(COALESCE(cr.finished_at, cr.started_at)) AS latest_run_at
          FROM sites s
          LEFT JOIN site_pages sp ON sp.site_id = s.id
