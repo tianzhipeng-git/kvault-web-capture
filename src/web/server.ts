@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -12,6 +12,7 @@ import {
   PendingReviewQuery,
   ProjectListQuery,
   RunSummaryQuery,
+  SitePageDetailQuery,
   SiteOverviewQuery,
   SitePageListQuery,
 } from './queries/read-models.js';
@@ -41,6 +42,32 @@ function parseRunId(value: string): number {
   return runId;
 }
 
+function parseArtifactRunId(value: string): number {
+  const artifactRunId = Number(value);
+
+  if (!Number.isInteger(artifactRunId) || artifactRunId <= 0) {
+    throw new Error('artifactRunId 无效。');
+  }
+
+  return artifactRunId;
+}
+
+function artifactContentType(path: string, artifactType: string): string {
+  if (artifactType !== 'screenshot') {
+    return 'text/plain; charset=utf-8';
+  }
+
+  switch (extname(path).toLowerCase()) {
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    default:
+      return 'image/png';
+  }
+}
+
 function readFrontendAsset(name: string): string {
   return readFileSync(join(frontendDir, name), 'utf8');
 }
@@ -65,6 +92,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   const projectQuery = new ProjectListQuery(queryDb);
   const siteOverviewQuery = new SiteOverviewQuery(queryDb);
   const sitePageQuery = new SitePageListQuery(queryDb);
+  const sitePageDetailQuery = new SitePageDetailQuery(queryDb);
   const runQuery = new RunSummaryQuery(queryDb);
   const pendingReviewQuery = new PendingReviewQuery(queryDb);
 
@@ -278,6 +306,12 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/sites/:siteId/pages', async (request) => {
     const params = request.params as { siteId: string };
     const query = request.query as Record<string, string | undefined>;
+    const crawlRunId = query.crawlRunId === undefined ? undefined : Number(query.crawlRunId);
+
+    if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
+      throw new Error('crawlRunId 无效。');
+    }
+
     return sitePageQuery.listPages({
       siteId: parseSiteId(params.siteId),
       page: Number(query.page ?? '1'),
@@ -287,7 +321,27 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       tag: query.tag,
       pendingReason: query.pendingReason,
       discoverySource: query.discoverySource,
+      crawlRunId,
     });
+  });
+
+  server.get('/api/sites/:siteId/pages/:sitePageId', async (request) => {
+    const params = request.params as { siteId: string; sitePageId: string };
+    return sitePageDetailQuery.getPageDetail(
+      parseSiteId(params.siteId),
+      parseRunId(params.sitePageId),
+    );
+  });
+
+  server.get('/api/sites/:siteId/artifacts/:artifactRunId/file', async (request, reply) => {
+    const params = request.params as { siteId: string; artifactRunId: string };
+    const artifact = sitePageDetailQuery.getArtifactFile(
+      parseSiteId(params.siteId),
+      parseArtifactRunId(params.artifactRunId),
+    );
+    reply
+      .type(artifactContentType(artifact.outputPath, artifact.artifactType))
+      .send(readFileSync(artifact.outputPath));
   });
 
   server.get('/api/sites/:siteId/pending-review', async (request) => {
@@ -314,7 +368,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? '3100');
   const host = process.env.HOST ?? '127.0.0.1';
-  const dbPath = process.env.KVAULT_DB_PATH ?? '.local/m1.db';
+  const dbPath = process.env.KVAULT_DB_PATH ?? '.local/state.db';
   const adminPassword = process.env.KVAULT_ADMIN_PASSWORD ?? 'kvault-dev';
   const server = await createWebServer({
     dbPath,

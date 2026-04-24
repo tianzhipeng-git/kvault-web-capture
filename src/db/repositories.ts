@@ -354,14 +354,22 @@ export class RunRepository {
 
     const pageRuns = this.db
       .prepare(
-        `SELECT id, decision_outcome, required_artifacts_json
-         FROM page_runs
-         WHERE crawl_run_id = ?`,
+        `SELECT
+           pr.id,
+           pr.decision_outcome,
+           pr.required_artifacts_json,
+           sp.last_markdown_status,
+           sp.last_screenshot_status
+         FROM page_runs pr
+         INNER JOIN site_pages sp ON sp.id = pr.site_page_id
+         WHERE pr.crawl_run_id = ?`,
       )
       .all(runId) as Array<{
       id: number;
       decision_outcome: RuleOutcome;
       required_artifacts_json: string;
+      last_markdown_status: ArtifactRunStatus | null;
+      last_screenshot_status: ArtifactRunStatus | null;
     }>;
 
     const artifactRows = this.db
@@ -391,7 +399,11 @@ export class RunRepository {
 
       return hasCompleteArtifactSet({
         requiredArtifacts: parseJson<ArtifactType[]>(pageRun.required_artifacts_json),
-        artifactStatuses: artifactStatuses.get(pageRun.id) ?? {},
+        artifactStatuses: {
+          markdown: pageRun.last_markdown_status,
+          screenshot: pageRun.last_screenshot_status,
+          ...(artifactStatuses.get(pageRun.id) ?? {}),
+        },
       });
     }).length;
 

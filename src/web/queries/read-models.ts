@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
 
 import type { SiteConfig } from '../../domain/types.js';
@@ -8,6 +9,18 @@ function parseJson<T>(value: string | null): T | null {
   }
 
   return JSON.parse(value) as T;
+}
+
+function readTextFile(path: string | null): string | null {
+  if (path === null || !existsSync(path)) {
+    return null;
+  }
+
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 function asCount(value: number | null): number {
@@ -329,6 +342,7 @@ export interface SitePageListInput {
   tag?: string;
   pendingReason?: string;
   discoverySource?: string;
+  crawlRunId?: number;
 }
 
 export class SitePageListQuery {
@@ -373,6 +387,23 @@ export class SitePageListQuery {
     if (input.discoverySource) {
       filters.push('sp.discovery_source = ?');
       args.push(input.discoverySource);
+    }
+
+    if (input.crawlRunId !== undefined) {
+      filters.push(
+        `(EXISTS (
+           SELECT 1
+           FROM page_runs pr_run_filter
+           WHERE pr_run_filter.site_page_id = sp.id
+             AND pr_run_filter.crawl_run_id = ?
+         ) OR EXISTS (
+           SELECT 1
+           FROM artifact_runs ar_run_filter
+           WHERE ar_run_filter.site_page_id = sp.id
+             AND ar_run_filter.crawl_run_id = ?
+         ))`,
+      );
+      args.push(input.crawlRunId, input.crawlRunId);
     }
 
     if (input.tag) {
@@ -467,9 +498,539 @@ export class SitePageListQuery {
           captureSummary:
             requiredArtifacts.length === 0
               ? '只保留基础信息'
-              : `${markdownDone ? '正文已生成' : '正文待处理'} / ${screenshotDone ? '截图已生成' : '截图待处理'}`,
+              : `${markdownDone ? 'Markdown 已生成' : 'Markdown 待处理'} / ${screenshotDone ? '截图已生成' : '截图待处理'}`,
         };
       }),
+    };
+  }
+}
+
+type ProcessingKind = 'base' | 'markdown' | 'screenshot';
+
+interface LatestPageRunRow {
+  id: number;
+  crawl_run_id: number;
+  title: string;
+  meta_description: string;
+  body_text: string;
+  classification_tags_json: string;
+  decision_outcome: string;
+  decision_reason: string | null;
+  pending_reason: string | null;
+  required_artifacts_json: string;
+  base_capture_status: string;
+  base_capture_path: string | null;
+  finished_at: string | null;
+}
+
+function hasRequiredArtifact(requiredArtifacts: string[], kind: ProcessingKind): boolean {
+  return kind === 'base' || requiredArtifacts.includes(kind);
+}
+
+function buildProcessingState(input: {
+  kind: ProcessingKind;
+  shouldRun: boolean;
+  status: string | null;
+  runId: number | null;
+  handledAt: string | null;
+  outputPath: string | null;
+  decisionOutcome: string | null;
+  pendingReason: string | null;
+  requiredArtifacts: string[];
+  errorMessage?: string | null;
+}): {
+  kind: ProcessingKind;
+  label: string;
+  shouldRun: boolean;
+  succeeded: boolean;
+  status: string | null;
+  statusLabel: string;
+  reason: string;
+  runId: number | null;
+  handledAt: string | null;
+  outputPath: string | null;
+  errorMessage: string | null;
+} {
+  const succeeded = input.status === 'succeeded';
+  const label =
+    input.kind === 'base'
+      ? '基础爬取'
+      : input.kind === 'markdown'
+        ? 'Markdown'
+        : 'Screenshot';
+  let reason = '';
+
+  if (!input.shouldRun) {
+    if (input.decisionOutcome === 'deny') {
+      reason = '规则判定为不采集。';
+    } else if (input.decisionOutcome === 'pending') {
+      reason = toPendingReasonLabel(input.pendingReason) ?? '等待规则确认。';
+    } else if (input.kind !== 'base') {
+      reason = `最新规则未要求运行 ${label}。`;
+    } else {
+      reason = '尚未进入基础爬取。';
+    }
+  } else if (succeeded) {
+    reason = '已成功运行。';
+  } else if (input.errorMessage) {
+    reason = input.errorMessage;
+  } else if (input.status === 'failed') {
+    reason = '运行失败。';
+  } else if (input.requiredArtifacts.length > 0 || input.kind === 'base') {
+    reason = '应该运行，但还没有成功记录。';
+  } else {
+    reason = '无需运行。';
+  }
+
+  return {
+    kind: input.kind,
+    label,
+    shouldRun: input.shouldRun,
+    succeeded,
+    status: input.status,
+    statusLabel: succeeded ? '已成功' : input.status === 'failed' ? '失败' : '未成功',
+    reason,
+    runId: input.runId,
+    handledAt: input.handledAt,
+    outputPath: input.outputPath,
+    errorMessage: input.errorMessage ?? null,
+  };
+}
+
+export class SitePageDetailQuery {
+  constructor(private readonly db: DatabaseSync) {}
+
+  getPageDetail(siteId: number, sitePageId: number): {
+    sitePageId: number;
+    siteId: number;
+    title: string;
+    url: string;
+    discoveredUrl: string;
+    inventoryStatus: string;
+    businessStatus: string;
+    discoverySource: string;
+    discoveryReferrerUrl: string | null;
+    firstDiscoveredAt: string;
+    updatedAt: string;
+    latestTags: string[];
+    latestDecision: string | null;
+    latestPendingReasonLabel: string | null;
+    latestBase: ReturnType<typeof buildProcessingState>;
+    latestMarkdown: ReturnType<typeof buildProcessingState>;
+    latestScreenshot: ReturnType<typeof buildProcessingState>;
+    latestPageRun: {
+      pageRunId: number;
+      crawlRunId: number;
+      title: string;
+      metaDescription: string;
+      bodyText: string;
+      requiredArtifacts: string[];
+      decisionOutcome: string;
+      decisionReason: string | null;
+      pendingReasonLabel: string | null;
+    } | null;
+    latestPreviews: {
+      base: {
+        outputPath: string | null;
+        content: string | null;
+      };
+      markdown: {
+        artifactRunId: number | null;
+        outputPath: string | null;
+        content: string | null;
+      };
+      screenshot: {
+        artifactRunId: number | null;
+        outputPath: string | null;
+      };
+    };
+    runHistory: Array<{
+      runId: number;
+      runType: string;
+      runTypeLabel: string;
+      statusLabel: string;
+      startedAt: string;
+      finishedAt: string | null;
+      pageRuns: Array<{
+        pageRunId: number;
+        title: string;
+        decisionOutcome: string;
+        decisionReason: string | null;
+        pendingReasonLabel: string | null;
+        requiredArtifacts: string[];
+        tags: string[];
+        baseStatus: string;
+        baseCapturePath: string | null;
+        bodyPreview: string;
+      }>;
+      artifactRuns: Array<{
+        artifactRunId: number;
+        pageRunId: number;
+        artifactType: string;
+        status: string;
+        outputPath: string | null;
+        contentPreview: string;
+        errorMessage: string | null;
+        finishedAt: string | null;
+      }>;
+    }>;
+  } {
+    const page = this.db
+      .prepare(
+        `SELECT
+           id,
+           site_id,
+           discovered_url,
+           normalized_url,
+           inventory_status,
+           discovery_source,
+           discovery_referrer_url,
+           latest_title,
+           last_pending_reason,
+           last_base_status,
+           last_base_run_id,
+           last_base_at,
+           last_markdown_status,
+           last_markdown_run_id,
+           last_markdown_at,
+           last_screenshot_status,
+           last_screenshot_run_id,
+           last_screenshot_at,
+           first_discovered_at,
+           updated_at
+         FROM site_pages
+         WHERE site_id = ? AND id = ?`,
+      )
+      .get(siteId, sitePageId) as
+      | {
+          id: number;
+          site_id: number;
+          discovered_url: string;
+          normalized_url: string;
+          inventory_status: string;
+          discovery_source: string;
+          discovery_referrer_url: string | null;
+          latest_title: string | null;
+          last_pending_reason: string | null;
+          last_base_status: string | null;
+          last_base_run_id: number | null;
+          last_base_at: string | null;
+          last_markdown_status: string | null;
+          last_markdown_run_id: number | null;
+          last_markdown_at: string | null;
+          last_screenshot_status: string | null;
+          last_screenshot_run_id: number | null;
+          last_screenshot_at: string | null;
+          first_discovered_at: string;
+          updated_at: string;
+        }
+      | undefined;
+
+    if (!page) {
+      throw new Error(`Site page ${sitePageId} not found`);
+    }
+
+    const latestPageRun =
+      (this.db
+        .prepare(
+          `SELECT
+             id,
+             crawl_run_id,
+             title,
+             meta_description,
+             body_text,
+             classification_tags_json,
+             decision_outcome,
+             decision_reason,
+             pending_reason,
+             required_artifacts_json,
+             base_capture_status,
+             base_capture_path,
+             finished_at
+           FROM page_runs
+           WHERE site_page_id = ?
+           ORDER BY id DESC
+           LIMIT 1`,
+        )
+        .get(sitePageId) as LatestPageRunRow | undefined) ?? null;
+
+    const latestArtifacts = this.db
+      .prepare(
+        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at
+         FROM artifact_runs
+         WHERE site_page_id = ?
+         ORDER BY id DESC`,
+      )
+      .all(sitePageId) as Array<{
+      id: number;
+      artifact_type: string;
+      status: string;
+      output_path: string | null;
+      content: string | null;
+      error_message: string | null;
+      finished_at: string | null;
+    }>;
+
+    const latestArtifactByType = new Map<string, (typeof latestArtifacts)[number]>();
+    for (const artifact of latestArtifacts) {
+      if (!latestArtifactByType.has(artifact.artifact_type)) {
+        latestArtifactByType.set(artifact.artifact_type, artifact);
+      }
+    }
+
+    const requiredArtifacts =
+      latestPageRun === null
+        ? []
+        : (parseJson<string[]>(latestPageRun.required_artifacts_json) ?? []);
+    const decisionOutcome = latestPageRun?.decision_outcome ?? null;
+    const pendingReason = latestPageRun?.pending_reason ?? page.last_pending_reason;
+    const tagsObject =
+      latestPageRun === null
+        ? null
+        : parseJson<Record<string, string[]>>(latestPageRun.classification_tags_json);
+    const tags = Object.entries(tagsObject ?? {}).flatMap(([key, values]) =>
+      values.map((value) => `${key}: ${value}`),
+    );
+    const markdownArtifact = latestArtifactByType.get('markdown') ?? null;
+    const screenshotArtifact = latestArtifactByType.get('screenshot') ?? null;
+
+    const pageRuns = this.db
+      .prepare(
+        `SELECT
+           pr.id,
+           pr.crawl_run_id,
+           pr.title,
+           pr.body_text,
+           pr.classification_tags_json,
+           pr.decision_outcome,
+           pr.decision_reason,
+           pr.pending_reason,
+           pr.required_artifacts_json,
+           pr.base_capture_status,
+           pr.base_capture_path
+         FROM page_runs pr
+         WHERE pr.site_page_id = ?
+         ORDER BY pr.crawl_run_id DESC, pr.id DESC`,
+      )
+      .all(sitePageId) as Array<{
+      id: number;
+      crawl_run_id: number;
+      title: string;
+      body_text: string;
+      classification_tags_json: string;
+      decision_outcome: string;
+      decision_reason: string | null;
+      pending_reason: string | null;
+      required_artifacts_json: string;
+      base_capture_status: string;
+      base_capture_path: string | null;
+    }>;
+
+    const artifactRuns = this.db
+      .prepare(
+        `SELECT
+           id,
+           crawl_run_id,
+           page_run_id,
+           artifact_type,
+           status,
+           output_path,
+           content,
+           error_message,
+           finished_at
+         FROM artifact_runs
+         WHERE site_page_id = ?
+         ORDER BY crawl_run_id DESC, id DESC`,
+      )
+      .all(sitePageId) as Array<{
+      id: number;
+      crawl_run_id: number;
+      page_run_id: number;
+      artifact_type: string;
+      status: string;
+      output_path: string | null;
+      content: string | null;
+      error_message: string | null;
+      finished_at: string | null;
+    }>;
+
+    const runIds = Array.from(
+      new Set([
+        ...pageRuns.map((row) => row.crawl_run_id),
+        ...artifactRuns.map((row) => row.crawl_run_id),
+      ]),
+    );
+    const runRows =
+      runIds.length === 0
+        ? []
+        : (this.db
+            .prepare(
+              `SELECT id, run_type, status, started_at, finished_at
+               FROM crawl_runs
+               WHERE id IN (${runIds.map(() => '?').join(',')})
+               ORDER BY id DESC`,
+            )
+            .all(...runIds) as Array<{
+            id: number;
+            run_type: string;
+            status: string;
+            started_at: string;
+            finished_at: string | null;
+          }>);
+
+    const runHistory = runRows.map((run) => ({
+      runId: run.id,
+      runType: run.run_type,
+      runTypeLabel: toRunTypeLabel(run.run_type),
+      statusLabel: toRunStatusLabel(run.status),
+      startedAt: run.started_at,
+      finishedAt: run.finished_at,
+      pageRuns: pageRuns
+        .filter((pageRun) => pageRun.crawl_run_id === run.id)
+        .map((pageRun) => {
+          const pageRunTags = parseJson<Record<string, string[]>>(
+            pageRun.classification_tags_json,
+          ) ?? {};
+          const pageRunRequiredArtifacts =
+            parseJson<string[]>(pageRun.required_artifacts_json) ?? [];
+
+          return {
+            pageRunId: pageRun.id,
+            title: pageRun.title,
+            decisionOutcome: pageRun.decision_outcome,
+            decisionReason: pageRun.decision_reason,
+            pendingReasonLabel: toPendingReasonLabel(pageRun.pending_reason),
+            requiredArtifacts: pageRunRequiredArtifacts,
+            tags: Object.entries(pageRunTags).flatMap(([key, values]) =>
+              values.map((value) => `${key}: ${value}`),
+            ),
+            baseStatus: pageRun.base_capture_status,
+            baseCapturePath: pageRun.base_capture_path,
+            bodyPreview: pageRun.body_text.slice(0, 220),
+          };
+        }),
+      artifactRuns: artifactRuns
+        .filter((artifactRun) => artifactRun.crawl_run_id === run.id)
+        .map((artifactRun) => ({
+          artifactRunId: artifactRun.id,
+          pageRunId: artifactRun.page_run_id,
+          artifactType: artifactRun.artifact_type,
+          status: artifactRun.status,
+          outputPath: artifactRun.output_path,
+          contentPreview: (artifactRun.content ?? '').slice(0, 220),
+          errorMessage: artifactRun.error_message,
+          finishedAt: artifactRun.finished_at,
+        })),
+    }));
+
+    return {
+      sitePageId: page.id,
+      siteId: page.site_id,
+      title: page.latest_title ?? latestPageRun?.title ?? page.normalized_url,
+      url: page.normalized_url,
+      discoveredUrl: page.discovered_url,
+      inventoryStatus: page.inventory_status,
+      businessStatus: toInventoryStatusLabel(page.inventory_status),
+      discoverySource: page.discovery_source,
+      discoveryReferrerUrl: page.discovery_referrer_url,
+      firstDiscoveredAt: page.first_discovered_at,
+      updatedAt: page.updated_at,
+      latestTags: tags,
+      latestDecision: decisionOutcome,
+      latestPendingReasonLabel: toPendingReasonLabel(pendingReason),
+      latestBase: buildProcessingState({
+        kind: 'base',
+        shouldRun: latestPageRun !== null,
+        status: page.last_base_status,
+        runId: page.last_base_run_id,
+        handledAt: page.last_base_at,
+        outputPath: latestPageRun?.base_capture_path ?? null,
+        decisionOutcome,
+        pendingReason,
+        requiredArtifacts,
+      }),
+      latestMarkdown: buildProcessingState({
+        kind: 'markdown',
+        shouldRun: decisionOutcome === 'allow' && hasRequiredArtifact(requiredArtifacts, 'markdown'),
+        status: page.last_markdown_status,
+        runId: page.last_markdown_run_id,
+        handledAt: page.last_markdown_at,
+        outputPath: markdownArtifact?.output_path ?? null,
+        decisionOutcome,
+        pendingReason,
+        requiredArtifacts,
+        errorMessage: markdownArtifact?.error_message ?? null,
+      }),
+      latestScreenshot: buildProcessingState({
+        kind: 'screenshot',
+        shouldRun: decisionOutcome === 'allow' && hasRequiredArtifact(requiredArtifacts, 'screenshot'),
+        status: page.last_screenshot_status,
+        runId: page.last_screenshot_run_id,
+        handledAt: page.last_screenshot_at,
+        outputPath: screenshotArtifact?.output_path ?? null,
+        decisionOutcome,
+        pendingReason,
+        requiredArtifacts,
+        errorMessage: screenshotArtifact?.error_message ?? null,
+      }),
+      latestPageRun:
+        latestPageRun === null
+          ? null
+          : {
+              pageRunId: latestPageRun.id,
+              crawlRunId: latestPageRun.crawl_run_id,
+              title: latestPageRun.title,
+              metaDescription: latestPageRun.meta_description,
+              bodyText: latestPageRun.body_text,
+              requiredArtifacts,
+              decisionOutcome: latestPageRun.decision_outcome,
+              decisionReason: latestPageRun.decision_reason,
+              pendingReasonLabel: toPendingReasonLabel(latestPageRun.pending_reason),
+            },
+      latestPreviews: {
+        base: {
+          outputPath: latestPageRun?.base_capture_path ?? null,
+          content: readTextFile(latestPageRun?.base_capture_path ?? null),
+        },
+        markdown: {
+          artifactRunId: markdownArtifact?.id ?? null,
+          outputPath: markdownArtifact?.output_path ?? null,
+          content: markdownArtifact?.content ?? null,
+        },
+        screenshot: {
+          artifactRunId: screenshotArtifact?.id ?? null,
+          outputPath: screenshotArtifact?.output_path ?? null,
+        },
+      },
+      runHistory,
+    };
+  }
+
+  getArtifactFile(siteId: number, artifactRunId: number): {
+    artifactType: string;
+    outputPath: string;
+  } {
+    const artifact = this.db
+      .prepare(
+        `SELECT ar.artifact_type, ar.output_path
+         FROM artifact_runs ar
+         JOIN site_pages sp ON sp.id = ar.site_page_id
+         WHERE sp.site_id = ? AND ar.id = ?`,
+      )
+      .get(siteId, artifactRunId) as
+      | {
+          artifact_type: string;
+          output_path: string | null;
+        }
+      | undefined;
+
+    if (!artifact?.output_path || !existsSync(artifact.output_path)) {
+      throw new Error(`Artifact ${artifactRunId} not found`);
+    }
+
+    return {
+      artifactType: artifact.artifact_type,
+      outputPath: artifact.output_path,
     };
   }
 }

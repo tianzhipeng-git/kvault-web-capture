@@ -180,7 +180,43 @@ describe('web server', () => {
         kvault_session: authCookie.split('=')[1],
       },
     });
-    const pageList = pageResponse.json() as { rows: Array<{ businessStatus: string }> };
+    const pageList = pageResponse.json() as {
+      rows: Array<{ sitePageId: number; businessStatus: string }>;
+    };
     expect(pageList.rows[0]?.businessStatus).toBe('待确认');
+
+    const runScopedPageResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.id}/pages?page=1&pageSize=10&crawlRunId=${runId}`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const runScopedPageList = runScopedPageResponse.json() as {
+      rows: Array<{ sitePageId: number }>;
+      total: number;
+    };
+    expect(runScopedPageList.total).toBeGreaterThan(0);
+
+    const pageDetailResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.id}/pages/${pageList.rows[0]!.sitePageId}`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const pageDetail = pageDetailResponse.json() as {
+      latestBase: { shouldRun: boolean; succeeded: boolean };
+      latestMarkdown: { shouldRun: boolean; succeeded: boolean; reason: string };
+      latestScreenshot: { shouldRun: boolean; succeeded: boolean; reason: string };
+      runHistory: Array<{ runId: number; pageRuns: unknown[] }>;
+    };
+    expect(pageDetail.latestBase.shouldRun).toBe(true);
+    expect(pageDetail.latestBase.succeeded).toBe(true);
+    expect(pageDetail.latestMarkdown.shouldRun).toBe(false);
+    expect(pageDetail.latestScreenshot.shouldRun).toBe(false);
+    expect(pageDetail.runHistory.some((run) => run.runId === runId && run.pageRuns.length > 0)).toBe(
+      true,
+    );
   });
 });

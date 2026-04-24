@@ -66,7 +66,7 @@ export function ProjectDetails() {
           <h1 className="text-3xl font-bold tracking-tight">站点列表</h1>
           <p className="text-muted-foreground mt-1">管理该项目下的所有采集目标站点</p>
         </div>
-        
+
         <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) storageRootEdited.current = false; setIsDialogOpen(open); }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -89,7 +89,7 @@ export function ProjectDetails() {
                     const updates: typeof formData = { ...formData, name };
                     if (!storageRootEdited.current) {
                       const slug = projectSlug || `proj-${projectId}`;
-                      updates.storageRoot = name ? `./data/${slug}/${toPathSegment(name)}` : "";
+                      updates.storageRoot = name ? `.local/${slug}/${toPathSegment(name)}` : "";
                     }
                     setFormData(updates);
                   }}
@@ -100,17 +100,17 @@ export function ProjectDetails() {
                 <Input
                   placeholder="https://example.com"
                   value={formData.baseUrl}
-                  onChange={(e) => setFormData({...formData, baseUrl: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, baseUrl: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label>本地存储路径 (Storage Root)</Label>
                 <Input
-                  placeholder="./data/example-docs"
+                  placeholder=".local/example-docs"
                   value={formData.storageRoot}
                   onChange={(e) => {
                     storageRootEdited.current = true;
-                    setFormData({...formData, storageRoot: e.target.value});
+                    setFormData({ ...formData, storageRoot: e.target.value });
                   }}
                 />
               </div>

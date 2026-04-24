@@ -42,7 +42,7 @@ export function Login() {
         <Card>
           <CardHeader className="space-y-1 text-center">
             <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold mx-auto mb-4">
-              KV
+              Cap
             </div>
             <CardTitle className="text-2xl font-bold">Kvault Capture</CardTitle>
             <CardDescription>

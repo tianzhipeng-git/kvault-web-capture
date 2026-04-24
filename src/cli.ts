@@ -28,21 +28,21 @@ function getRequiredArg(flag: string): string {
 function printUsage(): void {
   console.log(`Usage:
   pnpm spike --url <seed-url> [--db ./.local/spike.db] [--storage ./.local/crawlee]
-  node --import tsx src/cli.ts project:create --name <name> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts run:seed --site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:inventory-summary --site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:denied --site <site-id> [--db ./.local/m1.db]
-  node --import tsx src/cli.ts site:sample-captures --site <site-id> [--limit 5] [--db ./.local/m1.db]`);
+  node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:seed --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:inventory-summary --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:denied --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:sample-captures --site <site-id> [--limit 5] [--db ./.local/state.db]`);
 }
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  const dbPath = resolve(getArg('--db', '.local/m1.db')!);
+  const dbPath = resolve(getArg('--db', '.local/state.db')!);
 
   if (!command) {
     printUsage();
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
         console.log(JSON.stringify({ status: 'ok' }, null, 2));
         return;
       }
-      case 'run:seed':{
+      case 'run:seed': {
         const result = await app.runSeed(Number(getRequiredArg('--site')));
         console.log(JSON.stringify(result, null, 2));
         return;

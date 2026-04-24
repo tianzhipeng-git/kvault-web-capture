@@ -26,7 +26,7 @@
 
 ## 前后端配合
 
-- 后端 API 提供：后端 (src/web/server.ts) 基于 Fastify 构建，在 /api/* 路径下提供了一套 RESTful API（例如 /api/projects, /api/sites, /api/auth/login 等）。后端负责底层的核心业务逻辑，比如与 SQLite 数据库交互 (m1.db)、启动爬虫任务（seed, crawl）以及处理身份验证（SessionAuth）。
+- 后端 API 提供：后端 (src/web/server.ts) 基于 Fastify 构建，在 /api/* 路径下提供了一套 RESTful API（例如 /api/projects, /api/sites, /api/auth/login 等）。后端负责底层的核心业务逻辑，比如与 SQLite 数据库交互 (state.db)、启动爬虫任务（seed, crawl）以及处理身份验证（SessionAuth）。
 - 前端数据渲染：前端 (src/web/frontend) 是一个 React 单页应用 (SPA)。它通过调用后端的 /api/* 接口来获取数据并展示（例如项目列表、站点状态、采集流水线），同时通过接口触发后端的操作。
 - 命令行工具补充：此外，src/cli.ts 提供了一个直接调用后端核心服务 (M1App) 的命令行界面。CLI 绕过了 HTTP API，直接对数据库进行操作或启动采集任务。这通常用于管理维护、自动化脚本或无头环境（Headless）。
 

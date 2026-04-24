@@ -220,11 +220,27 @@ describe('crawl history planning', () => {
       ).all(secondRun.runId) as Array<{
         artifact_type: string;
       }>;
+      const crawlRunRow = db.prepare(
+        `SELECT successful_page_count, candidate_page_count, pending_page_count, denied_page_count
+         FROM crawl_runs
+         WHERE id = ?`,
+      ).get(secondRun.runId) as {
+        successful_page_count: number;
+        candidate_page_count: number;
+        pending_page_count: number;
+        denied_page_count: number;
+      };
 
       expect(firstRun.pageRuns).toBe(2);
       expect(firstRun.artifactRuns).toBe(2);
       expect(secondRun.pageRuns).toBe(1);
       expect(secondRun.artifactRuns).toBe(1);
+      expect(crawlRunRow).toEqual({
+        successful_page_count: 1,
+        candidate_page_count: 1,
+        pending_page_count: 0,
+        denied_page_count: 0,
+      });
       expect(rerunPageRows).toEqual([
         {
           normalized_url: `${server.baseUrl}/product`,

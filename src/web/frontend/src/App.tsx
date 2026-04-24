@@ -72,24 +72,23 @@ export default function App() {
       <aside className={`${sidebarCollapsed ? "w-16" : "w-64"} border-r bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex flex-col relative z-10 transition-all duration-300`}>
         <div className={`p-4 flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"}`}>
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold shrink-0">
-            KV
+            Cap
           </div>
           {!sidebarCollapsed && (
             <span className="font-semibold text-lg tracking-tight truncate">Kvault Capture</span>
           )}
         </div>
-        
+
         <nav className="px-2 space-y-1 flex-1">
           {navItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
               title={sidebarCollapsed ? item.name : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${sidebarCollapsed ? "justify-center" : ""} ${
-                location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
-                  ? "bg-primary text-primary-foreground font-medium shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${sidebarCollapsed ? "justify-center" : ""} ${location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path))
+                ? "bg-primary text-primary-foreground font-medium shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
             >
               <item.icon className="w-5 h-5 shrink-0" />
               {!sidebarCollapsed && item.name}
