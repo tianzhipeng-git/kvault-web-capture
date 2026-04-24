@@ -1,9 +1,12 @@
-export interface MarkdownCaptureAdapter {
-  capture(url: string): Promise<string>;
-}
+import type { MarkdownCaptureAdapter, MarkdownCaptureResult } from './markdown-adapter.js';
 
 export class FakeMarkdownCaptureAdapter implements MarkdownCaptureAdapter {
-  async capture(url: string): Promise<string> {
-    return `# Fake markdown capture\n\nSource: ${url}\n`;
+  readonly crawlerType = 'basic' as const;
+
+  async capture(url: string): Promise<MarkdownCaptureResult> {
+    return {
+      content: `# Fake markdown capture\n\nSource: ${url}\n`,
+      strategyName: 'fake',
+    };
   }
 }

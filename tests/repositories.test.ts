@@ -100,6 +100,7 @@ describe('repositories', () => {
       content: '# Docs',
       outputPath: null,
       errorMessage: null,
+      meta: { strategy: 'defuddle' },
     });
 
     pages.recordArtifactResult({
@@ -118,6 +119,7 @@ describe('repositories', () => {
       content: null,
       outputPath: '/tmp/fake.png',
       errorMessage: null,
+      meta: { tool: 'playwright' },
     });
 
     pages.recordArtifactResult({

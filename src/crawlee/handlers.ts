@@ -1,5 +1,6 @@
 import type { RequestQueue } from 'crawlee';
 import { type CheerioCrawlingContext } from 'crawlee';
+import type { Page } from 'playwright';
 
 import type { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
@@ -12,7 +13,7 @@ import type {
   SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
-import type { MarkdownCaptureAdapter } from '../markdown/fake-markdown-adapter.js';
+import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
 import { extractPageContent } from '../extract/extract-page.js';
 import {
   ArtifactRunRepository,
@@ -22,7 +23,7 @@ import {
 import { RunPlanner } from '../planner/run-planner.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
-import type { ScreenshotCaptureAdapter } from '../screenshot/fake-screenshot-adapter.js';
+import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 
 function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
   return runType === 'seed_run'
@@ -219,14 +220,21 @@ export function createMarkdownRequestHandler(deps: {
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
 }) {
-  return async ({ request }: { request: { url: string; userData: unknown } }) => {
+  return async (context: {
+    request: { url: string; userData: unknown; loadedUrl?: string };
+    document?: Document;
+  }) => {
+    const { request } = context;
     const userData = request.userData as MarkdownRequestUserData;
-    const content = await deps.markdownAdapter.capture(request.url);
+    const captured = await deps.markdownAdapter.capture(request.url, {
+      document: context.document,
+      finalUrl: request.loadedUrl ?? request.url,
+    });
     const written = deps.artifactWriter.writeTextArtifact({
       artifactType: 'markdown',
       runId: userData.runId,
       sitePageId: userData.sitePageId,
-      content,
+      content: captured.content,
       extension: 'md',
     });
 
@@ -239,6 +247,7 @@ export function createMarkdownRequestHandler(deps: {
       content: written.content,
       outputPath: written.outputPath,
       errorMessage: null,
+      meta: { strategy: captured.strategyName },
     });
 
     deps.sitePageRepository.recordArtifactResult({
@@ -266,6 +275,7 @@ export function createMarkdownFailedRequestHandler(deps: {
       content: null,
       outputPath: null,
       errorMessage: error.message,
+      meta: null,
     });
 
     deps.sitePageRepository.recordArtifactResult({
@@ -283,9 +293,16 @@ export function createScreenshotRequestHandler(deps: {
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
 }) {
-  return async ({ request }: { request: { url: string; userData: unknown } }) => {
+  return async (context: {
+    request: { url: string; userData: unknown; loadedUrl?: string };
+    page?: Page;
+  }) => {
+    const { request } = context;
     const userData = request.userData as ScreenshotRequestUserData;
-    const capture = await deps.screenshotAdapter.capture(request.url);
+    const capture = await deps.screenshotAdapter.capture(request.url, {
+      page: context.page,
+      finalUrl: request.loadedUrl ?? request.url,
+    });
     const written = deps.artifactWriter.writeBinaryArtifact({
       artifactType: 'screenshot',
       runId: userData.runId,
@@ -303,6 +320,7 @@ export function createScreenshotRequestHandler(deps: {
       content: written.content,
       outputPath: written.outputPath,
       errorMessage: null,
+      meta: { tool: capture.toolName },
     });
 
     deps.sitePageRepository.recordArtifactResult({
@@ -330,6 +348,7 @@ export function createScreenshotFailedRequestHandler(deps: {
       content: null,
       outputPath: null,
       errorMessage: error.message,
+      meta: null,
     });
 
     deps.sitePageRepository.recordArtifactResult({

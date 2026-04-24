@@ -115,6 +115,7 @@ export function initializeSchema(db: DatabaseSync): void {
       output_path TEXT,
       content TEXT,
       error_message TEXT,
+      meta_json TEXT,
       FOREIGN KEY (crawl_run_id) REFERENCES crawl_runs(id),
       FOREIGN KEY (page_run_id) REFERENCES page_runs(id),
       FOREIGN KEY (site_page_id) REFERENCES site_pages(id)

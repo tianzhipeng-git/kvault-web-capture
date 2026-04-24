@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { M1App } from '../src/app/services.js';
 import { openDatabase } from '../src/db/database.js';
 import type { ArtifactType } from '../src/domain/types.js';
-import type { MarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
-import type { ScreenshotCaptureAdapter, ScreenshotCaptureResult } from '../src/screenshot/fake-screenshot-adapter.js';
+import { FakeMarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
+import type { MarkdownCaptureAdapter } from '../src/markdown/markdown-adapter.js';
+import { FakeScreenshotCaptureAdapter } from '../src/screenshot/fake-screenshot-adapter.js';
+import type { ScreenshotCaptureAdapter, ScreenshotCaptureResult } from '../src/screenshot/screenshot-adapter.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
@@ -98,8 +100,8 @@ async function createConfiguredApp(input: {
   const storageRoot = join(input.dir, 'storage');
   const app = new M1App({
     dbPath,
-    markdownAdapter: input.markdownAdapter,
-    screenshotAdapter: input.screenshotAdapter,
+    markdownAdapter: input.markdownAdapter ?? new FakeMarkdownCaptureAdapter(),
+    screenshotAdapter: input.screenshotAdapter ?? new FakeScreenshotCaptureAdapter(),
   });
   const project = app.createProject('Crawl Project');
   const site = app.createSite({

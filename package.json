@@ -10,10 +10,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "crawlee": "^3.13.8"
+    "crawlee": "^3.13.8",
+    "defuddle": "^0.18.1",
+    "playwright": "^1.59.1"
   },
   "devDependencies": {
     "@types/node": "^24.6.1",
+    "jsdom": "^29.0.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

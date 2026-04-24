@@ -835,6 +835,7 @@ export class ArtifactRunRepository {
     content: string | null;
     outputPath: string | null;
     errorMessage: string | null;
+    meta: Record<string, unknown> | null;
   }): number {
     const now = this.clock.now();
     const result = this.db
@@ -849,8 +850,9 @@ export class ArtifactRunRepository {
           finished_at,
           output_path,
           content,
-          error_message
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          error_message,
+          meta_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.runId,
@@ -863,6 +865,7 @@ export class ArtifactRunRepository {
         input.outputPath,
         input.content,
         input.errorMessage,
+        input.meta !== null ? JSON.stringify(input.meta) : null,
       ) as RowIdResult;
 
     return toId(result);
