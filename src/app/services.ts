@@ -1,6 +1,12 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 
-import { BasicCrawler, CheerioCrawler, Configuration } from 'crawlee';
+import {
+  BasicCrawler,
+  CheerioCrawler,
+  Configuration,
+  JSDOMCrawler,
+  PlaywrightCrawler,
+} from 'crawlee';
 
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
@@ -31,15 +37,18 @@ import type {
   SpikeRunSummary,
   UpdatePolicy,
 } from '../domain/types.js';
-import { FakeMarkdownCaptureAdapter, type MarkdownCaptureAdapter } from '../markdown/fake-markdown-adapter.js';
+import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
+import { createDefaultMarkdownAdapter } from '../markdown/real-markdown-adapter.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
-import {
-  FakeScreenshotCaptureAdapter,
-  type ScreenshotCaptureAdapter,
-} from '../screenshot/fake-screenshot-adapter.js';
+import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
+import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screenshot-adapter.js';
+import { loadDefaultEnvFile } from '../utils/env.js';
 import { SystemClock } from '../utils/clock.js';
+
+const HAS_SYSTEM_CHROME =
+  process.platform === 'darwin' && existsSync('/Applications/Google Chrome.app');
 
 export interface M1AppOptions {
   dbPath: string;
@@ -85,8 +94,10 @@ export class M1App {
     this.planner = new RunPlanner(this.sitePages, this.clock);
     initializeSchema(this.db);
     this.classifier = options.classifier ?? new FakeClassifier();
-    this.markdownAdapter = options.markdownAdapter ?? new FakeMarkdownCaptureAdapter();
-    this.screenshotAdapter = options.screenshotAdapter ?? new FakeScreenshotCaptureAdapter();
+    loadDefaultEnvFile();
+    this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
+    this.screenshotAdapter =
+      options.screenshotAdapter ?? new PlaywrightScreenshotCaptureAdapter();
   }
 
   close(): void {
@@ -288,43 +299,92 @@ export class M1App {
       configuration,
     );
 
-    const markdownCrawler = new BasicCrawler(
-      {
-        requestQueue: markdownQueue,
-        maxConcurrency: 1,
-        requestHandlerTimeoutSecs: 30,
-        requestHandler: createMarkdownRequestHandler({
-          markdownAdapter: this.markdownAdapter,
-          artifactRunRepository: this.artifactRuns,
-          sitePageRepository: this.sitePages,
-          artifactWriter,
-        }),
-        failedRequestHandler: createMarkdownFailedRequestHandler({
-          artifactRunRepository: this.artifactRuns,
-          sitePageRepository: this.sitePages,
-        }),
-      },
-      configuration,
-    );
+    const markdownCrawler =
+      this.markdownAdapter.crawlerType === 'jsdom'
+        ? new JSDOMCrawler(
+            {
+              requestQueue: markdownQueue,
+              maxConcurrency: 1,
+              requestHandlerTimeoutSecs: 30,
+              requestHandler: createMarkdownRequestHandler({
+                markdownAdapter: this.markdownAdapter,
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+                artifactWriter,
+              }),
+              failedRequestHandler: createMarkdownFailedRequestHandler({
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+              }),
+            },
+            configuration,
+          )
+        : new BasicCrawler(
+            {
+              requestQueue: markdownQueue,
+              maxConcurrency: 1,
+              requestHandlerTimeoutSecs: 30,
+              requestHandler: createMarkdownRequestHandler({
+                markdownAdapter: this.markdownAdapter,
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+                artifactWriter,
+              }),
+              failedRequestHandler: createMarkdownFailedRequestHandler({
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+              }),
+            },
+            configuration,
+          );
 
-    const screenshotCrawler = new BasicCrawler(
-      {
-        requestQueue: screenshotQueue,
-        maxConcurrency: 1,
-        requestHandlerTimeoutSecs: 30,
-        requestHandler: createScreenshotRequestHandler({
-          screenshotAdapter: this.screenshotAdapter,
-          artifactRunRepository: this.artifactRuns,
-          sitePageRepository: this.sitePages,
-          artifactWriter,
-        }),
-        failedRequestHandler: createScreenshotFailedRequestHandler({
-          artifactRunRepository: this.artifactRuns,
-          sitePageRepository: this.sitePages,
-        }),
-      },
-      configuration,
-    );
+    const screenshotCrawler =
+      this.screenshotAdapter.crawlerType === 'playwright'
+        ? new PlaywrightCrawler(
+            {
+              requestQueue: screenshotQueue,
+              maxConcurrency: 1,
+              requestHandlerTimeoutSecs: 30,
+              ...(HAS_SYSTEM_CHROME
+                ? {
+                    launchContext: {
+                      launchOptions: {
+                        channel: 'chrome' as const,
+                      },
+                    },
+                  }
+                : {}),
+              requestHandler: createScreenshotRequestHandler({
+                screenshotAdapter: this.screenshotAdapter,
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+                artifactWriter,
+              }),
+              failedRequestHandler: createScreenshotFailedRequestHandler({
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+              }),
+            },
+            configuration,
+          )
+        : new BasicCrawler(
+            {
+              requestQueue: screenshotQueue,
+              maxConcurrency: 1,
+              requestHandlerTimeoutSecs: 30,
+              requestHandler: createScreenshotRequestHandler({
+                screenshotAdapter: this.screenshotAdapter,
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+                artifactWriter,
+              }),
+              failedRequestHandler: createScreenshotFailedRequestHandler({
+                artifactRunRepository: this.artifactRuns,
+                sitePageRepository: this.sitePages,
+              }),
+            },
+            configuration,
+          );
 
     try {
       await baseCrawler.run();
