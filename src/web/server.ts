@@ -117,6 +117,14 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     activeRuns: coordinator.listActiveRuns(),
   }));
 
+  server.setNotFoundHandler((request, reply) => {
+    if (request.method === 'GET' && !request.url.startsWith('/api/')) {
+      reply.type('text/html; charset=utf-8').send(readFrontendAsset('index.html'));
+      return;
+    }
+    reply.code(404).send({ message: 'Not found' });
+  });
+
   server.get('/', async (_request, reply) => {
     reply.type('text/html; charset=utf-8').send(readFrontendAsset('index.html'));
   });
