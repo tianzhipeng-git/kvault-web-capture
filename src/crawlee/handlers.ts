@@ -25,6 +25,7 @@ import { RunPlanner } from '../planner/run-planner.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
+import type { RunTargetTracker } from './run-target-tracker.js';
 
 function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
   return runType === 'seed_run'
@@ -68,9 +69,26 @@ export function createBaseRequestHandler(deps: {
   sitePageRepository: SitePageRepository;
   runPlanner: RunPlanner;
   runLog: RunLogRepository;
+  targetTracker?: RunTargetTracker;
 }) {
   return async ({ request, $ }: CheerioCrawlingContext) => {
     const userData = request.userData as BaseRequestUserData;
+
+    if (deps.targetTracker?.isReached()) {
+      deps.runLog.log({
+        crawlRunId: userData.runId,
+        level: 'info',
+        event: 'base_page_skipped_target_reached',
+        url: userData.normalizedUrl,
+        sitePageId: userData.sitePageId,
+        message: `[base] SKIPPED target reached ${userData.normalizedUrl}`,
+        meta: {
+          candidateSuccessCount: deps.targetTracker.getCandidateSuccessCount(),
+        },
+      });
+      return;
+    }
+
     const extracted = extractPageContent(request.loadedUrl ?? request.url, $);
     const historyBeforeCapture = deps.sitePageRepository.getHistoricalState(
       userData.siteId,
@@ -146,6 +164,26 @@ export function createBaseRequestHandler(deps: {
     });
 
     if (deps.runType === 'crawl_run' && decision.pageOutcome === 'allow') {
+      const targetState = deps.targetTracker?.recordCandidateSuccess();
+
+      if (targetState?.reachedNow) {
+        deps.runLog.log({
+          crawlRunId: userData.runId,
+          level: 'info',
+          event: 'target_success_count_reached',
+          url: extracted.normalizedUrl,
+          sitePageId: userData.sitePageId,
+          pageRunId,
+          message: `Run ${userData.runId} reached targetSuccessCount=${targetState.target}`,
+          meta: {
+            targetSuccessCount: targetState.target,
+            candidateSuccessCount: targetState.count,
+          },
+        });
+      }
+    }
+
+    if (deps.runType === 'crawl_run' && decision.pageOutcome === 'allow') {
       if (
         decision.requiredArtifacts.includes('markdown') &&
         shouldEnqueueArtifactByUpdatePolicy({
@@ -193,6 +231,10 @@ export function createBaseRequestHandler(deps: {
           } satisfies ScreenshotRequestUserData,
         });
       }
+    }
+
+    if (deps.targetTracker?.isReached()) {
+      return;
     }
 
     if (userData.depth >= getMaxDepth(deps.runType, deps.siteConfig)) {

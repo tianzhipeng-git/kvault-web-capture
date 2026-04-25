@@ -75,7 +75,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
             </select>
           </div>
           <div className="space-y-2">
-            <Label>目标成功页数</Label>
+            <Label>目标成功页数(软上限)</Label>
             <Input type="number" min="1" placeholder="不限" value={targetSuccessCount} onChange={(event) => setTargetSuccessCount(event.target.value)} />
           </div>
           <div className="space-y-2">

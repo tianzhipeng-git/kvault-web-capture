@@ -227,7 +227,7 @@ URL 归一化由 `normalizeUrl` 提供，主要处理：
 - `skip_existing`：已有完整成功结果时跳过；配置变化、pending、失败、缺少 artifact 时重新抓。
 - `stale_after_duration`：base 或所需 artifact 超过 `staleAfterMs` 时重新抓。
 
-注意：`targetSuccessCount` 已进入接口和数据库，但当前 `M1App.executeRun` 没有实现达到数量后主动停止。
+`targetSuccessCount` 是软上限。达到目标后，base crawler 会停止继续扩展新链接，并跳过后续多余 base 请求；已并发开始或已入队的 artifact 请求仍会完成，所以最终成功数可能略高于目标。成功数以 `RunRepository.refreshCounts` 的完整 artifact 口径为准。
 
 ## 4. 执行子系统
 

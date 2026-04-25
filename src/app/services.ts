@@ -32,6 +32,7 @@ import type {
 import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
 import { createDefaultMarkdownAdapter } from '../markdown/real-markdown-adapter.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
+import { RunTargetTracker } from '../crawlee/run-target-tracker.js';
 import {
   createBaseCrawler,
   createMarkdownCrawler,
@@ -272,6 +273,8 @@ export class M1App {
     const baseQueue = await openRunQueue(runId, 'base', configuration);
     const markdownQueue = await openRunQueue(runId, 'markdown', configuration);
     const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
+    const targetTracker =
+      input.runType === 'crawl_run' ? new RunTargetTracker(input.targetSuccessCount) : undefined;
 
     const startupCandidates = await expandStartupUrlCandidates({
       seedUrls: site.config.seedUrls,
@@ -343,6 +346,7 @@ export class M1App {
       sitePageRepository: this.sitePages,
       runPlanner: this.planner,
       runLog: this.runLogs,
+      targetTracker,
     });
 
     const markdownCrawler = createMarkdownCrawler({

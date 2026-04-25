@@ -29,6 +29,7 @@ import {
   createScreenshotRequestHandler,
 } from './handlers.js';
 import type { RunLogRepository } from '../db/repositories/index.js';
+import type { RunTargetTracker } from './run-target-tracker.js';
 
 /**
  * Shared session pool configuration applied to all HTTP-based crawlers.
@@ -63,6 +64,7 @@ export interface CreateBaseCrawlerOptions {
   sitePageRepository: SitePageRepository;
   runPlanner: RunPlanner;
   runLog: RunLogRepository;
+  targetTracker?: RunTargetTracker;
 }
 
 /**
@@ -95,6 +97,7 @@ export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCra
         sitePageRepository: options.sitePageRepository,
         runPlanner: options.runPlanner,
         runLog: options.runLog,
+        targetTracker: options.targetTracker,
       }),
       failedRequestHandler: createBaseFailedRequestHandler({
         pageRunRepository: options.pageRunRepository,

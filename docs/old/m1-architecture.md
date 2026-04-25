@@ -145,7 +145,6 @@ M1 must treat `project` and `site` as first-class business entities, not just di
 The accepted M1 rule is strict:
 
 - a page only counts as successful for the run when all target artifacts for that page are complete
-- this follows the chosen `6C` decision
 
 ### 7. Run Types
 

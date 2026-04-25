@@ -12,6 +12,7 @@ import {
   createMarkdownRequestHandler,
   createScreenshotRequestHandler,
 } from '../src/crawlee/handlers.js';
+import { RunTargetTracker } from '../src/crawlee/run-target-tracker.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
   ArtifactRunRepository,
@@ -386,6 +387,130 @@ describe('integration spike', () => {
         decision_reason: 'matched blacklist rule deny-stage2-blog',
         required_artifacts_json: '[]',
       });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('stops expanding base links after the target success count is reached', async () => {
+    const dir = createTempDir('kvault-spike-target-');
+    const dbPath = join(dir, 'spike.db');
+    const storageDir = join(dir, 'storage');
+    const baseUrl = 'https://example.com/docs';
+    const db = openDatabase(dbPath);
+    initializeSchema(db);
+    const clock = new SystemClock();
+    const projectRepository = new ProjectRepository(db, clock);
+    const siteRepository = new SiteRepository(db, clock);
+    const runRepository = new RunRepository(db, clock);
+    const sitePageRepository = new SitePageRepository(db, clock);
+    const pageRunRepository = new PageRunRepository(db, clock);
+    const planner = new RunPlanner(sitePageRepository, clock);
+    const project = projectRepository.create('Target Project');
+    const siteConfig = createDefaultSiteConfig(baseUrl);
+    siteConfig.rulesBeforeStage2Eq = [
+      {
+        name: 'default-markdown',
+        matchType: 'tag',
+        listType: 'whitelist',
+        when: [
+          {
+            key: 'content_type',
+            op: 'any_of',
+            values: ['docs', 'product', 'generic'],
+          },
+        ],
+        artifacts: ['markdown', 'screenshot'],
+      },
+    ];
+    const site = siteRepository.create({
+      projectId: project.id,
+      name: 'target-site',
+      baseUrl: 'https://example.com',
+      storageRoot: storageDir,
+      config: siteConfig,
+    });
+    const runId = runRepository.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: 1,
+      configSnapshot: site.config,
+    });
+    const sitePageId = sitePageRepository.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: baseUrl,
+      normalizedUrl: baseUrl,
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
+    });
+
+    const configuration = new Configuration({
+      persistStorage: true,
+      purgeOnStart: false,
+      storageClientOptions: {
+        localDataDirectory: storageDir,
+      },
+    });
+
+    const baseQueue = await RequestQueue.open(`run-${runId}-base`, {
+      config: configuration,
+    });
+    const markdownQueue = await RequestQueue.open(`run-${runId}-markdown`, {
+      config: configuration,
+    });
+    const screenshotQueue = await RequestQueue.open(`run-${runId}-screenshot`, {
+      config: configuration,
+    });
+
+    const baseHandler = createBaseRequestHandler({
+      classifier: new FakeClassifier(),
+      siteConfig: site.config,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      baseQueue,
+      markdownQueue,
+      screenshotQueue,
+      artifactWriter: new FileArtifactWriter(storageDir),
+      pageRunRepository,
+      sitePageRepository,
+      runPlanner: planner,
+      runLog: noopRunLog,
+      targetTracker: new RunTargetTracker(1),
+    });
+
+    const fakeDom = createFakeCheerio({
+      title: 'Example Docs',
+      metaDescription: 'Tiny docs page',
+      bodyText: 'Docs content for target limiting.',
+      links: ['https://example.com/docs/a', 'https://example.com/docs/b'],
+    });
+
+    try {
+      await baseHandler({
+        request: {
+          url: baseUrl,
+          loadedUrl: baseUrl,
+          userData: {
+            stage: 'base',
+            runId,
+            siteId: site.id,
+            sitePageId,
+            normalizedUrl: baseUrl,
+            depth: 0,
+            runType: 'crawl_run',
+          },
+        },
+        $: fakeDom,
+      } as never);
+
+      expect(pageRunRepository.countByRun(runId)).toBe(1);
+      expect(await markdownQueue.fetchNextRequest()).not.toBeNull();
+      expect(await screenshotQueue.fetchNextRequest()).not.toBeNull();
+      expect(await baseQueue.fetchNextRequest()).toBeNull();
     } finally {
       db.close();
     }

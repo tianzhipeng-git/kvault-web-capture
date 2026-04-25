@@ -10,6 +10,8 @@ export type RunLogEvent =
   | 'crawl_error'
   | 'base_page_done'
   | 'base_page_failed'
+  | 'base_page_skipped_target_reached'
+  | 'target_success_count_reached'
   | 'artifact_done'
   | 'artifact_failed';
 
