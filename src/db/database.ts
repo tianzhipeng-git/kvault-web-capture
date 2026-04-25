@@ -121,6 +121,20 @@ export function initializeSchema(db: DatabaseSync): void {
       FOREIGN KEY (site_page_id) REFERENCES site_pages(id)
     );
 
+    CREATE TABLE IF NOT EXISTS run_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      crawl_run_id INTEGER NOT NULL,
+      level TEXT NOT NULL,
+      event TEXT NOT NULL,
+      url TEXT,
+      site_page_id INTEGER,
+      page_run_id INTEGER,
+      message TEXT NOT NULL,
+      meta_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (crawl_run_id) REFERENCES crawl_runs(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_site_pages_site_inventory
       ON site_pages(site_id, inventory_status);
 
@@ -129,5 +143,24 @@ export function initializeSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_artifact_runs_run
       ON artifact_runs(crawl_run_id);
+
+    CREATE INDEX IF NOT EXISTS idx_run_logs_run
+      ON run_logs(crawl_run_id);
   `);
+
+  // ── Schema migrations (idempotent ALTER TABLE) ──────────────────────────────
+  // SQLite does not support IF NOT EXISTS on ALTER TABLE, so we wrap each in a
+  // try/catch so re-running on an existing database is safe.
+  const migrations = [
+    `ALTER TABLE crawl_runs ADD COLUMN error_message TEXT`,
+    `ALTER TABLE page_runs  ADD COLUMN error_message TEXT`,
+  ];
+
+  for (const sql of migrations) {
+    try {
+      db.exec(sql);
+    } catch {
+      // Column already exists – ignore.
+    }
+  }
 }

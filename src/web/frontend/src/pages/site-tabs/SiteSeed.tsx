@@ -5,8 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Play, RefreshCw } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Play, RefreshCw, ScrollText, FileText, AlertCircle } from "lucide-react";
 import { PageReview } from "./PageReview";
+import { RunLogs } from "@/components/RunLogs";
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "-";
@@ -16,6 +18,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
   const [isStarting, setIsStarting] = useState(false);
   const [runs, setRuns] = useState<SiteRunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"pages" | "logs">("pages");
 
   const loadRuns = () => {
     api.getSiteRuns(siteId).then((data) => {
@@ -34,11 +37,14 @@ export function SiteSeed({ siteId }: { siteId: number }) {
     try {
       const result = await api.startSeedRun(siteId);
       setSelectedRunId(result.runId);
+      setActiveTab("logs");
       loadRuns();
     } finally {
       setIsStarting(false);
     }
   };
+
+  const selectedRun = runs.find((r) => r.runId === selectedRunId);
 
   return (
     <div className="space-y-6">
@@ -51,7 +57,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center justify-between gap-4">
           <div className="text-sm text-muted-foreground">
-            适合在规则还不确定时先看页面分布，之后到“规则配置”调整范围。
+            适合在规则还不确定时先看页面分布，之后到"规则配置"调整范围。
           </div>
           <Button className="gap-2" onClick={startSeed} disabled={isStarting}>
             {isStarting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -63,7 +69,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
       <Card>
         <CardHeader>
           <CardTitle>摸底运行记录</CardTitle>
-          <CardDescription>点击某次运行，在下方按 pages 粒度复核这次运行触达的页面。</CardDescription>
+          <CardDescription>点击某次运行，在下方查看页面复核或运行日志。</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -80,10 +86,21 @@ export function SiteSeed({ siteId }: { siteId: number }) {
                 <TableRow
                   key={run.runId}
                   className={selectedRunId === run.runId ? "cursor-pointer bg-muted/60" : "cursor-pointer hover:bg-muted/50"}
-                  onClick={() => setSelectedRunId(run.runId)}
+                  onClick={() => { setSelectedRunId(run.runId); }}
                 >
                   <TableCell className="font-medium">#{run.runId}</TableCell>
-                  <TableCell><Badge variant={run.status === "failed" ? "destructive" : run.status === "running" ? "secondary" : "default"}>{run.statusLabel}</Badge></TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={run.status === "failed" ? "destructive" : run.status === "running" ? "secondary" : "default"}>
+                        {run.statusLabel}
+                      </Badge>
+                      {run.status === "failed" && run.errorMessage && (
+                        <span title={run.errorMessage}>
+                          <AlertCircle className="w-3.5 h-3.5 text-destructive" />
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{run.successfulPages} / {run.pendingPages} / {run.deniedPages}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(run.startedAt)}</TableCell>
                 </TableRow>
@@ -99,12 +116,32 @@ export function SiteSeed({ siteId }: { siteId: number }) {
       </Card>
 
       {selectedRunId && (
-        <PageReview
-          siteId={siteId}
-          crawlRunId={selectedRunId}
-          title={`Run #${selectedRunId} 页面复核`}
-          description="这里复用页面清单组件，但只展示该 seed run 触达过的 site_pages。"
-        />
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pages" | "logs")}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-sm text-muted-foreground">
+              Run #{selectedRunId}{selectedRun?.status === "failed" ? " · 运行失败" : ""}
+            </h3>
+            <TabsList>
+              <TabsTrigger value="pages" className="gap-1.5 text-xs">
+                <FileText className="w-3.5 h-3.5" /> 页面复核
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="gap-1.5 text-xs">
+                <ScrollText className="w-3.5 h-3.5" /> 运行日志
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="pages">
+            <PageReview
+              siteId={siteId}
+              crawlRunId={selectedRunId}
+              title={`Run #${selectedRunId} 页面复核`}
+              description="这里复用页面清单组件，但只展示该 seed run 触达过的 site_pages。"
+            />
+          </TabsContent>
+          <TabsContent value="logs">
+            <RunLogs runId={selectedRunId} />
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

@@ -73,7 +73,7 @@ describe('JinaMarkdownStrategy', () => {
 
   it('throws when response is not ok', async () => {
     const fakeFetch = async () => ({ ok: false, status: 429 }) as Response;
-    const strategy = new JinaMarkdownStrategy('token', fakeFetch);
+    const strategy = new JinaMarkdownStrategy('token', fakeFetch as typeof fetch);
     await expect(strategy.capture('https://example.com')).rejects.toThrow(
       'Jina request failed with status 429',
     );
@@ -82,14 +82,14 @@ describe('JinaMarkdownStrategy', () => {
   it('returns trimmed markdown with trailing newline on success', async () => {
     const fakeFetch = async () =>
       ({ ok: true, text: async () => '# Heading\n\nContent here.' }) as Response;
-    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch);
+    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch as typeof fetch);
     const result = await strategy.capture('https://example.com');
     expect(result).toBe('# Heading\n\nContent here.\n');
   });
 
   it('throws when response text is empty', async () => {
     const fakeFetch = async () => ({ ok: true, text: async () => '   ' }) as Response;
-    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch);
+    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch as typeof fetch);
     await expect(strategy.capture('https://example.com')).rejects.toThrow(
       'jina returned empty markdown',
     );
@@ -101,7 +101,7 @@ describe('JinaMarkdownStrategy', () => {
       calls.push({ url, init });
       return { ok: true, text: async () => '# ok\n' } as Response;
     };
-    const strategy = new JinaMarkdownStrategy('test-token', fakeFetch);
+    const strategy = new JinaMarkdownStrategy('test-token', fakeFetch as typeof fetch);
     await strategy.capture('https://example.com/page');
     expect(calls[0].url).toBe('https://r.jina.ai/https://example.com/page');
     expect((calls[0].init?.headers as Record<string, string>)['Authorization']).toBe(
@@ -116,29 +116,29 @@ describe('LightpandaMarkdownStrategy', () => {
   }
 
   it('returns markdown from stdout', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Lightpanda result\n', ''));
+    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Lightpanda result\n', '') as never);
     await expect(strategy.capture('https://example.com')).resolves.toBe('# Lightpanda result\n');
   });
 
   it('throws when stderr contains "error"', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'fetch error: connection refused'));
+    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'fetch error: connection refused') as never);
     await expect(strategy.capture('https://example.com')).rejects.toThrow(
       'fetch error: connection refused',
     );
   });
 
   it('throws when stderr contains "failed"', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'request failed'));
+    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'request failed') as never);
     await expect(strategy.capture('https://example.com')).rejects.toThrow('request failed');
   });
 
   it('ignores non-error stderr (warnings)', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Content\n', 'some warning message'));
+    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Content\n', 'some warning message') as never);
     await expect(strategy.capture('https://example.com')).resolves.toBe('# Content\n');
   });
 
   it('throws when stdout is empty', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('   \n  ', ''));
+    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('   \n  ', '') as never);
     await expect(strategy.capture('https://example.com')).rejects.toThrow(
       'lightpanda returned empty markdown',
     );

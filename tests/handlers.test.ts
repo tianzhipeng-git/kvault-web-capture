@@ -6,10 +6,15 @@ import {
   createScreenshotFailedRequestHandler,
   createScreenshotRequestHandler,
 } from '../src/crawlee/handlers.js';
-import type { ArtifactRunRepository, SitePageRepository } from '../src/db/repositories.js';
+import type { ArtifactRunRepository, RunLogRepository, SitePageRepository } from '../src/db/repositories.js';
 import type { FileArtifactWriter } from '../src/export/file-artifact-writer.js';
 import type { MarkdownCaptureAdapter } from '../src/markdown/markdown-adapter.js';
 import type { ScreenshotCaptureAdapter } from '../src/screenshot/screenshot-adapter.js';
+
+const noopRunLog: RunLogRepository = {
+  log: () => {},
+  listByRun: () => [],
+} as unknown as RunLogRepository;
 
 function makeMarkdownUserData() {
   return {
@@ -35,9 +40,9 @@ function makeScreenshotUserData() {
 
 describe('createMarkdownRequestHandler', () => {
   it('calls adapter, writes artifact, records succeeded run, and updates site page', async () => {
-    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[] = [];
-    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[] = [];
-    const writerCalls: Parameters<FileArtifactWriter['writeTextArtifact']>[] = [];
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];
+    const writerCalls: Parameters<FileArtifactWriter['writeTextArtifact']>[0][] = [];
 
     const handler = createMarkdownRequestHandler({
       markdownAdapter: {
@@ -47,22 +52,23 @@ describe('createMarkdownRequestHandler', () => {
         },
       } satisfies MarkdownCaptureAdapter,
       artifactRunRepository: {
-        create(args) {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
           artifactRunCalls.push(args);
           return 1;
         },
       } as unknown as ArtifactRunRepository,
       sitePageRepository: {
-        recordArtifactResult(args) {
+        recordArtifactResult(args: Parameters<SitePageRepository['recordArtifactResult']>[0]) {
           sitePageCalls.push(args);
         },
       } as unknown as SitePageRepository,
       artifactWriter: {
-        writeTextArtifact(args) {
+        writeTextArtifact(args: Parameters<FileArtifactWriter['writeTextArtifact']>[0]) {
           writerCalls.push(args);
           return { outputPath: '/tmp/markdown.md', content: args.content };
         },
       } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
     });
 
     const userData = makeMarkdownUserData();
@@ -109,6 +115,7 @@ describe('createMarkdownRequestHandler', () => {
       artifactWriter: {
         writeTextArtifact: () => ({ outputPath: '/tmp/x.md', content: '# ok\n' }),
       } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
     });
 
     await handler({
@@ -131,21 +138,22 @@ describe('createMarkdownRequestHandler', () => {
 
 describe('createMarkdownFailedRequestHandler', () => {
   it('records failed artifact run with error message and updates site page', async () => {
-    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[] = [];
-    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[] = [];
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];
 
     const handler = createMarkdownFailedRequestHandler({
       artifactRunRepository: {
-        create(args) {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
           artifactRunCalls.push(args);
           return 1;
         },
       } as unknown as ArtifactRunRepository,
       sitePageRepository: {
-        recordArtifactResult(args) {
+        recordArtifactResult(args: Parameters<SitePageRepository['recordArtifactResult']>[0]) {
           sitePageCalls.push(args);
         },
       } as unknown as SitePageRepository,
+      runLog: noopRunLog,
     });
 
     const userData = makeMarkdownUserData();
@@ -169,9 +177,9 @@ describe('createMarkdownFailedRequestHandler', () => {
 
 describe('createScreenshotRequestHandler', () => {
   it('calls adapter, writes binary artifact, records succeeded run, and updates site page', async () => {
-    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[] = [];
-    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[] = [];
-    const writerCalls: Parameters<FileArtifactWriter['writeBinaryArtifact']>[] = [];
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];
+    const writerCalls: Parameters<FileArtifactWriter['writeBinaryArtifact']>[0][] = [];
 
     const fakeBuffer = Buffer.from([1, 2, 3]);
 
@@ -183,22 +191,23 @@ describe('createScreenshotRequestHandler', () => {
         },
       } satisfies ScreenshotCaptureAdapter,
       artifactRunRepository: {
-        create(args) {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
           artifactRunCalls.push(args);
           return 1;
         },
       } as unknown as ArtifactRunRepository,
       sitePageRepository: {
-        recordArtifactResult(args) {
+        recordArtifactResult(args: Parameters<SitePageRepository['recordArtifactResult']>[0]) {
           sitePageCalls.push(args);
         },
       } as unknown as SitePageRepository,
       artifactWriter: {
-        writeBinaryArtifact(args) {
+        writeBinaryArtifact(args: Parameters<FileArtifactWriter['writeBinaryArtifact']>[0]) {
           writerCalls.push(args);
           return { outputPath: '/tmp/screenshot.png', content: null };
         },
       } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
     });
 
     const userData = makeScreenshotUserData();
@@ -246,6 +255,7 @@ describe('createScreenshotRequestHandler', () => {
       artifactWriter: {
         writeBinaryArtifact: () => ({ outputPath: '/tmp/x.png', content: null }),
       } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
     });
 
     await handler({
@@ -268,21 +278,22 @@ describe('createScreenshotRequestHandler', () => {
 
 describe('createScreenshotFailedRequestHandler', () => {
   it('records failed screenshot artifact run with error message and updates site page', async () => {
-    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[] = [];
-    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[] = [];
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];
 
     const handler = createScreenshotFailedRequestHandler({
       artifactRunRepository: {
-        create(args) {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
           artifactRunCalls.push(args);
           return 1;
         },
       } as unknown as ArtifactRunRepository,
       sitePageRepository: {
-        recordArtifactResult(args) {
+        recordArtifactResult(args: Parameters<SitePageRepository['recordArtifactResult']>[0]) {
           sitePageCalls.push(args);
         },
       } as unknown as SitePageRepository,
+      runLog: noopRunLog,
     });
 
     const userData = makeScreenshotUserData();

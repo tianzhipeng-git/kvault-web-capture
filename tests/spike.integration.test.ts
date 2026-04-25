@@ -17,6 +17,7 @@ import {
   ArtifactRunRepository,
   PageRunRepository,
   ProjectRepository,
+  RunLogRepository,
   RunRepository,
   SitePageRepository,
   SiteRepository,
@@ -26,6 +27,11 @@ import { RunPlanner } from '../src/planner/run-planner.js';
 import { FakeScreenshotCaptureAdapter } from '../src/screenshot/fake-screenshot-adapter.js';
 import { SystemClock } from '../src/utils/clock.js';
 import { createTempDir } from './helpers/tmp.js';
+
+const noopRunLog: RunLogRepository = {
+  log: () => {},
+  listByRun: () => [],
+} as unknown as RunLogRepository;
 
 describe('integration spike', () => {
   it('executes base -> artifact queues through the queue boundary and persists exported outputs', async () => {
@@ -116,18 +122,21 @@ describe('integration spike', () => {
       pageRunRepository,
       sitePageRepository,
       runPlanner: planner,
+      runLog: noopRunLog,
     });
     const markdownHandler = createMarkdownRequestHandler({
       markdownAdapter: new FakeMarkdownCaptureAdapter(),
       artifactRunRepository,
       sitePageRepository,
       artifactWriter,
+      runLog: noopRunLog,
     });
     const screenshotHandler = createScreenshotRequestHandler({
       screenshotAdapter: new FakeScreenshotCaptureAdapter(),
       artifactRunRepository,
       sitePageRepository,
       artifactWriter,
+      runLog: noopRunLog,
     });
 
     const fakeDom = createFakeCheerio({
@@ -325,6 +334,7 @@ describe('integration spike', () => {
       pageRunRepository,
       sitePageRepository,
       runPlanner: planner,
+      runLog: noopRunLog,
     });
 
     const fakeDom = createFakeCheerio({

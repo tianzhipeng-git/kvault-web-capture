@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 
-import { Configuration, SessionPool } from 'crawlee';
+import { Configuration } from 'crawlee';
 
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
@@ -12,6 +12,7 @@ import {
   ArtifactRunRepository,
   PageRunRepository,
   ProjectRepository,
+  RunLogRepository,
   RunRepository,
   SitePageRepository,
   SiteRepository,
@@ -67,6 +68,8 @@ export class M1App {
 
   private readonly artifactRuns;
 
+  private readonly runLogs;
+
   private readonly planner;
 
   private readonly classifier: Classifier;
@@ -84,6 +87,7 @@ export class M1App {
     this.sitePages = new SitePageRepository(this.db, this.clock);
     this.pageRuns = new PageRunRepository(this.db, this.clock);
     this.artifactRuns = new ArtifactRunRepository(this.db, this.clock);
+    this.runLogs = new RunLogRepository(this.db, this.clock);
     this.planner = new RunPlanner(this.sitePages, this.clock);
     initializeSchema(this.db);
     this.classifier = options.classifier ?? new FakeClassifier();
@@ -247,11 +251,6 @@ export class M1App {
     const markdownQueue = await openRunQueue(runId, 'markdown', configuration);
     const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
 
-    const sessionPool = await SessionPool.open({
-      config: configuration,
-      maxPoolSize: 50,
-    });
-
     const startupCandidates = await expandStartupUrlCandidates({
       seedUrls: site.config.seedUrls,
       sitemapUrls: site.config.sitemaps,
@@ -315,7 +314,7 @@ export class M1App {
       pageRunRepository: this.pageRuns,
       sitePageRepository: this.sitePages,
       runPlanner: this.planner,
-      sessionPool,
+      runLog: this.runLogs,
     });
 
     const markdownCrawler = createMarkdownCrawler({
@@ -325,7 +324,7 @@ export class M1App {
       artifactRunRepository: this.artifactRuns,
       sitePageRepository: this.sitePages,
       artifactWriter,
-      sessionPool,
+      runLog: this.runLogs,
     });
 
     const screenshotCrawler = createScreenshotCrawler({
@@ -335,7 +334,20 @@ export class M1App {
       artifactRunRepository: this.artifactRuns,
       sitePageRepository: this.sitePages,
       artifactWriter,
-      sessionPool,
+      runLog: this.runLogs,
+    });
+
+    this.runLogs.log({
+      crawlRunId: runId,
+      level: 'info',
+      event: 'crawl_started',
+      message: `Run ${runId} started (${input.runType}, updatePolicy=${input.updatePolicy})`,
+      meta: {
+        runType: input.runType,
+        updatePolicy: input.updatePolicy,
+        targetSuccessCount: input.targetSuccessCount,
+        siteId: site.id,
+      },
     });
 
     try {
@@ -348,9 +360,23 @@ export class M1App {
 
       this.runs.refreshCounts(runId);
       this.runs.finishRun(runId, 'succeeded');
+      this.runLogs.log({
+        crawlRunId: runId,
+        level: 'info',
+        event: 'crawl_finished',
+        message: `Run ${runId} finished successfully`,
+      });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       this.runs.refreshCounts(runId);
-      this.runs.finishRun(runId, 'failed');
+      this.runs.finishRun(runId, 'failed', errorMessage);
+      this.runLogs.log({
+        crawlRunId: runId,
+        level: 'error',
+        event: 'crawl_error',
+        message: `Run ${runId} failed: ${errorMessage}`,
+        meta: { stack: error instanceof Error ? (error.stack ?? null) : null },
+      });
       throw error;
     }
 

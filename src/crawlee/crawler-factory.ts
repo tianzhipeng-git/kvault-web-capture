@@ -5,7 +5,6 @@ import {
   CheerioCrawler,
   LinkeDOMCrawler,
   PlaywrightCrawler,
-  SessionPool,
   type Configuration,
   type RequestQueue,
 } from 'crawlee';
@@ -22,12 +21,14 @@ import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import {
+  createBaseFailedRequestHandler,
   createBaseRequestHandler,
   createMarkdownFailedRequestHandler,
   createMarkdownRequestHandler,
   createScreenshotFailedRequestHandler,
   createScreenshotRequestHandler,
 } from './handlers.js';
+import type { RunLogRepository } from '../db/repositories.js';
 
 /**
  * Shared session pool configuration applied to all HTTP-based crawlers.
@@ -61,7 +62,7 @@ export interface CreateBaseCrawlerOptions {
   pageRunRepository: PageRunRepository;
   sitePageRepository: SitePageRepository;
   runPlanner: RunPlanner;
-  sessionPool?: SessionPool;
+  runLog: RunLogRepository;
 }
 
 /**
@@ -79,8 +80,7 @@ export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCra
       requestQueue: options.requestQueue,
       maxConcurrency: 5,
       requestHandlerTimeoutSecs: 30,
-      sessionPool: options.sessionPool,
-      sessionPoolOptions: options.sessionPool ? undefined : SESSION_POOL_OPTIONS,
+      sessionPoolOptions: SESSION_POOL_OPTIONS,
       requestHandler: createBaseRequestHandler({
         classifier: options.classifier,
         siteConfig: options.siteConfig,
@@ -94,6 +94,11 @@ export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCra
         pageRunRepository: options.pageRunRepository,
         sitePageRepository: options.sitePageRepository,
         runPlanner: options.runPlanner,
+        runLog: options.runLog,
+      }),
+      failedRequestHandler: createBaseFailedRequestHandler({
+        pageRunRepository: options.pageRunRepository,
+        runLog: options.runLog,
       }),
     },
     options.configuration,
@@ -111,7 +116,7 @@ export interface CreateMarkdownCrawlerOptions {
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
-  sessionPool?: SessionPool;
+  runLog: RunLogRepository;
 }
 
 export function createMarkdownCrawler(
@@ -122,17 +127,18 @@ export function createMarkdownCrawler(
     artifactRunRepository: options.artifactRunRepository,
     sitePageRepository: options.sitePageRepository,
     artifactWriter: options.artifactWriter,
+    runLog: options.runLog,
   };
 
   const sharedOptions = {
     requestQueue: options.requestQueue,
     maxConcurrency: 3,
     requestHandlerTimeoutSecs: 30,
-    sessionPool: options.sessionPool,
     requestHandler: createMarkdownRequestHandler(handlerDeps),
     failedRequestHandler: createMarkdownFailedRequestHandler({
       artifactRunRepository: options.artifactRunRepository,
       sitePageRepository: options.sitePageRepository,
+      runLog: options.runLog,
     }),
   };
 
@@ -140,14 +146,15 @@ export function createMarkdownCrawler(
     return new LinkeDOMCrawler(
       {
         ...sharedOptions,
-        sessionPoolOptions: options.sessionPool ? undefined : SESSION_POOL_OPTIONS,
+        sessionPoolOptions: SESSION_POOL_OPTIONS,
       },
       options.configuration,
     );
   }
 
   // BasicCrawler has no session pool concept.
-  return new BasicCrawler(sharedOptions, options.configuration);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new BasicCrawler(sharedOptions, options.configuration) as any;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +168,7 @@ export interface CreateScreenshotCrawlerOptions {
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
-  sessionPool?: SessionPool;
+  runLog: RunLogRepository;
 }
 
 /**
@@ -180,16 +187,17 @@ export function createScreenshotCrawler(
     artifactRunRepository: options.artifactRunRepository,
     sitePageRepository: options.sitePageRepository,
     artifactWriter: options.artifactWriter,
+    runLog: options.runLog,
   };
 
   const sharedOptions = {
     requestQueue: options.requestQueue,
     requestHandlerTimeoutSecs: 30,
-    sessionPool: options.sessionPool,
     requestHandler: createScreenshotRequestHandler(handlerDeps),
     failedRequestHandler: createScreenshotFailedRequestHandler({
       artifactRunRepository: options.artifactRunRepository,
       sitePageRepository: options.sitePageRepository,
+      runLog: options.runLog,
     }),
   };
 
@@ -198,7 +206,7 @@ export function createScreenshotCrawler(
       {
         ...sharedOptions,
         maxConcurrency: 3,
-        sessionPoolOptions: options.sessionPool ? undefined : SESSION_POOL_OPTIONS,
+        sessionPoolOptions: SESSION_POOL_OPTIONS,
         ...(HAS_SYSTEM_CHROME
           ? { launchContext: { launchOptions: { channel: 'chrome' as const } } }
           : {}),
@@ -207,8 +215,9 @@ export function createScreenshotCrawler(
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new BasicCrawler(
     { ...sharedOptions, maxConcurrency: 1 },
     options.configuration,
-  );
+  ) as any;
 }

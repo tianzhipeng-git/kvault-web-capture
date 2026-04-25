@@ -1,0 +1,166 @@
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import type { RunLogItem } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertCircle, CheckCircle2, Info, ScrollText, XCircle } from "lucide-react";
+
+function formatTime(value: string): string {
+  return new Date(value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function LevelIcon({ level }: { level: string }) {
+  switch (level) {
+    case "error":
+      return <XCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />;
+    case "warn":
+      return <AlertCircle className="w-3.5 h-3.5 text-yellow-500 shrink-0 mt-0.5" />;
+    case "info":
+      return <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />;
+    default:
+      return <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />;
+  }
+}
+
+function eventColor(event: string): string {
+  if (event.includes("error") || event.includes("failed")) return "destructive";
+  if (event.includes("started")) return "secondary";
+  if (event.includes("finished") || event.includes("done")) return "default";
+  return "outline";
+}
+
+function MetaDetail({ meta }: { meta: Record<string, unknown> | null }) {
+  if (!meta) return null;
+  const stack = typeof meta.stack === "string" ? meta.stack : null;
+  const other = Object.entries(meta).filter(([k]) => k !== "stack");
+
+  return (
+    <div className="mt-1 pl-5 space-y-1">
+      {other.length > 0 && (
+        <div className="text-xs text-muted-foreground font-mono">
+          {other.map(([k, v]) => (
+            <span key={k} className="mr-3">
+              <span className="opacity-60">{k}:</span>{" "}
+              {typeof v === "object" ? JSON.stringify(v) : String(v)}
+            </span>
+          ))}
+        </div>
+      )}
+      {stack && (
+        <details className="group">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none flex items-center gap-1">
+            <span className="border rounded px-1 py-px text-[10px]">stack trace</span>
+          </summary>
+          <pre className="mt-1 text-[11px] text-destructive/80 font-mono whitespace-pre-wrap bg-destructive/5 rounded p-2 overflow-x-auto">
+            {stack}
+          </pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+interface RunLogsProps {
+  runId: number;
+  /** If true, show logs inline without a Card wrapper */
+  inline?: boolean;
+}
+
+export function RunLogs({ runId, inline }: RunLogsProps) {
+  const [logs, setLogs] = useState<RunLogItem[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api
+      .getRunLogs(runId)
+      .then((data) => {
+        setLogs(data.items);
+        setErrorMessage(data.errorMessage);
+      })
+      .finally(() => setLoading(false));
+  }, [runId]);
+
+  const content = (
+    <div className="space-y-1">
+      {loading && (
+        <div className="text-sm text-muted-foreground py-4 text-center animate-pulse">
+          加载日志中…
+        </div>
+      )}
+
+      {!loading && errorMessage && (
+        <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm text-destructive mb-3">
+          <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">运行失败</p>
+            <p className="font-mono text-xs mt-0.5 opacity-80">{errorMessage}</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && logs.length === 0 && !errorMessage && (
+        <p className="text-sm text-muted-foreground py-4 text-center">
+          该运行暂无日志记录。
+        </p>
+      )}
+
+      {logs.map((log) => (
+        <div
+          key={log.logId}
+          className={`flex flex-col gap-0.5 px-2 py-1.5 rounded text-sm ${
+            log.level === "error"
+              ? "bg-destructive/5 hover:bg-destructive/10"
+              : "hover:bg-muted/50"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <LevelIcon level={log.level} />
+            <span className="text-muted-foreground text-xs font-mono shrink-0 mt-0.5 w-16">
+              {formatTime(log.createdAt)}
+            </span>
+            <Badge
+              variant={eventColor(log.event) as "default" | "secondary" | "destructive" | "outline"}
+              className="text-[10px] px-1.5 py-0 h-4 shrink-0"
+            >
+              {log.event}
+            </Badge>
+            <span className={`flex-1 break-all ${log.level === "error" ? "text-destructive" : ""}`}>
+              {log.message}
+            </span>
+          </div>
+          {log.url && (
+            <p className="pl-5 text-xs text-muted-foreground font-mono truncate">{log.url}</p>
+          )}
+          <MetaDetail meta={log.meta} />
+        </div>
+      ))}
+    </div>
+  );
+
+  if (inline) return content;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <ScrollText className="w-4 h-4" />
+          运行日志 — Run #{runId}
+        </CardTitle>
+        <CardDescription>
+          {logs.length > 0
+            ? `共 ${logs.length} 条事件记录`
+            : "结构化事件日志，包含每次页面处理和 artifact 生成的结果。"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="max-h-[520px] overflow-y-auto font-mono text-xs">
+        {content}
+      </CardContent>
+    </Card>
+  );
+}

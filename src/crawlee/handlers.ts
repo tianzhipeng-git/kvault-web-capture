@@ -18,6 +18,7 @@ import { extractPageContent } from '../extract/extract-page.js';
 import {
   ArtifactRunRepository,
   PageRunRepository,
+  RunLogRepository,
   SitePageRepository,
 } from '../db/repositories.js';
 import { RunPlanner } from '../planner/run-planner.js';
@@ -66,6 +67,7 @@ export function createBaseRequestHandler(deps: {
   pageRunRepository: PageRunRepository;
   sitePageRepository: SitePageRepository;
   runPlanner: RunPlanner;
+  runLog: RunLogRepository;
 }) {
   return async ({ request, $ }: CheerioCrawlingContext) => {
     const userData = request.userData as BaseRequestUserData;
@@ -116,6 +118,22 @@ export function createBaseRequestHandler(deps: {
       decisionReason: decision.reason,
       pendingReason: decision.pendingReason,
       requiredArtifacts: decision.requiredArtifacts,
+    });
+
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'info',
+      event: 'base_page_done',
+      url: extracted.normalizedUrl,
+      sitePageId: userData.sitePageId,
+      pageRunId,
+      message: `[base] ${decision.pageOutcome.toUpperCase()} ${extracted.normalizedUrl}`,
+      meta: {
+        outcome: decision.pageOutcome,
+        reason: decision.reason ?? null,
+        requiredArtifacts: decision.requiredArtifacts,
+        title: extracted.title || null,
+      },
     });
 
     deps.sitePageRepository.recordBaseCapture({
@@ -214,11 +232,40 @@ export function createBaseRequestHandler(deps: {
   };
 }
 
+export function createBaseFailedRequestHandler(deps: {
+  pageRunRepository: PageRunRepository;
+  runLog: RunLogRepository;
+}) {
+  return async (
+    { request }: { request: { url: string; userData: unknown } },
+    error: Error,
+  ) => {
+    const userData = request.userData as BaseRequestUserData;
+
+    deps.pageRunRepository.createFailed({
+      runId: userData.runId,
+      sitePageId: userData.sitePageId,
+      errorMessage: error.message,
+    });
+
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'error',
+      event: 'base_page_failed',
+      url: request.url,
+      sitePageId: userData.sitePageId,
+      message: `[base] FAILED ${request.url}: ${error.message}`,
+      meta: { stack: error.stack ?? null },
+    });
+  };
+}
+
 export function createMarkdownRequestHandler(deps: {
   markdownAdapter: MarkdownCaptureAdapter;
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
+  runLog: RunLogRepository;
 }) {
   return async (context: {
     request: { url: string; userData: unknown; loadedUrl?: string };
@@ -250,6 +297,17 @@ export function createMarkdownRequestHandler(deps: {
       meta: { strategy: captured.strategyName },
     });
 
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'info',
+      event: 'artifact_done',
+      url: userData.normalizedUrl,
+      sitePageId: userData.sitePageId,
+      pageRunId: userData.pageRunId,
+      message: `[markdown] done ${userData.normalizedUrl}`,
+      meta: { strategy: captured.strategyName, outputPath: written.outputPath },
+    });
+
     deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
@@ -262,6 +320,7 @@ export function createMarkdownRequestHandler(deps: {
 export function createMarkdownFailedRequestHandler(deps: {
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
+  runLog: RunLogRepository;
 }) {
   return async ({ request }: { request: { userData: unknown } }, error: Error) => {
     const userData = request.userData as MarkdownRequestUserData;
@@ -278,6 +337,17 @@ export function createMarkdownFailedRequestHandler(deps: {
       meta: null,
     });
 
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'error',
+      event: 'artifact_failed',
+      url: userData.normalizedUrl,
+      sitePageId: userData.sitePageId,
+      pageRunId: userData.pageRunId,
+      message: `[markdown] FAILED ${userData.normalizedUrl}: ${error.message}`,
+      meta: { stack: error.stack ?? null },
+    });
+
     deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
@@ -292,6 +362,7 @@ export function createScreenshotRequestHandler(deps: {
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
   artifactWriter: FileArtifactWriter;
+  runLog: RunLogRepository;
 }) {
   return async (context: {
     request: { url: string; userData: unknown; loadedUrl?: string };
@@ -323,6 +394,17 @@ export function createScreenshotRequestHandler(deps: {
       meta: { tool: capture.toolName },
     });
 
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'info',
+      event: 'artifact_done',
+      url: userData.normalizedUrl,
+      sitePageId: userData.sitePageId,
+      pageRunId: userData.pageRunId,
+      message: `[screenshot] done ${userData.normalizedUrl}`,
+      meta: { tool: capture.toolName, outputPath: written.outputPath },
+    });
+
     deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
@@ -335,6 +417,7 @@ export function createScreenshotRequestHandler(deps: {
 export function createScreenshotFailedRequestHandler(deps: {
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
+  runLog: RunLogRepository;
 }) {
   return async ({ request }: { request: { userData: unknown } }, error: Error) => {
     const userData = request.userData as ScreenshotRequestUserData;
@@ -349,6 +432,17 @@ export function createScreenshotFailedRequestHandler(deps: {
       outputPath: null,
       errorMessage: error.message,
       meta: null,
+    });
+
+    deps.runLog.log({
+      crawlRunId: userData.runId,
+      level: 'error',
+      event: 'artifact_failed',
+      url: userData.normalizedUrl,
+      sitePageId: userData.sitePageId,
+      pageRunId: userData.pageRunId,
+      message: `[screenshot] FAILED ${userData.normalizedUrl}: ${error.message}`,
+      meta: { stack: error.stack ?? null },
     });
 
     deps.sitePageRepository.recordArtifactResult({

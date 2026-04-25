@@ -1264,3 +1264,57 @@ export class PendingReviewQuery {
     });
   }
 }
+
+export interface RunLogItem {
+  logId: number;
+  crawlRunId: number;
+  level: string;
+  event: string;
+  url: string | null;
+  message: string;
+  meta: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export class RunLogQuery {
+  constructor(private readonly db: DatabaseSync) {}
+
+  listRunLogs(runId: number): RunLogItem[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, crawl_run_id, level, event, url, message, meta_json, created_at
+         FROM run_logs
+         WHERE crawl_run_id = ?
+         ORDER BY id ASC`,
+      )
+      .all(runId) as Array<{
+        id: number;
+        crawl_run_id: number;
+        level: string;
+        event: string;
+        url: string | null;
+        message: string;
+        meta_json: string | null;
+        created_at: string;
+      }>;
+
+    return rows.map((row) => ({
+      logId: row.id,
+      crawlRunId: row.crawl_run_id,
+      level: row.level,
+      event: row.event,
+      url: row.url,
+      message: row.message,
+      meta: row.meta_json ? (JSON.parse(row.meta_json) as Record<string, unknown>) : null,
+      createdAt: row.created_at,
+    }));
+  }
+
+  getRunErrorMessage(runId: number): string | null {
+    const row = this.db
+      .prepare(`SELECT error_message FROM crawl_runs WHERE id = ?`)
+      .get(runId) as { error_message: string | null } | undefined;
+    return row?.error_message ?? null;
+  }
+}
+

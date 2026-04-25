@@ -11,6 +11,7 @@ import { SessionAuth } from './auth/session-auth.js';
 import {
   PendingReviewQuery,
   ProjectListQuery,
+  RunLogQuery,
   RunSummaryQuery,
   SitePageDetailQuery,
   SiteOverviewQuery,
@@ -94,6 +95,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   const sitePageQuery = new SitePageListQuery(queryDb);
   const sitePageDetailQuery = new SitePageDetailQuery(queryDb);
   const runQuery = new RunSummaryQuery(queryDb);
+  const runLogQuery = new RunLogQuery(queryDb);
   const pendingReviewQuery = new PendingReviewQuery(queryDb);
 
   await auth.register(server);
@@ -296,6 +298,15 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/runs/:runId', async (request) => {
     const params = request.params as { runId: string };
     return runQuery.getRunSummary(parseRunId(params.runId));
+  });
+
+  server.get('/api/runs/:runId/logs', async (request) => {
+    const params = request.params as { runId: string };
+    const runId = parseRunId(params.runId);
+    return {
+      items: runLogQuery.listRunLogs(runId),
+      errorMessage: runLogQuery.getRunErrorMessage(runId),
+    };
   });
 
   server.get('/api/sites/:siteId/overview', async (request) => {
