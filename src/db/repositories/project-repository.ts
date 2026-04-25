@@ -6,6 +6,7 @@ export interface ProjectRecord {
   id: number;
   name: string;
   slug: string;
+  tagDefinitions: unknown;
 }
 
 export class ProjectRepository {
@@ -19,11 +20,18 @@ export class ProjectRepository {
 
     if (slug) {
       const existing = this.db
-        .prepare('SELECT id, name, slug FROM projects WHERE slug = ?')
-        .get(slug) as ProjectRecord | undefined;
+        .prepare('SELECT id, name, slug, tag_definitions_json FROM projects WHERE slug = ?')
+        .get(slug) as
+        | {
+            id: number;
+            name: string;
+            slug: string;
+            tag_definitions_json: string;
+          }
+        | undefined;
 
       if (existing) {
-        return existing;
+        return this.toRecord(existing);
       }
     }
 
@@ -40,23 +48,56 @@ export class ProjectRepository {
       this.db.prepare('UPDATE projects SET slug = ? WHERE id = ?').run(slug, id);
     }
 
-    return { id, name, slug };
+    return { id, name, slug, tagDefinitions: [] };
   }
 
   getBySlug(slug: string): ProjectRecord | null {
-    return (
-      (this.db
-        .prepare('SELECT id, name, slug FROM projects WHERE slug = ?')
-        .get(slug) as ProjectRecord | undefined) ?? null
-    );
+    const row = this.db
+      .prepare('SELECT id, name, slug, tag_definitions_json FROM projects WHERE slug = ?')
+      .get(slug) as
+      | {
+          id: number;
+          name: string;
+          slug: string;
+          tag_definitions_json: string;
+        }
+      | undefined;
+
+    return row ? this.toRecord(row) : null;
   }
 
   getById(id: number): ProjectRecord | null {
-    return (
-      (this.db
-        .prepare('SELECT id, name, slug FROM projects WHERE id = ?')
-        .get(id) as ProjectRecord | undefined) ?? null
-    );
+    const row = this.db
+      .prepare('SELECT id, name, slug, tag_definitions_json FROM projects WHERE id = ?')
+      .get(id) as
+      | {
+          id: number;
+          name: string;
+          slug: string;
+          tag_definitions_json: string;
+        }
+      | undefined;
+
+    return row ? this.toRecord(row) : null;
+  }
+
+  updateTagDefinitions(projectId: number, tagDefinitions: unknown): void {
+    this.db
+      .prepare('UPDATE projects SET tag_definitions_json = ? WHERE id = ?')
+      .run(JSON.stringify(tagDefinitions), projectId);
+  }
+
+  private toRecord(row: {
+    id: number;
+    name: string;
+    slug: string;
+    tag_definitions_json: string;
+  }): ProjectRecord {
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      tagDefinitions: JSON.parse(row.tag_definitions_json) as unknown,
+    };
   }
 }
-

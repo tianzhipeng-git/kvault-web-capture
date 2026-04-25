@@ -5,10 +5,11 @@ import type { ProcessingState, SitePageDetail, SitePageListRow } from "@/lib/api
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { RunLogs } from "@/components/RunLogs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle2, CircleDashed, Filter, History, Image, Search, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Filter, History, Image, ScrollText, Search, XCircle } from "lucide-react";
 
 const statusOptions = [
   { value: "", label: "全部状态" },
@@ -203,10 +204,12 @@ function PageDetailDialog({
 }) {
   const [activePreview, setActivePreview] = useState<PreviewKind>("base");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("text");
+  const [expandedLogRunId, setExpandedLogRunId] = useState<number | null>(null);
 
   useEffect(() => {
     setActivePreview("base");
     setPreviewMode("text");
+    setExpandedLogRunId(null);
   }, [detail?.sitePageId]);
 
   return (
@@ -259,7 +262,19 @@ function PageDetailDialog({
                   <div key={run.runId} className="rounded-lg border px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="font-semibold text-sm">Run #{run.runId} · {run.runTypeLabel}</div>
-                      <div className="text-sm text-muted-foreground">{run.statusLabel} · {formatDate(run.startedAt)}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm text-muted-foreground">{run.statusLabel} · {formatDate(run.startedAt)}</div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={expandedLogRunId === run.runId ? "secondary" : "outline"}
+                          className="h-7 gap-1.5 px-2 text-xs"
+                          onClick={() => setExpandedLogRunId((current) => (current === run.runId ? null : run.runId))}
+                        >
+                          <ScrollText className="h-3.5 w-3.5" />
+                          {expandedLogRunId === run.runId ? "收起日志" : "查看日志"}
+                        </Button>
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs">
                       {run.pageRuns.map((pageRun) => (
@@ -273,6 +288,11 @@ function PageDetailDialog({
                         </Badge>
                       ))}
                     </div>
+                    {expandedLogRunId === run.runId && (
+                      <div className="mt-3 max-h-[360px] overflow-y-auto rounded-md border bg-background p-2 font-mono text-xs">
+                        <RunLogs runId={run.runId} sitePageId={detail.sitePageId} includeRunError={false} inline />
+                      </div>
+                    )}
                   </div>
                 ))}
                 {detail.runHistory.length === 0 && (

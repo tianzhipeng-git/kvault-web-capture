@@ -5,6 +5,8 @@ import { Configuration } from 'crawlee';
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
+import { LLMClassifier } from '../classification/llm-classifier.js';
+import { extractTagDefinitionCores } from '../classification/tag-definitions.js';
 import { createDefaultSiteConfig, loadSiteConfig, parseSiteConfig } from '../config/site-config.js';
 
 import { initializeSchema, openDatabase } from '../db/database.js';
@@ -72,7 +74,7 @@ export class M1App {
 
   private readonly planner;
 
-  private readonly classifier: Classifier;
+  private readonly classifier: Classifier | null;
 
   private readonly markdownAdapter: MarkdownCaptureAdapter;
 
@@ -90,7 +92,7 @@ export class M1App {
     this.runLogs = new RunLogRepository(this.db, this.clock);
     this.planner = new RunPlanner(this.sitePages, this.clock);
     initializeSchema(this.db);
-    this.classifier = options.classifier ?? new FakeClassifier();
+    this.classifier = options.classifier ?? null;
 
     this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
     this.screenshotAdapter =
@@ -107,6 +109,26 @@ export class M1App {
       id: project.id,
       slug: project.slug,
     };
+  }
+
+  getProjectTagDefinitions(projectId: number): unknown {
+    const project = this.projects.getById(projectId);
+
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    return project.tagDefinitions;
+  }
+
+  updateProjectTagDefinitions(projectId: number, tagDefinitions: unknown): void {
+    const project = this.projects.getById(projectId);
+
+    if (!project) {
+      throw new Error(`Project ${projectId} not found`);
+    }
+
+    this.projects.updateTagDefinitions(projectId, tagDefinitions);
   }
 
   createSite(input: {
@@ -299,10 +321,16 @@ export class M1App {
       });
     }
 
+    const tagDefinitions = this.projects.getById(site.projectId)?.tagDefinitions ?? [];
+    const classifier = this.classifier
+      ?? (extractTagDefinitionCores(tagDefinitions).length > 0
+        ? new LLMClassifier(tagDefinitions)
+        : new FakeClassifier());
+
     const baseCrawler = createBaseCrawler({
       requestQueue: baseQueue,
       configuration,
-      classifier: this.classifier,
+      classifier,
       siteConfig: site.config,
       runType: input.runType,
       updatePolicy: input.updatePolicy,

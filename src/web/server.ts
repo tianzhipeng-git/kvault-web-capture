@@ -33,6 +33,16 @@ function parseSiteId(value: string): number {
   return siteId;
 }
 
+function parseProjectId(value: string): number {
+  const projectId = Number(value);
+
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    throw new Error('projectId 无效。');
+  }
+
+  return projectId;
+}
+
 function parseRunId(value: string): number {
   const runId = Number(value);
 
@@ -41,6 +51,16 @@ function parseRunId(value: string): number {
   }
 
   return runId;
+}
+
+function parseSitePageId(value: string): number {
+  const sitePageId = Number(value);
+
+  if (!Number.isInteger(sitePageId) || sitePageId <= 0) {
+    throw new Error('sitePageId 无效。');
+  }
+
+  return sitePageId;
 }
 
 function parseArtifactRunId(value: string): number {
@@ -181,7 +201,25 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/projects/:projectId/sites', async (request) => {
     const params = request.params as { projectId: string };
     return {
-      items: projectQuery.listSites(Number(params.projectId)),
+      items: projectQuery.listSites(parseProjectId(params.projectId)),
+    };
+  });
+
+  server.get('/api/projects/:projectId/tag-definitions', async (request) => {
+    const params = request.params as { projectId: string };
+    return {
+      tagDefinitions: app.getProjectTagDefinitions(parseProjectId(params.projectId)),
+    };
+  });
+
+  server.put('/api/projects/:projectId/tag-definitions', async (request) => {
+    const params = request.params as { projectId: string };
+    const body = (request.body ?? {}) as { tagDefinitions?: unknown };
+    const tagDefinitions = body.tagDefinitions ?? [];
+    app.updateProjectTagDefinitions(parseProjectId(params.projectId), tagDefinitions);
+    return {
+      status: 'ok',
+      tagDefinitions,
     };
   });
 
@@ -310,9 +348,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.get('/api/runs/:runId/logs', async (request) => {
     const params = request.params as { runId: string };
+    const query = request.query as { sitePageId?: string };
     const runId = parseRunId(params.runId);
+    const sitePageId = query.sitePageId ? parseSitePageId(query.sitePageId) : undefined;
     return {
-      items: runLogQuery.listRunLogs(runId),
+      items: runLogQuery.listRunLogs(runId, sitePageId),
       errorMessage: runLogQuery.getRunErrorMessage(runId),
     };
   });

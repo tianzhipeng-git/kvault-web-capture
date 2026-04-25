@@ -66,11 +66,13 @@ function MetaDetail({ meta }: { meta: Record<string, unknown> | null }) {
 
 interface RunLogsProps {
   runId: number;
+  sitePageId?: number;
+  includeRunError?: boolean;
   /** If true, show logs inline without a Card wrapper */
   inline?: boolean;
 }
 
-export function RunLogs({ runId, inline }: RunLogsProps) {
+export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: RunLogsProps) {
   const [logs, setLogs] = useState<RunLogItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,13 +80,13 @@ export function RunLogs({ runId, inline }: RunLogsProps) {
   useEffect(() => {
     setLoading(true);
     api
-      .getRunLogs(runId)
+      .getRunLogs(runId, { sitePageId })
       .then((data) => {
         setLogs(data.items);
         setErrorMessage(data.errorMessage);
       })
       .finally(() => setLoading(false));
-  }, [runId]);
+  }, [runId, sitePageId]);
 
   const content = (
     <div className="space-y-1">
@@ -94,7 +96,7 @@ export function RunLogs({ runId, inline }: RunLogsProps) {
         </div>
       )}
 
-      {!loading && errorMessage && (
+      {!loading && includeRunError && errorMessage && (
         <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm text-destructive mb-3">
           <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
           <div>
@@ -104,7 +106,7 @@ export function RunLogs({ runId, inline }: RunLogsProps) {
         </div>
       )}
 
-      {!loading && logs.length === 0 && !errorMessage && (
+      {!loading && logs.length === 0 && (!includeRunError || !errorMessage) && (
         <p className="text-sm text-muted-foreground py-4 text-center">
           该运行暂无日志记录。
         </p>

@@ -272,7 +272,7 @@ function UrlRuleFormFields({ rule, onChange }: { rule: UrlRule; onChange: (r: Ur
             const lines = e.target.value.split('\n').map(l => l.trim()).filter(Boolean);
             onChange({ ...rule, values: lines });
           }}
-          placeholder={rule.ruleType === 'prefix' ? 'https://example.com/docs/' : '^https://example\\.com/.*'}
+          placeholder={rule.ruleType === 'prefix' ? 'example.com/docs/' : '^example\\.com/.*'}
         />
       </div>
     </div>

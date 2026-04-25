@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Copy, Save, Plus } from "lucide-react";
+import { Copy, Save, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
 
 interface SiteConfigShape {
@@ -40,7 +41,6 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [rulesBeforeStage2Eq, setRulesBeforeStage2Eq] = useState<Rule[]>([]);
   const [seedMaxDepth, setSeedMaxDepth] = useState("1");
   const [crawlMaxDepth, setCrawlMaxDepth] = useState("2");
-  const [message, setMessage] = useState("");
   const [sites, setSites] = useState<Array<{ siteId: number; siteName: string }>>([]);
   const [sourceSiteId, setSourceSiteId] = useState("");
   const [projectId, setProjectId] = useState<number | null>(null);
@@ -84,13 +84,12 @@ export function SiteConfig({ siteId }: { siteId: number }) {
 
   const saveConfig = async (nextConfig: SiteConfigShape) => {
     setIsSaving(true);
-    setMessage("");
     try {
       const response = await api.updateSiteConfig(siteId, nextConfig);
       hydrate(response.config);
-      setMessage("配置已保存，并通过后端校验。");
+      toast.success("配置已保存，并通过后端校验。");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "保存失败。");
+      toast.error(error instanceof Error ? error.message : "保存失败。");
     } finally {
       setIsSaving(false);
     }
@@ -101,7 +100,11 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   };
 
   const saveJson = async () => {
-    await saveConfig(JSON.parse(jsonDraft));
+    try {
+      await saveConfig(JSON.parse(jsonDraft));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "JSON 格式不正确。");
+    }
   };
 
   const cloneConfig = async () => {
@@ -110,9 +113,9 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     try {
       const response = await api.cloneSiteConfig(siteId, Number(sourceSiteId));
       hydrate(response.config);
-      setMessage("已从目标站点克隆配置。");
+      toast.success("已从目标站点克隆配置。");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "克隆失败。");
+      toast.error(error instanceof Error ? error.message : "克隆失败。");
     } finally {
       setIsSaving(false);
     }
@@ -142,12 +145,6 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               克隆配置
             </Button>
           </div>
-          {message && (
-            <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm">
-              <CheckCircle2 className="w-4 h-4" />
-              {message}
-            </div>
-          )}
         </CardContent>
       </Card>
 

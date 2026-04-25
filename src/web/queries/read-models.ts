@@ -62,7 +62,7 @@ export function toInventoryStatusLabel(status: string): string {
     case 'base_captured':
       return '已完成基础信息';
     default:
-      return '待处理';
+      return '未知';
   }
 }
 
@@ -121,7 +121,7 @@ export interface ProjectListItem {
 }
 
 export class ProjectListQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   listProjects(): ProjectListItem[] {
     return this.db
@@ -201,7 +201,7 @@ export class ProjectListQuery {
 }
 
 export class SiteOverviewQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   getSiteOverview(siteId: number): {
     siteId: number;
@@ -249,18 +249,18 @@ export class SiteOverviewQuery {
       )
       .get(siteId) as
       | {
-          id: number;
-          name: string;
-          base_url: string;
-          config_json: string;
-          project_id: number;
-          project_name: string;
-          total_pages: number;
-          pending_pages: number | null;
-          denied_pages: number | null;
-          captured_pages: number | null;
-          latest_successful_capture_at: string | null;
-        }
+        id: number;
+        name: string;
+        base_url: string;
+        config_json: string;
+        project_id: number;
+        project_name: string;
+        total_pages: number;
+        pending_pages: number | null;
+        denied_pages: number | null;
+        captured_pages: number | null;
+        latest_successful_capture_at: string | null;
+      }
       | undefined;
 
     if (!row) {
@@ -346,7 +346,7 @@ export interface SitePageListInput {
 }
 
 export class SitePageListQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   listPages(input: SitePageListInput): {
     total: number;
@@ -498,7 +498,7 @@ export class SitePageListQuery {
           captureSummary:
             requiredArtifacts.length === 0
               ? '只保留基础信息'
-              : `${markdownDone ? 'Markdown 已生成' : 'Markdown 待处理'} / ${screenshotDone ? '截图已生成' : '截图待处理'}`,
+              : `${markdownDone ? 'Markdown 已生成' : 'Markdown 待定'} / ${screenshotDone ? '截图已生成' : '截图待定'}`,
         };
       }),
     };
@@ -598,7 +598,7 @@ function buildProcessingState(input: {
 }
 
 export class SitePageDetailQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   getPageDetail(siteId: number, sitePageId: number): {
     sitePageId: number;
@@ -703,27 +703,27 @@ export class SitePageDetailQuery {
       )
       .get(siteId, sitePageId) as
       | {
-          id: number;
-          site_id: number;
-          discovered_url: string;
-          normalized_url: string;
-          inventory_status: string;
-          discovery_source: string;
-          discovery_referrer_url: string | null;
-          latest_title: string | null;
-          last_pending_reason: string | null;
-          last_base_status: string | null;
-          last_base_run_id: number | null;
-          last_base_at: string | null;
-          last_markdown_status: string | null;
-          last_markdown_run_id: number | null;
-          last_markdown_at: string | null;
-          last_screenshot_status: string | null;
-          last_screenshot_run_id: number | null;
-          last_screenshot_at: string | null;
-          first_discovered_at: string;
-          updated_at: string;
-        }
+        id: number;
+        site_id: number;
+        discovered_url: string;
+        normalized_url: string;
+        inventory_status: string;
+        discovery_source: string;
+        discovery_referrer_url: string | null;
+        latest_title: string | null;
+        last_pending_reason: string | null;
+        last_base_status: string | null;
+        last_base_run_id: number | null;
+        last_base_at: string | null;
+        last_markdown_status: string | null;
+        last_markdown_run_id: number | null;
+        last_markdown_at: string | null;
+        last_screenshot_status: string | null;
+        last_screenshot_run_id: number | null;
+        last_screenshot_at: string | null;
+        first_discovered_at: string;
+        updated_at: string;
+      }
       | undefined;
 
     if (!page) {
@@ -762,14 +762,14 @@ export class SitePageDetailQuery {
          ORDER BY id DESC`,
       )
       .all(sitePageId) as Array<{
-      id: number;
-      artifact_type: string;
-      status: string;
-      output_path: string | null;
-      content: string | null;
-      error_message: string | null;
-      finished_at: string | null;
-    }>;
+        id: number;
+        artifact_type: string;
+        status: string;
+        output_path: string | null;
+        content: string | null;
+        error_message: string | null;
+        finished_at: string | null;
+      }>;
 
     const latestArtifactByType = new Map<string, (typeof latestArtifacts)[number]>();
     for (const artifact of latestArtifacts) {
@@ -813,18 +813,18 @@ export class SitePageDetailQuery {
          ORDER BY pr.crawl_run_id DESC, pr.id DESC`,
       )
       .all(sitePageId) as Array<{
-      id: number;
-      crawl_run_id: number;
-      title: string;
-      body_text: string;
-      classification_tags_json: string;
-      decision_outcome: string;
-      decision_reason: string | null;
-      pending_reason: string | null;
-      required_artifacts_json: string;
-      base_capture_status: string;
-      base_capture_path: string | null;
-    }>;
+        id: number;
+        crawl_run_id: number;
+        title: string;
+        body_text: string;
+        classification_tags_json: string;
+        decision_outcome: string;
+        decision_reason: string | null;
+        pending_reason: string | null;
+        required_artifacts_json: string;
+        base_capture_status: string;
+        base_capture_path: string | null;
+      }>;
 
     const artifactRuns = this.db
       .prepare(
@@ -843,16 +843,16 @@ export class SitePageDetailQuery {
          ORDER BY crawl_run_id DESC, id DESC`,
       )
       .all(sitePageId) as Array<{
-      id: number;
-      crawl_run_id: number;
-      page_run_id: number;
-      artifact_type: string;
-      status: string;
-      output_path: string | null;
-      content: string | null;
-      error_message: string | null;
-      finished_at: string | null;
-    }>;
+        id: number;
+        crawl_run_id: number;
+        page_run_id: number;
+        artifact_type: string;
+        status: string;
+        output_path: string | null;
+        content: string | null;
+        error_message: string | null;
+        finished_at: string | null;
+      }>;
 
     const runIds = Array.from(
       new Set([
@@ -864,13 +864,13 @@ export class SitePageDetailQuery {
       runIds.length === 0
         ? []
         : (this.db
-            .prepare(
-              `SELECT id, run_type, status, started_at, finished_at
+          .prepare(
+            `SELECT id, run_type, status, started_at, finished_at
                FROM crawl_runs
                WHERE id IN (${runIds.map(() => '?').join(',')})
                ORDER BY id DESC`,
-            )
-            .all(...runIds) as Array<{
+          )
+          .all(...runIds) as Array<{
             id: number;
             run_type: string;
             status: string;
@@ -977,16 +977,16 @@ export class SitePageDetailQuery {
         latestPageRun === null
           ? null
           : {
-              pageRunId: latestPageRun.id,
-              crawlRunId: latestPageRun.crawl_run_id,
-              title: latestPageRun.title,
-              metaDescription: latestPageRun.meta_description,
-              bodyText: latestPageRun.body_text,
-              requiredArtifacts,
-              decisionOutcome: latestPageRun.decision_outcome,
-              decisionReason: latestPageRun.decision_reason,
-              pendingReasonLabel: toPendingReasonLabel(latestPageRun.pending_reason),
-            },
+            pageRunId: latestPageRun.id,
+            crawlRunId: latestPageRun.crawl_run_id,
+            title: latestPageRun.title,
+            metaDescription: latestPageRun.meta_description,
+            bodyText: latestPageRun.body_text,
+            requiredArtifacts,
+            decisionOutcome: latestPageRun.decision_outcome,
+            decisionReason: latestPageRun.decision_reason,
+            pendingReasonLabel: toPendingReasonLabel(latestPageRun.pending_reason),
+          },
       latestPreviews: {
         base: {
           outputPath: latestPageRun?.base_capture_path ?? null,
@@ -1019,9 +1019,9 @@ export class SitePageDetailQuery {
       )
       .get(siteId, artifactRunId) as
       | {
-          artifact_type: string;
-          output_path: string | null;
-        }
+        artifact_type: string;
+        output_path: string | null;
+      }
       | undefined;
 
     if (!artifact?.output_path || !existsSync(artifact.output_path)) {
@@ -1036,7 +1036,7 @@ export class SitePageDetailQuery {
 }
 
 export class RunSummaryQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   listSiteRuns(siteId: number): Array<{
     runId: number;
@@ -1138,18 +1138,18 @@ export class RunSummaryQuery {
       )
       .get(runId) as
       | {
-          id: number;
-          site_id: number;
-          run_type: string;
-          status: string;
-          started_at: string;
-          finished_at: string | null;
-          successful_page_count: number;
-          pending_page_count: number;
-          denied_page_count: number;
-          target_success_count: number | null;
-          config_snapshot_json: string;
-        }
+        id: number;
+        site_id: number;
+        run_type: string;
+        status: string;
+        started_at: string;
+        finished_at: string | null;
+        successful_page_count: number;
+        pending_page_count: number;
+        denied_page_count: number;
+        target_success_count: number | null;
+        config_snapshot_json: string;
+      }
       | undefined;
 
     if (!row) {
@@ -1188,7 +1188,7 @@ export class RunSummaryQuery {
 }
 
 export class PendingReviewQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
   getPendingReview(siteId: number): Array<{
     reason: string;
@@ -1268,6 +1268,8 @@ export class PendingReviewQuery {
 export interface RunLogItem {
   logId: number;
   crawlRunId: number;
+  sitePageId: number | null;
+  pageRunId: number | null;
   level: string;
   event: string;
   url: string | null;
@@ -1277,19 +1279,29 @@ export interface RunLogItem {
 }
 
 export class RunLogQuery {
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(private readonly db: DatabaseSync) { }
 
-  listRunLogs(runId: number): RunLogItem[] {
+  listRunLogs(runId: number, sitePageId?: number): RunLogItem[] {
+    const filters = ['crawl_run_id = ?'];
+    const params: number[] = [runId];
+
+    if (sitePageId !== undefined) {
+      filters.push('site_page_id = ?');
+      params.push(sitePageId);
+    }
+
     const rows = this.db
       .prepare(
-        `SELECT id, crawl_run_id, level, event, url, message, meta_json, created_at
+        `SELECT id, crawl_run_id, site_page_id, page_run_id, level, event, url, message, meta_json, created_at
          FROM run_logs
-         WHERE crawl_run_id = ?
+         WHERE ${filters.join(' AND ')}
          ORDER BY id ASC`,
       )
-      .all(runId) as Array<{
+      .all(...params) as Array<{
         id: number;
         crawl_run_id: number;
+        site_page_id: number | null;
+        page_run_id: number | null;
         level: string;
         event: string;
         url: string | null;
@@ -1301,6 +1313,8 @@ export class RunLogQuery {
     return rows.map((row) => ({
       logId: row.id,
       crawlRunId: row.crawl_run_id,
+      sitePageId: row.site_page_id,
+      pageRunId: row.page_run_id,
       level: row.level,
       event: row.event,
       url: row.url,
@@ -1317,4 +1331,3 @@ export class RunLogQuery {
     return row?.error_message ?? null;
   }
 }
-

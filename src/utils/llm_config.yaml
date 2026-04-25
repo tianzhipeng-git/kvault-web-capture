@@ -42,4 +42,4 @@ models:
     use_proxy: true
 
 # 默认使用的模型配置
-default: doubao-seed-1.6
+default: gemini-3-flash

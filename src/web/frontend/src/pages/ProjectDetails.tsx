@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Globe, ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { ProjectTagDefinitions } from "./ProjectTagDefinitions";
 
 function toPathSegment(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || name.trim();
@@ -63,8 +64,15 @@ export function ProjectDetails() {
 
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">站点列表</h1>
-          <p className="text-muted-foreground mt-1">管理该项目下的所有采集目标站点</p>
+          <h1 className="text-3xl font-bold tracking-tight">项目详情</h1>
+          <p className="text-muted-foreground mt-1">管理该项目下的采集站点和 LLM 标签定义</p>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">站点列表</h2>
+          <p className="text-sm text-muted-foreground mt-1">管理该项目下的所有采集目标站点</p>
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) storageRootEdited.current = false; setIsDialogOpen(open); }}>
@@ -96,7 +104,7 @@ export function ProjectDetails() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>起始地址 (Base URL)</Label>
+                <Label>站点地址 (Base URL)</Label>
                 <Input
                   placeholder="https://example.com"
                   value={formData.baseUrl}
@@ -165,6 +173,8 @@ export function ProjectDetails() {
           </div>
         )}
       </div>
+
+      {projectId && <ProjectTagDefinitions projectId={Number(projectId)} />}
     </div>
   );
 }

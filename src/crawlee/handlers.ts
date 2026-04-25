@@ -81,7 +81,7 @@ export function createBaseRequestHandler(deps: {
     let classification = null;
 
     try {
-      classification = deps.classifier.classify(extracted);
+      classification = await deps.classifier.classify(extracted);
     } catch (error) {
       classificationError = error instanceof Error ? error : new Error(String(error));
     }
