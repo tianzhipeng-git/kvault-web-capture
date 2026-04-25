@@ -39,11 +39,6 @@ export function SiteDashboard() {
         <span className="text-foreground font-medium">{site.siteName}</span>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <h1 className="text-3xl font-bold tracking-tight">{site.siteName}</h1>
-        <p className="text-muted-foreground">{site.baseUrl}</p>
-      </div>
-
       <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid grid-cols-5 w-[750px] mb-8">
           <TabsTrigger value="overview" className="gap-2"><Activity className="w-4 h-4" /> 站点概览</TabsTrigger>
@@ -52,7 +47,7 @@ export function SiteDashboard() {
           <TabsTrigger value="crawl" className="gap-2"><Database className="w-4 h-4" /> 正式采集</TabsTrigger>
           <TabsTrigger value="pages" className="gap-2"><FileText className="w-4 h-4" /> 页面清单</TabsTrigger>
         </TabsList>
-        
+
         <div className="mt-4">
           <Routes>
             <Route path="overview" element={<SiteOverview site={site} />} />

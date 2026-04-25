@@ -59,10 +59,10 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
   return (
     <div className="space-y-6">
       <Card className="border-green-600/20">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
           <CardTitle className="flex items-center gap-2"><Database className="w-5 h-5" /> 正式采集</CardTitle>
           <CardDescription>
-            对允许采集的页面执行完整 artifact 阶段，并用目标成功数和更新策略控制单轮采集范围。
+            对允许采集的页面执行完整 artifact 阶段，并用目标成功数和更新策略控制范围。
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto]">
@@ -92,7 +92,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
           <CardTitle>正式采集运行记录</CardTitle>
           <CardDescription>点击某次运行，在下方查看页面复核或运行日志。</CardDescription>
         </CardHeader>
@@ -162,7 +162,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
               siteId={siteId}
               crawlRunId={selectedRunId}
               title={`Run #${selectedRunId} 页面复核`}
-              description="这里复用页面清单组件，但只展示该 crawl run 触达过的 site_pages。"
+              description="检查本次运行爬取的页面情况"
             />
           </TabsContent>
           <TabsContent value="logs">

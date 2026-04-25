@@ -89,7 +89,7 @@ function handleRequest(
         title: 'Product',
         metaDescription: 'Mock product page',
         bodyText: 'Product details for markdown artifact capture.',
-        links: ['/support'],
+        links: ['/support', '/not-exists'],
       }),
     );
     return;

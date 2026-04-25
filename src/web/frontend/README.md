@@ -63,5 +63,23 @@
 2. 构建成功后，Vite 会将产物（如 `app.js`, `styles.css`, `index.html`）输出到 `src/web/frontend/dist` 目录下。
 3. 随后，当你启动后端服务时，它会自动在指定的端口（如 `http://127.0.0.1:3100`）提供这些编译好的前端页面。
 
+#### 部署在自定义子路径 (Base Path)
+
+如果你计划通过 Nginx 将服务部署在某个子路径下（例如 `example.com/capture/`），你可以通过设置 `VITE_BASE_PATH` 环境变量来构建前端：
+
+```bash
+cd src/web/frontend
+VITE_BASE_PATH=/capture/ npm run build
+```
+
+并在 Nginx 中配置代理：
+```nginx
+location /capture/ {
+    proxy_pass http://127.0.0.1:3100/; # 注意结尾的斜杠，用于剥离 /capture/ 前缀
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
 
 后端执行： 后端通过类似 tsx 这样的工具直接运行 TypeScript 代码，不需要提前打包。 比如：PORT=3100 node --import tsx src/web/server.ts （后端会监听在 3100 端口，前端的 API 请求需要打到这个端口上。）

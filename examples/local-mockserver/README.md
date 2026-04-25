@@ -23,6 +23,7 @@ The server exposes:
 - `http://127.0.0.1:4318/product`
 - `http://127.0.0.1:4318/support`
 - `http://127.0.0.1:4318/login`
+- `http://127.0.0.1:4318/not-exists` (returns 404)
 - `http://127.0.0.1:4318/sitemap.xml`
 
 ## Page tree
@@ -33,7 +34,8 @@ The mock site structure in [mock-server.ts](/Users/tianzhipeng/Documents/private
 /
 └── /docs
     ├── /product
-    │   └── /support
+    │   ├── /support
+    │   └── /not-exists (404)
     ├── /support
     └── /login
 

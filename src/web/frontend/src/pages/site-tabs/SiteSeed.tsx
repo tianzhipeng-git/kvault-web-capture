@@ -48,18 +48,18 @@ export function SiteSeed({ siteId }: { siteId: number }) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-blue-500/20">
-        <CardHeader>
-          <CardTitle>初步摸底</CardTitle>
+      <Card className="border-green-600/20">
+        <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
+          <CardTitle className="flex items-center gap-2"><Play className="w-5 h-5" /> 初步摸底</CardTitle>
           <CardDescription>
-            从 seed URL 和 sitemap 收集初始 inventory，只执行基础爬取、分类和规则判断，不触发 Markdown / Screenshot 阶段。
+            从 seed URL 和 sitemap 收集初始 inventory，只执行基础爬取和规则判断。
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center justify-between gap-4">
           <div className="text-sm text-muted-foreground">
-            适合在规则还不确定时先看页面分布，之后到"规则配置"调整范围。
+            适合在规则还不确定时先看页面分布，之后再调整抓取范围。
           </div>
-          <Button className="gap-2" onClick={startSeed} disabled={isStarting}>
+          <Button className="gap-2 bg-green-600 hover:bg-green-700 text-white" onClick={startSeed} disabled={isStarting}>
             {isStarting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             启动初步摸底
           </Button>
@@ -67,7 +67,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
           <CardTitle>摸底运行记录</CardTitle>
           <CardDescription>点击某次运行，在下方查看页面复核或运行日志。</CardDescription>
         </CardHeader>
@@ -135,7 +135,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
               siteId={siteId}
               crawlRunId={selectedRunId}
               title={`Run #${selectedRunId} 页面复核`}
-              description="这里复用页面清单组件，但只展示该 seed run 触达过的 site_pages。"
+              description="检查本次运行爬取的页面情况"
             />
           </TabsContent>
           <TabsContent value="logs">

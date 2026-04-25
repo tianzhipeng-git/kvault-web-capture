@@ -171,7 +171,7 @@ function PreviewPanel({
           <div className="h-[520px] max-w-full overflow-auto rounded-lg bg-muted/30 p-3">
             <img
               className="max-h-full w-full object-contain"
-              src={`/api/sites/${detail.siteId}/artifacts/${detail.latestPreviews.screenshot.artifactRunId}/file`}
+              src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/sites/${detail.siteId}/artifacts/${detail.latestPreviews.screenshot.artifactRunId}/file`}
               alt="Screenshot preview"
             />
           </div>
@@ -337,14 +337,12 @@ export function PageReview({
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <CardTitle>{title}</CardTitle>
-              <CardDescription>{description}</CardDescription>
-            </div>
-            {crawlRunId && <Badge variant="secondary">Run #{crawlRunId}</Badge>}
+        <CardHeader className="flex flex-row items-baseline justify-between gap-4 space-y-0">
+          <div className="flex items-baseline gap-2">
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </div>
+          {crawlRunId && <Badge variant="secondary" className="shrink-0">Run #{crawlRunId}</Badge>}
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">

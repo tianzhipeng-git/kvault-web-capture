@@ -5,13 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, Copy, Save } from "lucide-react";
+import { CheckCircle2, Copy, Save, Plus } from "lucide-react";
+import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
 
 interface SiteConfigShape {
   seedUrls: string[];
   sitemaps: string[];
-  rulesBeforeBaseEq: unknown[];
-  rulesBeforeStage2Eq: unknown[];
+  rulesBeforeBaseEq: Rule[];
+  rulesBeforeStage2Eq: Rule[];
   runOptions: {
     seedMaxDepth: number;
     crawlMaxDepth: number;
@@ -35,8 +36,8 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [jsonDraft, setJsonDraft] = useState("");
   const [seedUrlsText, setSeedUrlsText] = useState("");
   const [sitemapsText, setSitemapsText] = useState("");
-  const [rulesBeforeBaseText, setRulesBeforeBaseText] = useState("[]");
-  const [rulesBeforeStage2Text, setRulesBeforeStage2Text] = useState("[]");
+  const [rulesBeforeBaseEq, setRulesBeforeBaseEq] = useState<Rule[]>([]);
+  const [rulesBeforeStage2Eq, setRulesBeforeStage2Eq] = useState<Rule[]>([]);
   const [seedMaxDepth, setSeedMaxDepth] = useState("1");
   const [crawlMaxDepth, setCrawlMaxDepth] = useState("2");
   const [message, setMessage] = useState("");
@@ -50,8 +51,8 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     setJsonDraft(pretty(nextConfig));
     setSeedUrlsText(arrayToLines(nextConfig.seedUrls));
     setSitemapsText(arrayToLines(nextConfig.sitemaps));
-    setRulesBeforeBaseText(pretty(nextConfig.rulesBeforeBaseEq));
-    setRulesBeforeStage2Text(pretty(nextConfig.rulesBeforeStage2Eq));
+    setRulesBeforeBaseEq((nextConfig.rulesBeforeBaseEq || []) as Rule[]);
+    setRulesBeforeStage2Eq((nextConfig.rulesBeforeStage2Eq || []) as Rule[]);
     setSeedMaxDepth(String(nextConfig.runOptions.seedMaxDepth));
     setCrawlMaxDepth(String(nextConfig.runOptions.crawlMaxDepth));
   };
@@ -73,8 +74,8 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const buildFormConfig = (): SiteConfigShape => ({
     seedUrls: linesToArray(seedUrlsText),
     sitemaps: linesToArray(sitemapsText),
-    rulesBeforeBaseEq: JSON.parse(rulesBeforeBaseText),
-    rulesBeforeStage2Eq: JSON.parse(rulesBeforeStage2Text),
+    rulesBeforeBaseEq: rulesBeforeBaseEq,
+    rulesBeforeStage2Eq: rulesBeforeStage2Eq,
     runOptions: {
       seedMaxDepth: Number(seedMaxDepth),
       crawlMaxDepth: Number(crawlMaxDepth),
@@ -124,7 +125,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
           <CardTitle>规则配置</CardTitle>
           <CardDescription>
             表单模式覆盖常用配置，JSON 模式保留完整逃生口；保存时统一走后端 SiteConfig 校验。
@@ -158,18 +159,18 @@ export function SiteConfig({ siteId }: { siteId: number }) {
 
         <TabsContent value="form" className="space-y-6">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
               <CardTitle>入口与深度</CardTitle>
               <CardDescription>每行一个 URL；seed 只用于摸底，crawl 用于正式递归深度。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-2">
                 <Label>Seed URLs</Label>
-                <textarea className="min-h-32 w-full rounded-md border bg-background p-3 text-sm" value={seedUrlsText} onChange={(event) => setSeedUrlsText(event.target.value)} />
+                <textarea className="h-[48px] w-full rounded-md border bg-background px-3 py-1 text-sm resize-none" value={seedUrlsText} onChange={(event) => setSeedUrlsText(event.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Sitemaps</Label>
-                <textarea className="min-h-32 w-full rounded-md border bg-background p-3 text-sm" value={sitemapsText} onChange={(event) => setSitemapsText(event.target.value)} />
+                <textarea className="h-[48px] w-full rounded-md border bg-background px-3 py-1 text-sm resize-none" value={sitemapsText} onChange={(event) => setSitemapsText(event.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Seed Max Depth</Label>
@@ -183,19 +184,53 @@ export function SiteConfig({ siteId }: { siteId: number }) {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>规则 JSON 片段</CardTitle>
-              <CardDescription>规则结构仍保持架构文档里的 `rulesBeforeBaseEq` 与 `rulesBeforeStage2Eq`，方便迁移和 CLI 共用。</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-baseline gap-2">
+                <CardTitle>基础入队规则</CardTitle>
+                <CardDescription>用于过滤不符合条件的 URL，支持黑白名单和范围限定。仅支持 URL 匹配。</CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setRulesBeforeBaseEq([...rulesBeforeBaseEq, createDefaultRule()])}
+                className="gap-1"
+              >
+                <Plus className="w-4 h-4" /> 添加规则
+              </Button>
             </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-2">
-                <Label>rulesBeforeBaseEq</Label>
-                <textarea className="min-h-72 w-full rounded-md border bg-muted/20 p-3 font-mono text-xs" value={rulesBeforeBaseText} onChange={(event) => setRulesBeforeBaseText(event.target.value)} />
+            <CardContent>
+              <RuleListEditor 
+                rules={rulesBeforeBaseEq} 
+                onChange={setRulesBeforeBaseEq} 
+                allowTagMatch={false} 
+                showArtifacts={false} 
+                hideAddButton 
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div className="flex items-baseline gap-2">
+                <CardTitle>深度爬取规则</CardTitle>
+                <CardDescription>用于指定如何截取正文，支持 URL 匹配和 HTML 标签匹配。</CardDescription>
               </div>
-              <div className="space-y-2">
-                <Label>rulesBeforeStage2Eq</Label>
-                <textarea className="min-h-72 w-full rounded-md border bg-muted/20 p-3 font-mono text-xs" value={rulesBeforeStage2Text} onChange={(event) => setRulesBeforeStage2Text(event.target.value)} />
-              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setRulesBeforeStage2Eq([...rulesBeforeStage2Eq, createDefaultRule()])}
+                className="gap-1"
+              >
+                <Plus className="w-4 h-4" /> 添加规则
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <RuleListEditor 
+                rules={rulesBeforeStage2Eq} 
+                onChange={setRulesBeforeStage2Eq} 
+                allowTagMatch={true} 
+                hideAddButton 
+              />
             </CardContent>
           </Card>
 
@@ -209,7 +244,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
 
         <TabsContent value="json">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
               <CardTitle>完整 SiteConfig JSON</CardTitle>
               <CardDescription>适合粘贴外部配置、批量编辑规则或精确调整字段。</CardDescription>
             </CardHeader>
