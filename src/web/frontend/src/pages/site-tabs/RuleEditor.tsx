@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, WandSparkles } from "lucide-react";
 
 export const createDefaultRule = (): UrlRule => ({
   name: `rule-${Date.now()}`,
@@ -43,12 +43,14 @@ export function RuleListEditor({
   allowTagMatch = false,
   showArtifacts = true,
   hideAddButton = false,
+  onAssistRule,
 }: {
   rules: Rule[];
   onChange: (rules: Rule[]) => void;
   allowTagMatch?: boolean;
   showArtifacts?: boolean;
   hideAddButton?: boolean;
+  onAssistRule?: (rule: Rule, index: number) => void;
 }) {
   const addRule = () => {
     const newRule: UrlRule = {
@@ -94,6 +96,7 @@ export function RuleListEditor({
           onRemove={() => removeRule(i)}
           onMoveUp={() => moveRule(i, 'up')}
           onMoveDown={() => moveRule(i, 'down')}
+          onAssist={onAssistRule ? () => onAssistRule(rule, i) : undefined}
           isFirst={i === 0}
           isLast={i === rules.length - 1}
         />
@@ -116,6 +119,7 @@ function RuleEditorItem({
   onRemove,
   onMoveUp,
   onMoveDown,
+  onAssist,
   isFirst,
   isLast,
 }: {
@@ -126,6 +130,7 @@ function RuleEditorItem({
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onAssist?: () => void;
   isFirst: boolean;
   isLast: boolean;
 }) {
@@ -157,6 +162,14 @@ function RuleEditorItem({
       </div>
 
       <CardContent className="p-4 pt-6 space-y-4">
+        {onAssist && (
+          <div className="flex justify-end pr-8">
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAssist}>
+              <WandSparkles className="h-3.5 w-3.5" />
+              规则编辑助手
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <Label className="text-xs">规则名称 (需唯一)</Label>

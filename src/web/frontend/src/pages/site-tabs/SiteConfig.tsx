@@ -5,8 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Save, Plus } from "lucide-react";
+import { Copy, Save, Plus, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
+import { LLMChatPanel } from "@/components/LLMChatPanel";
+import type { LlmChatMessage } from "@/lib/api";
+import {
+  applyRuleAssistantSuggestions,
+  parseAssistantJson,
+  tagDefinitionsToJsonl,
+  type RuleAssistantSuggestion,
+} from "@/lib/rule-assistant";
 import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
 
 interface SiteConfigShape {
@@ -20,6 +28,12 @@ interface SiteConfigShape {
   };
 }
 
+type RulePoint = "rulesBeforeBaseEq" | "rulesBeforeStage2Eq";
+
+type AssistantTarget =
+  | { kind: "generic" }
+  | { kind: "single"; point: RulePoint; index: number; rule: Rule };
+
 function linesToArray(value: string): string[] {
   return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
@@ -30,6 +44,15 @@ function arrayToLines(value: string[]): string {
 
 function pretty(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function rulePointLabel(point: RulePoint): string {
+  return point === "rulesBeforeBaseEq" ? "基础入队规则" : "深度爬取规则";
+}
+
+function ruleSummary(rule: Rule): string {
+  const matchType = rule.matchType ?? "url";
+  return `${matchType} / ${rule.listType}`;
 }
 
 export function SiteConfig({ siteId }: { siteId: number }) {
@@ -44,7 +67,10 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [sites, setSites] = useState<Array<{ siteId: number; siteName: string }>>([]);
   const [sourceSiteId, setSourceSiteId] = useState("");
   const [projectId, setProjectId] = useState<number | null>(null);
+  const [tagDefinitions, setTagDefinitions] = useState<unknown>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantTarget, setAssistantTarget] = useState<AssistantTarget>({ kind: "generic" });
 
   const hydrate = (nextConfig: SiteConfigShape) => {
     setConfig(nextConfig);
@@ -61,6 +87,9 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     api.getSiteConfig(siteId).then(hydrate);
     api.getSiteOverview(siteId).then((overview) => {
       setProjectId(overview.projectId);
+      api.getProjectTagDefinitions(overview.projectId).then((data) => {
+        setTagDefinitions(data.tagDefinitions ?? []);
+      });
       api.getSites(overview.projectId).then((data) => {
         setSites((data.items || []).filter((site: { siteId: number }) => site.siteId !== siteId));
       });
@@ -121,6 +150,80 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     }
   };
 
+  const openGenericAssistant = () => {
+    setAssistantTarget({ kind: "generic" });
+    setAssistantOpen(true);
+  };
+
+  const openSingleRuleAssistant = (point: RulePoint, rule: Rule, index: number) => {
+    setAssistantTarget({ kind: "single", point, index, rule });
+    setAssistantOpen(true);
+  };
+
+  const buildAssistantContext = (userInput: string, _history: LlmChatMessage[]) => {
+    const tagsJsonl = tagDefinitionsToJsonl(tagDefinitions);
+
+    if (assistantTarget.kind === "single") {
+      return {
+        tags_jsonl: tagsJsonl,
+        rule_point: assistantTarget.point,
+        rule_obj: JSON.stringify(assistantTarget.rule, null, 2),
+        user_input: userInput,
+      };
+    }
+
+    return {
+      tags_jsonl: tagsJsonl,
+      rulesBeforeBaseEq: JSON.stringify(rulesBeforeBaseEq, null, 2),
+      rulesBeforeStage2Eq: JSON.stringify(rulesBeforeStage2Eq, null, 2),
+      page_info: "",
+      user_input: userInput,
+    };
+  };
+
+  const applyAssistantResponse = async (content: string) => {
+    if (assistantTarget.kind === "single") {
+      const nextRule = parseAssistantJson<Rule>(content);
+      if (assistantTarget.point === "rulesBeforeBaseEq") {
+        const next = [...rulesBeforeBaseEq];
+        next[assistantTarget.index] = nextRule;
+        setRulesBeforeBaseEq(next);
+      } else {
+        const next = [...rulesBeforeStage2Eq];
+        next[assistantTarget.index] = nextRule;
+        setRulesBeforeStage2Eq(next);
+      }
+      toast.success("已应用到当前规则，保存表单配置后生效。");
+      return;
+    }
+
+    const suggestions = parseAssistantJson<RuleAssistantSuggestion[]>(content);
+    const result = applyRuleAssistantSuggestions({
+      rulesBeforeBaseEq,
+      rulesBeforeStage2Eq,
+      suggestions,
+    });
+    setRulesBeforeBaseEq(result.rulesBeforeBaseEq);
+    setRulesBeforeStage2Eq(result.rulesBeforeStage2Eq);
+    toast.success(`已应用 ${result.appliedCount} 条建议，保存表单配置后生效。`);
+  };
+
+  const assistantContextSummary =
+    assistantTarget.kind === "single"
+      ? [
+          { label: "入口", value: "规则卡片" },
+          { label: "执行点", value: rulePointLabel(assistantTarget.point) },
+          { label: "序号", value: String(assistantTarget.index + 1) },
+          { label: "规则名", value: assistantTarget.rule.name },
+          { label: "规则类型", value: ruleSummary(assistantTarget.rule) },
+        ]
+      : [
+          { label: "入口", value: "规则配置表单" },
+          { label: "范围", value: "全部规则" },
+          { label: "基础规则", value: `${rulesBeforeBaseEq.length} 条` },
+          { label: "深度规则", value: `${rulesBeforeStage2Eq.length} 条` },
+        ];
+
   if (!config) {
     return <div className="animate-pulse p-8 text-muted-foreground">加载配置中...</div>;
   }
@@ -155,6 +258,13 @@ export function SiteConfig({ siteId }: { siteId: number }) {
         </TabsList>
 
         <TabsContent value="form" className="space-y-6">
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" className="gap-2" onClick={openGenericAssistant}>
+              <WandSparkles className="h-4 w-4" />
+              规则编辑助手
+            </Button>
+          </div>
+
           <Card>
             <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
               <CardTitle>入口与深度</CardTitle>
@@ -202,6 +312,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
                 allowTagMatch={false} 
                 showArtifacts={false} 
                 hideAddButton 
+                onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeBaseEq", rule, index)}
               />
             </CardContent>
           </Card>
@@ -227,6 +338,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
                 onChange={setRulesBeforeStage2Eq} 
                 allowTagMatch={true} 
                 hideAddButton 
+                onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeStage2Eq", rule, index)}
               />
             </CardContent>
           </Card>
@@ -257,6 +369,22 @@ export function SiteConfig({ siteId }: { siteId: number }) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <LLMChatPanel
+        open={assistantOpen}
+        onOpenChange={setAssistantOpen}
+        promptName={assistantTarget.kind === "single" ? "rule-assistant-singlerule" : "rule-assistant-generic"}
+        title="规则编辑助手"
+        applyLabel={assistantTarget.kind === "single" ? "应用到规则" : "应用到表单"}
+        contextSummary={assistantContextSummary}
+        resetKey={
+          assistantTarget.kind === "single"
+            ? `${assistantTarget.point}:${assistantTarget.index}:${assistantTarget.rule.name}`
+            : "generic"
+        }
+        buildContext={buildAssistantContext}
+        onApply={applyAssistantResponse}
+      />
     </div>
   );
 }

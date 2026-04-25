@@ -7,6 +7,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 
 import { M1App } from '../app/services.js';
 import { openDatabase } from '../db/database.js';
+import { chatCompletion, type ChatCompletionMessageParam } from '../utils/llm_chat.js';
+import { fetchAndRenderPrompt } from '../utils/llm_prompts.js';
 import { SessionAuth } from './auth/session-auth.js';
 import {
   PendingReviewQuery,
@@ -71,6 +73,29 @@ function parseArtifactRunId(value: string): number {
   }
 
   return artifactRunId;
+}
+
+function parseLlmHistory(value: unknown): ChatCompletionMessageParam[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((message): message is { role: 'user' | 'assistant'; content: string } => {
+      if (typeof message !== 'object' || message === null) {
+        return false;
+      }
+      const record = message as Record<string, unknown>;
+      return (
+        (record.role === 'user' || record.role === 'assistant') &&
+        typeof record.content === 'string' &&
+        record.content.trim().length > 0
+      );
+    })
+    .map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
 }
 
 function artifactContentType(path: string, artifactType: string): string {
@@ -182,6 +207,48 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
 
   server.get('/api/auth/session', async (request) => auth.getSessionState(request));
+
+  server.post('/api/llm/chat', async (request, reply) => {
+    const body = (request.body ?? {}) as {
+      promptName?: string;
+      promptVersion?: string;
+      context?: Record<string, unknown>;
+      history?: unknown;
+      model?: string;
+      temperature?: number;
+      responseFormat?: 'json_object' | 'text';
+    };
+
+    if (!body.promptName?.trim()) {
+      reply.code(400);
+      throw new Error('promptName 不能为空。');
+    }
+
+    const renderedMessages = await fetchAndRenderPrompt(
+      body.promptName.trim(),
+      body.promptVersion,
+      body.context ?? {},
+    );
+    const systemMessages = renderedMessages.filter((message) => message.role === 'system');
+    const promptMessages = renderedMessages.filter((message) => message.role !== 'system');
+    const messages = [
+      ...(systemMessages as ChatCompletionMessageParam[]),
+      ...(promptMessages as ChatCompletionMessageParam[]),
+      ...parseLlmHistory(body.history),
+    ];
+    const content = await chatCompletion(messages, {
+      model: body.model,
+      temperature: body.temperature,
+      response_format:
+        body.responseFormat === 'json_object'
+          ? { type: 'json_object' }
+          : undefined,
+    });
+
+    return {
+      content,
+    };
+  });
 
   server.get('/api/projects', async () => ({
     items: projectQuery.listProjects(),

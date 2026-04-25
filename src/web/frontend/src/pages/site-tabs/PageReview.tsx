@@ -1,15 +1,25 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ProcessingState, SitePageDetail, SitePageListRow } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RunLogs } from "@/components/RunLogs";
+import { LLMChatPanel } from "@/components/LLMChatPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle2, CircleDashed, Filter, History, Image, ScrollText, Search, XCircle } from "lucide-react";
+import type { LlmChatMessage } from "@/lib/api";
+import {
+  applyRuleAssistantSuggestions,
+  parseAssistantJson,
+  tagDefinitionsToJsonl,
+  type RuleAssistantSuggestion,
+} from "@/lib/rule-assistant";
+import type { Rule } from "./RuleEditor";
+import { CheckCircle2, CircleDashed, Filter, History, Image, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 
 const statusOptions = [
   { value: "", label: "全部状态" },
@@ -41,6 +51,17 @@ function statusVariant(page: SitePageListRow): "default" | "secondary" | "destru
 
 type PreviewKind = "base" | "markdown" | "screenshot";
 type PreviewMode = "text" | "markdown";
+
+interface SiteConfigShape {
+  seedUrls: string[];
+  sitemaps: string[];
+  rulesBeforeBaseEq: Rule[];
+  rulesBeforeStage2Eq: Rule[];
+  runOptions: {
+    seedMaxDepth: number;
+    crawlMaxDepth: number;
+  };
+}
 
 function ProcessingCard({
   state,
@@ -205,25 +226,103 @@ function PageDetailDialog({
   const [activePreview, setActivePreview] = useState<PreviewKind>("base");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("text");
   const [expandedLogRunId, setExpandedLogRunId] = useState<number | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(null);
+  const [tagDefinitions, setTagDefinitions] = useState<unknown>([]);
 
   useEffect(() => {
     setActivePreview("base");
     setPreviewMode("text");
     setExpandedLogRunId(null);
+    setAssistantOpen(false);
   }, [detail?.sitePageId]);
+
+  useEffect(() => {
+    if (!detail) {
+      setSiteConfig(null);
+      setTagDefinitions([]);
+      return;
+    }
+
+    api.getSiteConfig(detail.siteId).then((config) => setSiteConfig(config as SiteConfigShape));
+    api.getSiteOverview(detail.siteId).then((overview) => {
+      api.getProjectTagDefinitions(overview.projectId).then((data) => {
+        setTagDefinitions(data.tagDefinitions ?? []);
+      });
+    });
+  }, [detail]);
+
+  const buildPageInfo = (pageDetail: SitePageDetail): string => [
+    `url: ${pageDetail.url}`,
+    `title: ${pageDetail.title}`,
+    `tags: ${pageDetail.latestTags.length > 0 ? pageDetail.latestTags.join(", ") : "无"}`,
+    `根据当前规则是否应该base抓取: ${pageDetail.latestBase.shouldRun ? "是" : "否"}`,
+    `根据当前规则是否应该Markdown抓取: ${pageDetail.latestMarkdown.shouldRun ? "是" : "否"}`,
+    `根据当前规则是否应该截图: ${pageDetail.latestScreenshot.shouldRun ? "是" : "否"}`,
+    `当前页面状态: ${pageDetail.businessStatus}`,
+    `当前规则判定: ${pageDetail.latestDecision ?? "无"}`,
+    `待确认原因: ${pageDetail.latestPendingReasonLabel ?? "无"}`,
+  ].join("\n");
+
+  const buildAssistantContext = (userInput: string, _history: LlmChatMessage[]) => ({
+    tags_jsonl: tagDefinitionsToJsonl(tagDefinitions),
+    rulesBeforeBaseEq: JSON.stringify(siteConfig?.rulesBeforeBaseEq ?? [], null, 2),
+    rulesBeforeStage2Eq: JSON.stringify(siteConfig?.rulesBeforeStage2Eq ?? [], null, 2),
+    page_info: detail ? buildPageInfo(detail) : "",
+    user_input: userInput,
+  });
+
+  const applyAssistantResponse = async (content: string) => {
+    if (!detail || !siteConfig) {
+      throw new Error("站点配置还没有加载完成。");
+    }
+
+    const suggestions = parseAssistantJson<RuleAssistantSuggestion[]>(content);
+    const result = applyRuleAssistantSuggestions({
+      rulesBeforeBaseEq: siteConfig.rulesBeforeBaseEq,
+      rulesBeforeStage2Eq: siteConfig.rulesBeforeStage2Eq,
+      suggestions,
+    });
+    const nextConfig = {
+      ...siteConfig,
+      rulesBeforeBaseEq: result.rulesBeforeBaseEq,
+      rulesBeforeStage2Eq: result.rulesBeforeStage2Eq,
+    };
+    const response = await api.updateSiteConfig(detail.siteId, nextConfig);
+    setSiteConfig(response.config as SiteConfigShape);
+    toast.success(`已更新配置，应用了 ${result.appliedCount} 条建议。`);
+  };
+
+  const assistantContextSummary = detail
+    ? [
+        { label: "入口", value: "页面详情弹窗" },
+        { label: "页面", value: detail.title },
+        { label: "URL", value: detail.url },
+        { label: "状态", value: detail.businessStatus },
+        { label: "Base", value: detail.latestBase.shouldRun ? "应该抓取" : "不要求抓取" },
+        { label: "Markdown", value: detail.latestMarkdown.shouldRun ? "应该抓取" : "不要求抓取" },
+        { label: "截图", value: detail.latestScreenshot.shouldRun ? "应该抓取" : "不要求抓取" },
+      ]
+    : [];
 
   return (
     <Dialog open={!!detail} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[92vw] w-[92vw] max-h-[90vh] overflow-y-auto overflow-x-hidden grid-cols-1">
-        <DialogHeader>
+        <DialogHeader className="pr-10">
           <DialogTitle>页面详情</DialogTitle>
         </DialogHeader>
         {detail && (
           <div className="space-y-6 min-w-0 overflow-hidden">
             <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
-              <div>
-                <div className="text-lg font-semibold">{detail.title}</div>
-                <div className="text-sm text-muted-foreground break-all">{detail.url}</div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-lg font-semibold">{detail.title}</div>
+                  <div className="text-sm text-muted-foreground break-all">{detail.url}</div>
+                </div>
+                <Button type="button" variant="outline" className="gap-2" onClick={() => setAssistantOpen(true)}>
+                  <WandSparkles className="h-4 w-4" />
+                  规则编辑助手
+                </Button>
               </div>
               <div className="grid gap-3 md:grid-cols-3 text-sm">
                 <div>业务状态：<Badge variant="outline">{detail.businessStatus}</Badge></div>
@@ -302,6 +401,17 @@ function PageDetailDialog({
             </Card>
           </div>
         )}
+        <LLMChatPanel
+          open={assistantOpen}
+          onOpenChange={setAssistantOpen}
+          promptName="rule-assistant-generic"
+          title="规则编辑助手"
+          applyLabel="更新配置"
+          contextSummary={assistantContextSummary}
+          resetKey={detail?.sitePageId ?? "page-detail"}
+          buildContext={buildAssistantContext}
+          onApply={applyAssistantResponse}
+        />
       </DialogContent>
     </Dialog>
   );

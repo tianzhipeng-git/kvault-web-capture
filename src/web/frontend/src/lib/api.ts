@@ -141,6 +141,11 @@ export interface SitePageDetail {
   }>;
 }
 
+export interface LlmChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 const importMeta = import.meta as ImportMeta & { env?: { BASE_URL?: string } };
 const baseUrl = (importMeta.env?.BASE_URL ?? '/').replace(/\/$/, '');
 
@@ -168,6 +173,20 @@ export const api = {
   }),
   logout: () => fetchApi('/api/auth/logout', { method: 'POST' }),
   getSession: () => fetchApi('/api/auth/session'),
+
+  llmChat: (data: {
+    promptName: string;
+    promptVersion?: string;
+    context: Record<string, unknown>;
+    history?: LlmChatMessage[];
+    model?: string;
+    temperature?: number;
+    responseFormat?: "json_object" | "text";
+  }): Promise<{ content: string }> => fetchApi('/api/llm/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  }),
 
   getProjects: () => fetchApi('/api/projects'),
   createProject: (name: string) => fetchApi('/api/projects', {
