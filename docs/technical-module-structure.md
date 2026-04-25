@@ -134,6 +134,8 @@ Pending 原因：
 
 规则判定实现在 `src/rules/rule-decision.ts`。如果后续要增加规则类型、条件操作符或 artifact 选择策略，优先从这个文件和 `SiteConfig` 类型开始。
 
+规则 JSON 的编写方式见 [规则格式编写指南](./rule-format-guide.md)。
+
 ## 3. 运行时架构
 
 运行时的主链路由 `M1App` 编排，Crawlee 负责队列和请求执行，SQLite 负责业务状态，文件系统负责保存实际 artifact。

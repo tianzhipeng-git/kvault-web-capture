@@ -48,12 +48,12 @@ function buildPageInfo(page: ExtractedPage): string {
   return [
     `url: ${page.url}`,
     `title: ${page.title}`,
-    `body: ${page.bodyText.slice(0, 1000)}`,
+    `body: ${page.bodyText.slice(0, 2000)}`,
   ].join('\n');
 }
 
 export class LLMClassifier implements Classifier {
-  constructor(private readonly tagDefinitions: unknown) {}
+  constructor(private readonly tagDefinitions: unknown) { }
 
   async classify(page: ExtractedPage): Promise<ClassificationResult> {
     const labelsJsonl = tagCoresToJsonl(this.tagDefinitions);

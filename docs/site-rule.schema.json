@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kvault.local/schemas/site-rule.schema.json",
+  "title": "Kvault site rule",
+  "description": "A single rule object accepted in rulesBeforeBaseEq or rulesBeforeStage2Eq.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/urlRule"
+    },
+    {
+      "$ref": "#/$defs/tagRule"
+    }
+  ],
+  "$defs": {
+    "artifact": {
+      "type": "string",
+      "enum": [
+        "markdown",
+        "screenshot"
+      ]
+    },
+    "artifactList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      },
+      "uniqueItems": true
+    },
+    "listType": {
+      "type": "string",
+      "enum": [
+        "blacklist",
+        "scopelist",
+        "whitelist"
+      ]
+    },
+    "urlRule": {
+      "title": "URL rule",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "matchType": {
+          "const": "url",
+          "description": "Optional for URL rules. Omitted matchType is parsed as url by the application."
+        },
+        "listType": {
+          "$ref": "#/$defs/listType"
+        },
+        "ruleType": {
+          "type": "string",
+          "enum": [
+            "prefix",
+            "regex"
+          ]
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifactList",
+          "description": "Only contributes capture work in rulesBeforeStage2Eq."
+        }
+      },
+      "required": [
+        "listType",
+        "ruleType",
+        "values"
+      ]
+    },
+    "tagRule": {
+      "title": "Tag rule",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "matchType": {
+          "const": "tag"
+        },
+        "listType": {
+          "$ref": "#/$defs/listType"
+        },
+        "when": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tagCondition"
+          }
+        },
+        "artifacts": {
+          "$ref": "#/$defs/artifactList",
+          "default": [
+            "markdown"
+          ]
+        }
+      },
+      "required": [
+        "matchType",
+        "listType",
+        "when"
+      ]
+    },
+    "tagCondition": {
+      "title": "Tag rule condition",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "any_of",
+            "all_of",
+            "is_empty"
+          ]
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "key",
+        "op"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "is_empty"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "values"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "values"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
