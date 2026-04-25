@@ -29,6 +29,7 @@ function printUsage(): void {
   console.log(`Usage:
   pnpm spike --url <seed-url> [--db ./.local/spike.db] [--storage ./.local/crawlee]
   node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
+  node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
@@ -72,6 +73,15 @@ async function main(): Promise<void> {
     switch (command) {
       case 'project:create': {
         const result = app.createProject(getRequiredArg('--name'));
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'project:export': {
+        const output = getArg('--output');
+        const result = await app.exportProject(
+          Number(getRequiredArg('--project')),
+          output ? resolve(output) : undefined,
+        );
         console.log(JSON.stringify(result, null, 2));
         return;
       }

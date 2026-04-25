@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Globe, ChevronRight } from "lucide-react";
+import { Plus, Globe, ChevronRight, Download, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { ProjectTagDefinitions } from "./ProjectTagDefinitions";
 
@@ -20,6 +20,8 @@ export function ProjectDetails() {
   const [projectSlug, setProjectSlug] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
   const storageRootEdited = useRef(false);
 
@@ -54,6 +56,28 @@ export function ProjectDetails() {
     loadSites();
   };
 
+  const handleExport = async () => {
+    if (!projectId || isExporting) return;
+    setIsExporting(true);
+    setExportError("");
+
+    try {
+      const { blob, filename } = await api.exportProject(Number(projectId));
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "导出失败");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
@@ -67,7 +91,22 @@ export function ProjectDetails() {
           <h1 className="text-3xl font-bold tracking-tight">项目详情</h1>
           <p className="text-muted-foreground mt-1">管理该项目下的采集站点和 LLM 标签定义</p>
         </div>
+        <Button
+          variant="outline"
+          className="gap-2"
+          onClick={handleExport}
+          disabled={isExporting || !projectId}
+        >
+          {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+          {isExporting ? "正在打包..." : "导出项目"}
+        </Button>
       </div>
+
+      {exportError && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {exportError}
+        </div>
+      )}
 
       <div className="flex justify-between items-center">
         <div>

@@ -165,6 +165,28 @@ async function fetchApi(url: string, options?: RequestInit) {
   return res.json();
 }
 
+async function fetchBlobApi(url: string, options?: RequestInit) {
+  const res = await fetch(`${baseUrl}${url}`, options);
+  if (res.status === 401) {
+    const loginPath = `${importMeta.env?.BASE_URL ?? '/'}login`;
+    if (window.location.pathname !== loginPath && window.location.pathname !== '/login') {
+      window.location.href = loginPath;
+    }
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'API request failed');
+  }
+
+  const disposition = res.headers.get('Content-Disposition') ?? '';
+  const filenameMatch = /filename="([^"]+)"/.exec(disposition);
+  return {
+    blob: await res.blob(),
+    filename: filenameMatch?.[1] ?? 'project-export.zip',
+  };
+}
+
 export const api = {
   login: (password: string) => fetchApi('/api/auth/login', {
     method: 'POST',
@@ -199,6 +221,9 @@ export const api = {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tagDefinitions })
+  }),
+  exportProject: (projectId: number): Promise<{ blob: Blob; filename: string }> => fetchBlobApi(`/api/projects/${projectId}/export`, {
+    method: 'POST'
   }),
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),

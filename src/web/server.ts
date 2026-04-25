@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { readFileSync } from 'node:fs';
+import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -288,6 +288,16 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       status: 'ok',
       tagDefinitions,
     };
+  });
+
+  server.post('/api/projects/:projectId/export', async (request, reply) => {
+    const params = request.params as { projectId: string };
+    const result = await app.exportProject(parseProjectId(params.projectId));
+    return reply
+      .type('application/zip')
+      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
+      .header('Content-Length', statSync(result.outputPath).size)
+      .send(createReadStream(result.outputPath));
   });
 
   server.post('/api/sites', async (request, reply) => {

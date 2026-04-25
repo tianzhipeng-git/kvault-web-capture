@@ -78,6 +78,17 @@ describe('web server', () => {
       },
     }).then((response) => response.json())).items[0].projectId as number;
 
+    const exportResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/export`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(exportResponse.statusCode).toBe(200);
+    expect(exportResponse.headers['content-type']).toContain('application/zip');
+    expect(exportResponse.rawPayload.length).toBeGreaterThan(0);
+
     const siteResponse = await webServer.inject({
       method: 'POST',
       url: '/api/sites',

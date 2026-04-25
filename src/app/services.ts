@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { Configuration } from 'crawlee';
 
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
+import { ProjectExporter, type ProjectExportResult } from '../export/project-exporter.js';
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
 import { LLMClassifier } from '../classification/llm-classifier.js';
@@ -75,6 +76,8 @@ export class M1App {
 
   private readonly planner;
 
+  private readonly projectExporter;
+
   private readonly classifier: Classifier | null;
 
   private readonly markdownAdapter: MarkdownCaptureAdapter;
@@ -92,6 +95,7 @@ export class M1App {
     this.artifactRuns = new ArtifactRunRepository(this.db, this.clock);
     this.runLogs = new RunLogRepository(this.db, this.clock);
     this.planner = new RunPlanner(this.sitePages, this.clock);
+    this.projectExporter = new ProjectExporter(this.db, this.clock);
     initializeSchema(this.db);
     this.classifier = options.classifier ?? null;
 
@@ -236,6 +240,10 @@ export class M1App {
 
   listSampleCaptures(siteId: number, limit: number): SampleCaptureRow[] {
     return this.pageRuns.listSampleCaptures(siteId, limit);
+  }
+
+  exportProject(projectId: number, outputPath?: string): Promise<ProjectExportResult> {
+    return this.projectExporter.exportProject({ projectId, outputPath });
   }
 
   private async executeRun(input: {
