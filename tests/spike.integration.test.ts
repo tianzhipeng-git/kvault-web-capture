@@ -21,7 +21,7 @@ import {
   RunRepository,
   SitePageRepository,
   SiteRepository,
-} from '../src/db/repositories.js';
+} from '../src/db/repositories/index.js';
 import { FakeMarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
 import { RunPlanner } from '../src/planner/run-planner.js';
 import { FakeScreenshotCaptureAdapter } from '../src/screenshot/fake-screenshot-adapter.js';

@@ -6,7 +6,7 @@ import {
   createScreenshotFailedRequestHandler,
   createScreenshotRequestHandler,
 } from '../src/crawlee/handlers.js';
-import type { ArtifactRunRepository, RunLogRepository, SitePageRepository } from '../src/db/repositories.js';
+import type { ArtifactRunRepository, RunLogRepository, SitePageRepository } from '../src/db/repositories/index.js';
 import type { FileArtifactWriter } from '../src/export/file-artifact-writer.js';
 import type { MarkdownCaptureAdapter } from '../src/markdown/markdown-adapter.js';
 import type { ScreenshotCaptureAdapter } from '../src/screenshot/screenshot-adapter.js';

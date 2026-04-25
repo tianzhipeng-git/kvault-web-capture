@@ -14,7 +14,7 @@ import type {
   ArtifactRunRepository,
   PageRunRepository,
   SitePageRepository,
-} from '../db/repositories.js';
+} from '../db/repositories/index.js';
 import type { Classifier } from '../classification/classifier.js';
 import type { RunType, SiteConfig, UpdatePolicy } from '../domain/types.js';
 import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
@@ -28,7 +28,7 @@ import {
   createScreenshotFailedRequestHandler,
   createScreenshotRequestHandler,
 } from './handlers.js';
-import type { RunLogRepository } from '../db/repositories.js';
+import type { RunLogRepository } from '../db/repositories/index.js';
 
 /**
  * Shared session pool configuration applied to all HTTP-based crawlers.
@@ -98,6 +98,7 @@ export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCra
       }),
       failedRequestHandler: createBaseFailedRequestHandler({
         pageRunRepository: options.pageRunRepository,
+        sitePageRepository: options.sitePageRepository,
         runLog: options.runLog,
       }),
     },

@@ -4,7 +4,7 @@ import type {
   SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
-import { SitePageRepository } from '../db/repositories.js';
+import { SitePageRepository } from '../db/repositories/index.js';
 import { shouldEnqueueByUpdatePolicy } from './update-policy.js';
 import { buildBaseEnqueueDecision, buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import { normalizeUrl } from '../utils/url.js';

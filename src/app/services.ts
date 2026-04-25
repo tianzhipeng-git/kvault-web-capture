@@ -19,7 +19,7 @@ import {
   type InventoryPageRow,
   type InventorySummary,
   type SampleCaptureRow,
-} from '../db/repositories.js';
+} from '../db/repositories/index.js';
 import type {
   BaseRequestUserData,
   RunType,

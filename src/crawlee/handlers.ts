@@ -20,7 +20,7 @@ import {
   PageRunRepository,
   RunLogRepository,
   SitePageRepository,
-} from '../db/repositories.js';
+} from '../db/repositories/index.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
@@ -234,6 +234,7 @@ export function createBaseRequestHandler(deps: {
 
 export function createBaseFailedRequestHandler(deps: {
   pageRunRepository: PageRunRepository;
+  sitePageRepository: SitePageRepository;
   runLog: RunLogRepository;
 }) {
   return async (
@@ -246,6 +247,11 @@ export function createBaseFailedRequestHandler(deps: {
       runId: userData.runId,
       sitePageId: userData.sitePageId,
       errorMessage: error.message,
+    });
+
+    deps.sitePageRepository.recordBaseCaptureFailed({
+      runId: userData.runId,
+      sitePageId: userData.sitePageId,
     });
 
     deps.runLog.log({
