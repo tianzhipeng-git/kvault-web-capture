@@ -4,7 +4,7 @@ import {
   BasicCrawler,
   CheerioCrawler,
   Configuration,
-  JSDOMCrawler,
+  LinkeDOMCrawler,
   PlaywrightCrawler,
 } from 'crawlee';
 
@@ -326,8 +326,8 @@ export class M1App {
     );
 
     const markdownCrawler =
-      this.markdownAdapter.crawlerType === 'jsdom'
-        ? new JSDOMCrawler(
+      this.markdownAdapter.crawlerType === 'linkedom'
+        ? new LinkeDOMCrawler(
             {
               requestQueue: markdownQueue,
               maxConcurrency: 1,

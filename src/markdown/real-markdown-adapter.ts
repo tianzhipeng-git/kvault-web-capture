@@ -27,7 +27,7 @@ export class DefuddleMarkdownStrategy implements MarkdownCaptureStrategy {
 
   async capture(url: string, context?: MarkdownCaptureContext): Promise<string> {
     if (!context?.document) {
-      throw new Error('Defuddle requires a DOM document from JSDOMCrawler');
+      throw new Error('Defuddle requires a DOM document from LinkeDOMCrawler');
     }
 
     const result = await Defuddle(context.document, context.finalUrl ?? url, {
@@ -92,7 +92,7 @@ export class JinaMarkdownStrategy implements MarkdownCaptureStrategy {
 }
 
 export class FallbackMarkdownCaptureAdapter implements MarkdownCaptureAdapter {
-  readonly crawlerType = 'jsdom' as const;
+  readonly crawlerType = 'linkedom' as const;
 
   constructor(private readonly strategies: MarkdownCaptureStrategy[]) {}
 

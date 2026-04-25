@@ -10,6 +10,6 @@ export interface MarkdownCaptureResult {
 }
 
 export interface MarkdownCaptureAdapter {
-  readonly crawlerType: 'basic' | 'jsdom';
+  readonly crawlerType: 'basic' | 'linkedom';
   capture(url: string, context?: MarkdownCaptureContext): Promise<MarkdownCaptureResult>;
 }

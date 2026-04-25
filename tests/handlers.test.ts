@@ -41,7 +41,7 @@ describe('createMarkdownRequestHandler', () => {
 
     const handler = createMarkdownRequestHandler({
       markdownAdapter: {
-        crawlerType: 'jsdom',
+        crawlerType: 'linkedom',
         async capture(url) {
           return { content: `# Page\n\nSource: ${url}\n`, strategyName: 'defuddle' };
         },
@@ -96,7 +96,7 @@ describe('createMarkdownRequestHandler', () => {
     const fakeDoc = {} as Document;
     const handler = createMarkdownRequestHandler({
       markdownAdapter: {
-        crawlerType: 'jsdom',
+        crawlerType: 'linkedom',
         async capture(url, context) {
           capturedArgs.push({ url, context });
           return { content: '# ok\n', strategyName: 'defuddle' };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JSDOM } from 'jsdom';
+import { parseHTML } from 'linkedom';
 
 import {
   DefuddleMarkdownStrategy,
@@ -158,8 +158,8 @@ describe('LightpandaMarkdownStrategy', () => {
 });
 
 describe('DefuddleMarkdownStrategy', () => {
-  it('converts a JSDOM document into markdown', async () => {
-    const dom = new JSDOM(
+  it('converts a LinkeDOM document into markdown', async () => {
+    const { document } = parseHTML(
       `<!doctype html>
       <html>
         <body>
@@ -169,11 +169,10 @@ describe('DefuddleMarkdownStrategy', () => {
           </article>
         </body>
       </html>`,
-      { url: 'https://example.com/docs' },
     );
 
     const markdown = await new DefuddleMarkdownStrategy().capture('https://example.com/docs', {
-      document: dom.window.document,
+      document: document as unknown as Document,
       finalUrl: 'https://example.com/docs',
     });
 
