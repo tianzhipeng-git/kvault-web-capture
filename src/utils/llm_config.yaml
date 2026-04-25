@@ -1,0 +1,45 @@
+# LLM模型配置文件
+# 可以通过配置名快速切换不同的模型
+
+models:
+  # OpenAI GPT-4
+  gpt-4:
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    model_name: gpt-4
+    display_name: GPT-4
+    use_proxy: true
+
+  # Gemini
+  gemini-3-pro:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key: ${GEMINI_API_KEY}
+    model_name: gemini-3-pro-preview
+    display_name: Gemini-3-Pro
+    use_proxy: true
+  
+  gemini-3-flash:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    api_key: ${GEMINI_API_KEY}
+    model_name: gemini-3-flash-preview
+    display_name: Gemini-3-Flash
+    use_proxy: true
+
+  # 字节跳动豆包
+  doubao-seed-1.6:
+    base_url: https://ark.cn-beijing.volces.com/api/v3
+    api_key: ${ARK_API_KEY}
+    model_name: ep-20251203114634-sczsf
+    display_name: Doubao-Seed-1.6
+    use_proxy: false
+
+  # Claude
+  claude-sonnet-4-5:
+    base_url: https://api.anthropic.com/v1/
+    api_key: ${CLAUDE_API_KEY}
+    model_name: claude-sonnet-4-5
+    display_name: Claude-Sonnet-4.5
+    use_proxy: true
+
+# 默认使用的模型配置
+default: doubao-seed-1.6
