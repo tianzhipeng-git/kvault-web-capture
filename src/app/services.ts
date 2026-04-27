@@ -45,6 +45,7 @@ import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.
 import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screenshot-adapter.js';
 
 import { SystemClock } from '../utils/clock.js';
+import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
 
 
 
@@ -269,6 +270,48 @@ export class M1App {
       configSnapshot: site.config,
     });
 
+    const runtimeLog = openRuntimeLog({
+      storageRoot: site.storageRoot,
+      runId,
+    });
+
+    this.runLogs.log({
+      crawlRunId: runId,
+      level: 'info',
+      event: 'runtime_log_ready',
+      message: `Runtime log available at ${runtimeLog.relativePath}`,
+      meta: {
+        relativePath: runtimeLog.relativePath,
+      },
+    });
+
+    try {
+      return await withRuntimeLog(runtimeLog, async () => {
+        logger.info('Runtime log initialized', {
+          runType: input.runType,
+          updatePolicy: input.updatePolicy,
+          siteId: site.id,
+        });
+        return this.executeRunWithRuntime(input, runId);
+      });
+    } finally {
+      runtimeLog.close();
+    }
+  }
+
+  private async executeRunWithRuntime(input: {
+    siteId: number;
+    runType: RunType;
+    updatePolicy: UpdatePolicy;
+    targetSuccessCount: number | null;
+    staleAfterMs: number | null;
+  }, runId: number): Promise<SpikeRunSummary> {
+    const site = this.sites.getById(input.siteId);
+
+    if (!site) {
+      throw new Error(`Site ${input.siteId} not found`);
+    }
+
     const configuration = new Configuration({
       persistStorage: true,
       purgeOnStart: false,
@@ -283,18 +326,31 @@ export class M1App {
     const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
     const targetTracker =
       input.runType === 'crawl_run' ? new RunTargetTracker(input.targetSuccessCount) : undefined;
+    const knownUrls =
+      input.runType === 'crawl_run'
+        ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
+        : [];
 
     const startupCandidates = await expandStartupUrlCandidates({
       seedUrls: site.config.seedUrls,
       sitemapUrls: site.config.sitemaps,
-      knownUrls:
-        input.runType === 'crawl_run'
-          ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
-          : [],
+      knownUrls,
+    });
+
+    logger.info('Expanded startup URL candidates', {
+      runId,
+      siteId: site.id,
+      candidateCount: startupCandidates.length,
+      seedUrlCount: site.config.seedUrls.length,
+      sitemapCount: site.config.sitemaps.length,
+      knownUrlCount: knownUrls.length,
     });
 
     let firstSitePageId = 0;
     let firstNormalizedUrl = '';
+    let plannedEnqueueCount = 0;
+    let plannedSkipCount = 0;
+    const planDecisionCounts = new Map<string, number>();
 
     for (const candidate of startupCandidates) {
       const planned = this.planner.planRequest({
@@ -306,6 +362,32 @@ export class M1App {
         runType: input.runType,
         updatePolicy: input.updatePolicy,
         staleAfterMs: input.staleAfterMs,
+      });
+
+      const planDecisionKey = planned.enqueue
+        ? 'enqueue'
+        : (planned.planReason ?? 'skip_without_reason');
+      planDecisionCounts.set(
+        planDecisionKey,
+        (planDecisionCounts.get(planDecisionKey) ?? 0) + 1,
+      );
+
+      if (planned.enqueue) {
+        plannedEnqueueCount += 1;
+      } else {
+        plannedSkipCount += 1;
+      }
+
+      logger.info('Planned startup candidate', {
+        runId,
+        siteId: site.id,
+        discoveredUrl: candidate.url,
+        normalizedUrl: planned.normalizedUrl,
+        discoverySource: candidate.discoverySource,
+        sitePageId: planned.sitePageId,
+        enqueue: planned.enqueue,
+        urlRuleDecision: planned.urlRuleDecision,
+        planReason: planned.planReason,
       });
 
       if (firstSitePageId === 0) {
@@ -331,6 +413,15 @@ export class M1App {
         } satisfies BaseRequestUserData,
       });
     }
+
+    logger.info('Planned startup candidate summary', {
+      runId,
+      siteId: site.id,
+      candidateCount: startupCandidates.length,
+      enqueueCount: plannedEnqueueCount,
+      skipCount: plannedSkipCount,
+      decisionCounts: Object.fromEntries(planDecisionCounts),
+    });
 
     const tagDefinitions = this.projects.getById(site.projectId)?.tagDefinitions ?? [];
     const classifier = this.classifier

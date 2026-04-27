@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 
 import type { SiteConfig } from '../../domain/types.js';
@@ -1329,5 +1330,66 @@ export class RunLogQuery {
       .prepare(`SELECT error_message FROM crawl_runs WHERE id = ?`)
       .get(runId) as { error_message: string | null } | undefined;
     return row?.error_message ?? null;
+  }
+
+  getRuntimeLog(runId: number, tailLines = 500): {
+    relativePath: string;
+    content: string;
+    truncated: boolean;
+  } | null {
+    const row = this.db
+      .prepare(
+        `SELECT s.storage_root, rl.meta_json
+         FROM run_logs rl
+         INNER JOIN crawl_runs cr ON cr.id = rl.crawl_run_id
+         INNER JOIN sites s ON s.id = cr.site_id
+         WHERE rl.crawl_run_id = ? AND rl.event = 'runtime_log_ready'
+         ORDER BY rl.id DESC
+         LIMIT 1`,
+      )
+      .get(runId) as { storage_root: string; meta_json: string | null } | undefined;
+
+    if (!row?.meta_json) {
+      return null;
+    }
+
+    const meta = parseJson<{ relativePath?: unknown }>(row.meta_json);
+    const relativePath = typeof meta?.relativePath === 'string' ? meta.relativePath : null;
+
+    if (!relativePath) {
+      return null;
+    }
+
+    const storageRoot = resolve(row.storage_root);
+    const absolutePath = resolve(storageRoot, relativePath);
+
+    if (absolutePath !== storageRoot && !absolutePath.startsWith(`${storageRoot}${sep}`)) {
+      return null;
+    }
+
+    if (!existsSync(absolutePath)) {
+      return {
+        relativePath,
+        content: '',
+        truncated: false,
+      };
+    }
+
+    const content = readFileSync(absolutePath, 'utf8');
+    const lines = content.split(/\r?\n/);
+
+    if (tailLines <= 0 || lines.length <= tailLines) {
+      return {
+        relativePath,
+        content,
+        truncated: false,
+      };
+    }
+
+    return {
+      relativePath,
+      content: lines.slice(-tailLines).join('\n'),
+      truncated: true,
+    };
   }
 }

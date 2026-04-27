@@ -302,7 +302,7 @@ describe('rule decision', () => {
     ).toEqual({
       enqueue: true,
       urlRuleDecision: 'allow',
-      skipReason: null,
+      reason: null,
       matchedRuleNames: ['allow-site'],
     });
 

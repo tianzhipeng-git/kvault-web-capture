@@ -28,6 +28,12 @@ export interface RunLogItem {
   createdAt: string;
 }
 
+export interface RuntimeLogResponse {
+  relativePath: string;
+  content: string;
+  truncated: boolean;
+}
+
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
@@ -269,4 +275,17 @@ export const api = {
     const q = params?.sitePageId ? `?sitePageId=${params.sitePageId}` : "";
     return fetchApi(`/api/runs/${runId}/logs${q}`);
   },
+  getRuntimeLog: (runId: number, tail = 500): Promise<RuntimeLogResponse> =>
+    fetchApi(`/api/runs/${runId}/runtime-log?tail=${tail}`),
+
+  previewRules: (siteId: number, data: {
+    url: string;
+    tags?: Record<string, string[]>;
+    rulesBeforeBaseEq?: unknown[];
+    rulesBeforeStage2Eq?: unknown[];
+  }) => fetchApi(`/api/sites/${siteId}/rules/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }),
 };

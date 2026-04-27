@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { RunLogItem } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Info, ScrollText, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, Info, ScrollText, XCircle } from "lucide-react";
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString("zh-CN", {
@@ -76,9 +77,18 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
   const [logs, setLogs] = useState<RunLogItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [runtimeLog, setRuntimeLog] = useState<{
+    relativePath: string;
+    content: string;
+    truncated: boolean;
+  } | null>(null);
+  const [runtimeLogError, setRuntimeLogError] = useState<string | null>(null);
+  const [runtimeLogLoading, setRuntimeLogLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setRuntimeLog(null);
+    setRuntimeLogError(null);
     api
       .getRunLogs(runId, { sitePageId })
       .then((data) => {
@@ -87,6 +97,20 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
       })
       .finally(() => setLoading(false));
   }, [runId, sitePageId]);
+
+  const runtimeLogReady = logs.some((log) => log.event === "runtime_log_ready");
+
+  const loadRuntimeLog = async () => {
+    setRuntimeLogLoading(true);
+    setRuntimeLogError(null);
+    try {
+      setRuntimeLog(await api.getRuntimeLog(runId));
+    } catch (error) {
+      setRuntimeLogError(error instanceof Error ? error.message : "详细日志加载失败。");
+    } finally {
+      setRuntimeLogLoading(false);
+    }
+  };
 
   const content = (
     <div className="space-y-1">
@@ -142,6 +166,36 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
           <MetaDetail meta={log.meta} />
         </div>
       ))}
+
+      {!sitePageId && runtimeLogReady && (
+        <div className="pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={loadRuntimeLog}
+            disabled={runtimeLogLoading}
+            className="gap-1.5"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            {runtimeLogLoading ? "加载详细日志…" : "查看详细日志"}
+          </Button>
+          {runtimeLog && (
+            <div className="mt-2 rounded border bg-muted/30">
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
+                <span className="font-mono truncate">{runtimeLog.relativePath}</span>
+                {runtimeLog.truncated && <span className="shrink-0">仅显示末尾 500 行</span>}
+              </div>
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 text-xs font-mono">
+                {runtimeLog.content || "日志文件暂无内容。"}
+              </pre>
+            </div>
+          )}
+          {runtimeLogError && (
+            <p className="mt-2 text-xs text-destructive">{runtimeLogError}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 

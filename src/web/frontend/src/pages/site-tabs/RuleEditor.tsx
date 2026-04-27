@@ -149,7 +149,7 @@ function RuleEditorItem({
 
   return (
     <Card className="relative overflow-hidden group">
-      <div className="absolute right-2 top-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute right-2 top-2 flex flex-col gap-1">
         <Button variant="ghost" size="icon" className="h-6 w-6" disabled={isFirst} onClick={onMoveUp}>
           <ChevronUp className="w-4 h-4" />
         </Button>
@@ -159,17 +159,14 @@ function RuleEditorItem({
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={onRemove}>
           <Trash2 className="w-4 h-4" />
         </Button>
+        {onAssist && (
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onAssist}>
+            <WandSparkles className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
-      <CardContent className="p-4 pt-6 space-y-4">
-        {onAssist && (
-          <div className="flex justify-end pr-8">
-            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={onAssist}>
-              <WandSparkles className="h-3.5 w-3.5" />
-              规则编辑助手
-            </Button>
-          </div>
-        )}
+      <CardContent className="p-4 pt-6 pr-10 space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="space-y-1">
             <Label className="text-xs">规则名称 (需唯一)</Label>
@@ -355,14 +352,9 @@ function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: Ta
             </div>
             <div className="space-y-1">
               {cond.op !== 'is_empty' ? (
-                <Input
-                  className="h-8 text-xs font-mono"
-                  placeholder="匹配值 (逗号分隔)"
-                  value={(cond.values || []).join(', ')}
-                  onChange={(e) => {
-                    const vals = e.target.value.split(',').map(v => v.trim()).filter(Boolean);
-                    updateCondition(i, { ...cond, values: vals });
-                  }}
+                <TagConditionValuesInput
+                  values={cond.values || []}
+                  onChange={(values) => updateCondition(i, { ...cond, values })}
                 />
               ) : (
                 <div className="h-8" />
@@ -375,5 +367,29 @@ function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: Ta
         ))}
       </div>
     </div>
+  );
+}
+
+function TagConditionValuesInput({
+  values,
+  onChange,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const parseValues = (value: string) => value.split(',').map(v => v.trim()).filter(Boolean);
+
+  return (
+    <Input
+      className="h-8 text-xs font-mono"
+      placeholder="匹配值 (逗号分隔)"
+      defaultValue={values.join(', ')}
+      onChange={(e) => {
+        onChange(parseValues(e.target.value));
+      }}
+      onBlur={(e) => {
+        e.currentTarget.value = parseValues(e.currentTarget.value).join(', ');
+      }}
+    />
   );
 }

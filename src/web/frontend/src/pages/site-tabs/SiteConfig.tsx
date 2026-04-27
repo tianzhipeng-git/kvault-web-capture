@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import type { SitePageListRow } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Save, Plus, WandSparkles } from "lucide-react";
+import { Copy, Save, Play, Plus, Search, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { LLMChatPanel } from "@/components/LLMChatPanel";
 import type { LlmChatMessage } from "@/lib/api";
@@ -16,6 +18,110 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
+import { RulePreviewResultGrid, tagsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
+
+function RulePreviewDialog({
+  siteId,
+  rulesBeforeBaseEq,
+  rulesBeforeStage2Eq,
+  open,
+  onOpenChange,
+}: {
+  siteId: number;
+  rulesBeforeBaseEq: Rule[];
+  rulesBeforeStage2Eq: Rule[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [pages, setPages] = useState<SitePageListRow[]>([]);
+  const [selectedPage, setSelectedPage] = useState<SitePageListRow | null>(null);
+  const [previewResult, setPreviewResult] = useState<RulePreviewResult | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.getSitePages(siteId, { page: 1, pageSize: 15, query }).then((data) => {
+      setPages(data.rows || []);
+    });
+  }, [open, query, siteId]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      setSelectedPage(null);
+      setPreviewResult(null);
+    }
+  }, [open]);
+
+  const selectPage = async (page: SitePageListRow) => {
+    setSelectedPage(page);
+    setIsPreviewing(true);
+    setPreviewResult(null);
+    try {
+      const tags = tagsArrayToRecord(page.tags);
+      const result = await api.previewRules(siteId, {
+        url: page.url,
+        tags: Object.keys(tags).length > 0 ? tags : undefined,
+        rulesBeforeBaseEq,
+        rulesBeforeStage2Eq,
+      });
+      setPreviewResult(result);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '试运行失败。');
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl w-full overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>规则试运行</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 w-full min-w-0">
+          <p className="text-sm text-muted-foreground">选择一个页面，使用当前表单规则（未保存也可）预览判定结果。</p>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="搜索页面 URL 或标题..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto rounded-md border divide-y">
+            {pages.map((page) => (
+              <button
+                key={page.sitePageId}
+                type="button"
+                className={`w-full min-w-0 text-left px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors ${selectedPage?.sitePageId === page.sitePageId ? 'bg-muted' : ''}`}
+                onClick={() => selectPage(page)}
+              >
+                <div className="font-medium truncate">{page.title}</div>
+                <div className="text-xs text-muted-foreground truncate">{page.url}</div>
+                {page.tags.length > 0 && (
+                  <div className="text-xs text-muted-foreground/70 truncate mt-0.5">{page.tags.join(', ')}</div>
+                )}
+              </button>
+            ))}
+            {pages.length === 0 && (
+              <div className="py-8 text-center text-sm text-muted-foreground">暂无页面。</div>
+            )}
+          </div>
+          {selectedPage && (
+            <div className="space-y-2 pt-1">
+              {isPreviewing && <div className="text-sm text-muted-foreground">计算中...</div>}
+              {previewResult && <RulePreviewResultGrid result={previewResult} />}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 interface SiteConfigShape {
   seedUrls: string[];
@@ -71,6 +177,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [isSaving, setIsSaving] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantTarget, setAssistantTarget] = useState<AssistantTarget>({ kind: "generic" });
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const hydrate = (nextConfig: SiteConfigShape) => {
     setConfig(nextConfig);
@@ -270,7 +377,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               <CardTitle>入口与深度</CardTitle>
               <CardDescription>每行一个 URL；seed 只用于摸底，crawl 用于正式递归深度。</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 lg:grid-cols-2">
+            <CardContent className="grid gap-4 grid-cols-[1fr_1fr_8rem_8rem]">
               <div className="space-y-2">
                 <Label>Seed URLs</Label>
                 <textarea className="h-[48px] w-full rounded-md border bg-background px-3 py-1 text-sm resize-none" value={seedUrlsText} onChange={(event) => setSeedUrlsText(event.target.value)} />
@@ -343,7 +450,11 @@ export function SiteConfig({ siteId }: { siteId: number }) {
             </CardContent>
           </Card>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" className="gap-2" onClick={() => setPreviewOpen(true)}>
+              <Play className="w-4 h-4" />
+              试运行规则
+            </Button>
             <Button className="gap-2" onClick={saveForm} disabled={isSaving}>
               <Save className="w-4 h-4" />
               保存表单配置
@@ -384,6 +495,14 @@ export function SiteConfig({ siteId }: { siteId: number }) {
         }
         buildContext={buildAssistantContext}
         onApply={applyAssistantResponse}
+      />
+
+      <RulePreviewDialog
+        siteId={siteId}
+        rulesBeforeBaseEq={rulesBeforeBaseEq}
+        rulesBeforeStage2Eq={rulesBeforeStage2Eq}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
       />
     </div>
   );

@@ -19,7 +19,8 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
-import { CheckCircle2, CircleDashed, Filter, History, Image, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Filter, History, Image, Play, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { RulePreviewResultGrid, tagsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
   { value: "", label: "全部状态" },
@@ -229,12 +230,16 @@ function PageDetailDialog({
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(null);
   const [tagDefinitions, setTagDefinitions] = useState<unknown>([]);
+  const [rulePreviewResult, setRulePreviewResult] = useState<RulePreviewResult | null>(null);
+  const [isPreviewingRules, setIsPreviewingRules] = useState(false);
 
   useEffect(() => {
     setActivePreview("base");
     setPreviewMode("text");
     setExpandedLogRunId(null);
     setAssistantOpen(false);
+    setRulePreviewResult(null);
+    setIsPreviewingRules(false);
   }, [detail?.sitePageId]);
 
   useEffect(() => {
@@ -305,6 +310,24 @@ function PageDetailDialog({
       ]
     : [];
 
+  const runRulePreview = async () => {
+    if (!detail) return;
+    setIsPreviewingRules(true);
+    setRulePreviewResult(null);
+    try {
+      const tags = tagsArrayToRecord(detail.latestTags);
+      const result = await api.previewRules(detail.siteId, {
+        url: detail.url,
+        tags: Object.keys(tags).length > 0 ? tags : undefined,
+      });
+      setRulePreviewResult(result);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '试运行失败。');
+    } finally {
+      setIsPreviewingRules(false);
+    }
+  };
+
   return (
     <Dialog open={!!detail} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[92vw] w-[92vw] max-h-[90vh] overflow-y-auto overflow-x-hidden grid-cols-1">
@@ -319,11 +342,22 @@ function PageDetailDialog({
                   <div className="text-lg font-semibold">{detail.title}</div>
                   <div className="text-sm text-muted-foreground break-all">{detail.url}</div>
                 </div>
-                <Button type="button" variant="outline" className="gap-2" onClick={() => setAssistantOpen(true)}>
-                  <WandSparkles className="h-4 w-4" />
-                  规则编辑助手
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Button type="button" variant="outline" className="gap-2" onClick={runRulePreview} disabled={isPreviewingRules}>
+                    <Play className="h-4 w-4" />
+                    {isPreviewingRules ? '计算中...' : '试运行规则'}
+                  </Button>
+                  <Button type="button" variant="outline" className="gap-2" onClick={() => setAssistantOpen(true)}>
+                    <WandSparkles className="h-4 w-4" />
+                    规则编辑助手
+                  </Button>
+                </div>
               </div>
+              {rulePreviewResult && (
+                <div className="pt-1">
+                  <RulePreviewResultGrid result={rulePreviewResult} />
+                </div>
+              )}
               <div className="grid gap-3 md:grid-cols-3 text-sm">
                 <div>业务状态：<Badge variant="outline">{detail.businessStatus}</Badge></div>
                 <div>发现来源：{detail.discoverySource}</div>

@@ -35,23 +35,6 @@
       "artifacts": [
         "markdown"
       ]
-    },
-    {
-      "name": "screenshot_product",
-      "matchType": "tag",
-      "listType": "whitelist",
-      "when": [
-        {
-          "key": "content_type",
-          "op": "any_of",
-          "values": [
-            "product"
-          ]
-        }
-      ],
-      "artifacts": [
-        "screenshot"
-      ]
     }
   ],
   "runOptions": {

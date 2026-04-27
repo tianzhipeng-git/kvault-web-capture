@@ -217,7 +217,7 @@ export function buildBaseEnqueueDecision(input: {
 }): {
   enqueue: boolean;
   urlRuleDecision: UrlRuleDecision;
-  skipReason: string | null;
+  reason: string | null;
   matchedRuleNames: string[];
 } {
   const evaluation = evaluateExecutionPoint({
@@ -231,7 +231,7 @@ export function buildBaseEnqueueDecision(input: {
   return {
     enqueue: evaluation.outcome === 'allow',
     urlRuleDecision: evaluation.outcome === 'deny' ? 'deny' : 'allow',
-    skipReason: evaluation.outcome === 'deny' ? evaluation.reason : null,
+    reason: evaluation.outcome === 'deny' ? evaluation.reason : null,
     matchedRuleNames: evaluation.matchedRuleNames,
   };
 }
@@ -278,30 +278,30 @@ export function buildStage2EnqueueDecision(input: {
   const decision: StageDecision =
     evaluation.outcome === 'deny'
       ? {
-          ruleOutcome: 'deny',
-          pageOutcome: 'deny',
-          requiredArtifacts: [],
-          reason: evaluation.reason,
+        ruleOutcome: 'deny',
+        pageOutcome: 'deny',
+        requiredArtifacts: [],
+        reason: evaluation.reason,
+        pendingReason: null,
+        matchedRuleNames: evaluation.matchedRuleNames,
+      }
+      : evaluation.outcome === 'allow'
+        ? {
+          ruleOutcome: 'allow',
+          pageOutcome: 'allow',
+          requiredArtifacts: evaluation.requiredArtifacts,
+          reason: null,
           pendingReason: null,
           matchedRuleNames: evaluation.matchedRuleNames,
         }
-      : evaluation.outcome === 'allow'
-        ? {
-            ruleOutcome: 'allow',
-            pageOutcome: 'allow',
-            requiredArtifacts: evaluation.requiredArtifacts,
-            reason: null,
-            pendingReason: null,
-            matchedRuleNames: evaluation.matchedRuleNames,
-          }
         : {
-            ruleOutcome: 'pending',
-            pageOutcome: 'pending',
-            requiredArtifacts: [],
-            reason: evaluation.reason,
-            pendingReason: 'rule_unmatched',
-            matchedRuleNames: [],
-          };
+          ruleOutcome: 'pending',
+          pageOutcome: 'pending',
+          requiredArtifacts: [],
+          reason: evaluation.reason,
+          pendingReason: 'rule_unmatched',
+          matchedRuleNames: [],
+        };
 
   return input.runType === 'seed_run' ? applySeedRunPending(decision) : decision;
 }

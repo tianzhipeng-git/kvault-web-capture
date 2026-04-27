@@ -14,7 +14,7 @@ export class RunPlanner {
   constructor(
     private readonly sitePageRepository: SitePageRepository,
     private readonly clock: Clock,
-  ) {}
+  ) { }
 
   planRequest(input: {
     siteId: number;
@@ -55,9 +55,9 @@ export class RunPlanner {
         normalizedUrl,
         enqueue: false,
         urlRuleDecision: 'deny',
-        skipReason: baseDecision.skipReason,
+        planReason: "baseDecision: " + baseDecision.reason,
       };
-    }
+    } // 规则执行点1判断不入队, 直接跳过后续
 
     if (input.runType === 'seed_run') {
       return {
@@ -66,33 +66,33 @@ export class RunPlanner {
         normalizedUrl,
         enqueue: true,
         urlRuleDecision: 'allow',
-        skipReason: null,
+        planReason: "seed_run",
       };
-    }
+    } // seed_run的话, 直接入base队, 深度爬取队不会启动.
 
+
+    // 虽然本方法是判断是否要入Base队列, 但是为了应用Update Policy, 需要判断Stage2的规则结果
     const classificationTags = existingState?.latestClassificationTags ?? null;
-
-    // 虽然此处是判断是否要入Base队列, 但是为了应用Update Policy, 需要判断Stage2的规则结果
     const currentStageDecision =
       classificationTags === null
         ? null
         : (() => {
-            const decision = buildStage2EnqueueDecision({
-              runType: 'crawl_run',
-              url: normalizedUrl,
-              siteConfig: input.siteConfig,
-              classification: {
-                tags: classificationTags,
-              },
-            });
+          const decision = buildStage2EnqueueDecision({
+            runType: 'crawl_run',
+            url: normalizedUrl,
+            siteConfig: input.siteConfig,
+            classification: {
+              tags: classificationTags,
+            },
+          });
 
-            return {
-              outcome: decision.pageOutcome,
-              requiredArtifacts: decision.requiredArtifacts,
-            };
-          })();
+          return {
+            outcome: decision.pageOutcome,
+            requiredArtifacts: decision.requiredArtifacts,
+          };
+        })();
 
-    // 判断Update Policy是否允许入队
+    // 根据历史状态, 最新rulesBeforeStage2Eq的规则结果, 判断Update Policy是否允许入队
     const policyDecision = shouldEnqueueByUpdatePolicy({
       policy: input.updatePolicy,
       history: existingState,
@@ -107,7 +107,7 @@ export class RunPlanner {
       normalizedUrl,
       enqueue: policyDecision.enqueue,
       urlRuleDecision: 'allow',
-      skipReason: policyDecision.reason,
+      planReason: "Update Policy: " + policyDecision.reason,
     };
   }
 }

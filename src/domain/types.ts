@@ -138,7 +138,7 @@ export interface PlannedRequest {
   normalizedUrl: string;
   enqueue: boolean;
   urlRuleDecision: UrlRuleDecision;
-  skipReason: string | null;
+  planReason: string | null;
 }
 
 export interface HistoricalPageState {

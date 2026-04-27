@@ -19,6 +19,7 @@ import {
   SiteOverviewQuery,
   SitePageListQuery,
 } from './queries/read-models.js';
+import { buildBaseEnqueueDecision, buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import { mapConfigFormToSiteConfig, mapRunForm } from './services/config-mapper.js';
 import { RunCoordinator } from './services/run-coordinator.js';
 
@@ -373,6 +374,29 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
   });
 
+  server.post('/api/sites/:siteId/rules/preview', async (request) => {
+    const params = request.params as { siteId: string };
+    const body = (request.body ?? {}) as {
+      url: string;
+      tags?: Record<string, string[]>;
+      rulesBeforeBaseEq?: unknown[];
+      rulesBeforeStage2Eq?: unknown[];
+    };
+
+    const savedConfig = app.getSiteConfig(parseSiteId(params.siteId));
+    const siteConfig = {
+      ...savedConfig,
+      rulesBeforeBaseEq: (body.rulesBeforeBaseEq ?? savedConfig.rulesBeforeBaseEq) as typeof savedConfig.rulesBeforeBaseEq,
+      rulesBeforeStage2Eq: (body.rulesBeforeStage2Eq ?? savedConfig.rulesBeforeStage2Eq) as typeof savedConfig.rulesBeforeStage2Eq,
+    };
+
+    const baseDecision = buildBaseEnqueueDecision({ url: body.url, siteConfig });
+    const classification = body.tags && Object.keys(body.tags).length > 0 ? { tags: body.tags } : null;
+    const stage2Decision = buildStage2EnqueueDecision({ runType: 'crawl_run', url: body.url, siteConfig, classification });
+
+    return { baseDecision, stage2Decision };
+  });
+
   server.post('/api/sites/:siteId/runs/seed', async (request, reply) => {
     const params = request.params as { siteId: string };
     const siteId = parseSiteId(params.siteId);
@@ -432,6 +456,27 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       items: runLogQuery.listRunLogs(runId, sitePageId),
       errorMessage: runLogQuery.getRunErrorMessage(runId),
     };
+  });
+
+  server.get('/api/runs/:runId/runtime-log', async (request, reply) => {
+    const params = request.params as { runId: string };
+    const query = request.query as { tail?: string };
+    const runId = parseRunId(params.runId);
+    const tail = query.tail === undefined ? 500 : Number(query.tail);
+
+    if (!Number.isInteger(tail) || tail < 0 || tail > 5000) {
+      reply.code(400);
+      throw new Error('tail 参数无效。');
+    }
+
+    const runtimeLog = runLogQuery.getRuntimeLog(runId, tail);
+
+    if (!runtimeLog) {
+      reply.code(404);
+      throw new Error('该运行暂无 runtime log。');
+    }
+
+    return runtimeLog;
   });
 
   server.get('/api/sites/:siteId/overview', async (request) => {

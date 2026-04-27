@@ -184,6 +184,35 @@ describe('web server', () => {
     expect(overview.pagesNeedReview).toBeGreaterThan(0);
     expect(overview.workflowSteps.map((step) => step.title)).toContain('确认采集规则');
 
+    const runLogsResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/runs/${runId}/logs`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const runLogs = runLogsResponse.json() as {
+      items: Array<{ event: string; meta: { relativePath?: string } | null }>;
+    };
+    expect(runLogs.items.some((item) => item.event === 'runtime_log_ready')).toBe(true);
+    expect(
+      runLogs.items.find((item) => item.event === 'runtime_log_ready')?.meta?.relativePath,
+    ).toBe(`runs/${runId}/runtime.log`);
+
+    const runtimeLogResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/runs/${runId}/runtime-log?tail=20`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const runtimeLog = runtimeLogResponse.json() as {
+      relativePath: string;
+      content: string;
+    };
+    expect(runtimeLog.relativePath).toBe(`runs/${runId}/runtime.log`);
+    expect(runtimeLog.content).toContain('Runtime log initialized');
+
     const pageResponse = await webServer.inject({
       method: 'GET',
       url: `/api/sites/${site.id}/pages?page=1&pageSize=10&status=stage2_pending`,

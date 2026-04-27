@@ -88,6 +88,7 @@ export function shouldEnqueueArtifactByUpdatePolicy(input: {
   }
 }
 
+// 根据历史状态, 最新rulesBeforeStage2Eq的规则结果, 判断Update Policy是否允许入队
 export function shouldEnqueueByUpdatePolicy(input: {
   policy: UpdatePolicy;
   history: HistoricalPageState | null;
@@ -111,7 +112,7 @@ export function shouldEnqueueByUpdatePolicy(input: {
         reason: null,
       };
     case 'skip_existing':
-      if (history.lastBaseStatus === null) {
+      if (history.lastBaseStatus === null || history.lastBaseStatus !== 'succeeded') {
         return {
           enqueue: true,
           reason: null,
@@ -129,19 +130,6 @@ export function shouldEnqueueByUpdatePolicy(input: {
         return {
           enqueue: true,
           reason: 'missing required artifact',
-        };
-      }
-
-      if (
-        history.lastStageDecision?.outcome === 'pending' ||
-        history.lastStageDecision === null ||
-        history.lastBaseStatus === 'failed' ||
-        history.lastScreenshotStatus === 'failed' ||
-        history.lastMarkdownStatus === 'failed'
-      ) {
-        return {
-          enqueue: true,
-          reason: 'incomplete historical result',
         };
       }
 
