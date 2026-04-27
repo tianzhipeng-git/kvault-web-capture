@@ -27,6 +27,10 @@ import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 import type { RunTargetTracker } from './run-target-tracker.js';
 
+type MarkdownRequestUserDataWithState = MarkdownRequestUserData & {
+  markdownRequestHandlerStarted?: boolean;
+};
+
 function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
   return runType === 'seed_run'
     ? siteConfig.runOptions.seedMaxDepth
@@ -308,6 +312,60 @@ export function createBaseFailedRequestHandler(deps: {
   };
 }
 
+async function captureAndRecordMarkdown(input: {
+  requestUrl: string;
+  finalUrl: string;
+  document?: Document;
+  userData: MarkdownRequestUserData;
+  markdownAdapter: MarkdownCaptureAdapter;
+  artifactRunRepository: ArtifactRunRepository;
+  sitePageRepository: SitePageRepository;
+  artifactWriter: FileArtifactWriter;
+  runLog: RunLogRepository;
+}) {
+  const captured = await input.markdownAdapter.capture(input.requestUrl, {
+    document: input.document,
+    finalUrl: input.finalUrl,
+  });
+  const written = input.artifactWriter.writeTextArtifact({
+    artifactType: 'markdown',
+    runId: input.userData.runId,
+    sitePageId: input.userData.sitePageId,
+    content: captured.content,
+    extension: 'md',
+  });
+
+  input.artifactRunRepository.create({
+    runId: input.userData.runId,
+    pageRunId: input.userData.pageRunId,
+    sitePageId: input.userData.sitePageId,
+    artifactType: 'markdown',
+    status: 'succeeded',
+    content: written.content,
+    outputPath: written.outputPath,
+    errorMessage: null,
+    meta: { strategy: captured.strategyName },
+  });
+
+  input.runLog.log({
+    crawlRunId: input.userData.runId,
+    level: 'info',
+    event: 'artifact_done',
+    url: input.userData.normalizedUrl,
+    sitePageId: input.userData.sitePageId,
+    pageRunId: input.userData.pageRunId,
+    message: `[markdown] done ${input.userData.normalizedUrl}`,
+    meta: { strategy: captured.strategyName, outputPath: written.outputPath },
+  });
+
+  input.sitePageRepository.recordArtifactResult({
+    sitePageId: input.userData.sitePageId,
+    runId: input.userData.runId,
+    artifactType: 'markdown',
+    status: 'succeeded',
+  });
+}
+
 export function createMarkdownRequestHandler(deps: {
   markdownAdapter: MarkdownCaptureAdapter;
   artifactRunRepository: ArtifactRunRepository;
@@ -320,58 +378,63 @@ export function createMarkdownRequestHandler(deps: {
     document?: Document;
   }) => {
     const { request } = context;
-    const userData = request.userData as MarkdownRequestUserData;
-    const captured = await deps.markdownAdapter.capture(request.url, {
-      document: context.document,
+    const userData = request.userData as MarkdownRequestUserDataWithState;
+    userData.markdownRequestHandlerStarted = true;
+
+    await captureAndRecordMarkdown({
+      requestUrl: request.url,
       finalUrl: request.loadedUrl ?? request.url,
-    });
-    const written = deps.artifactWriter.writeTextArtifact({
-      artifactType: 'markdown',
-      runId: userData.runId,
-      sitePageId: userData.sitePageId,
-      content: captured.content,
-      extension: 'md',
-    });
-
-    deps.artifactRunRepository.create({
-      runId: userData.runId,
-      pageRunId: userData.pageRunId,
-      sitePageId: userData.sitePageId,
-      artifactType: 'markdown',
-      status: 'succeeded',
-      content: written.content,
-      outputPath: written.outputPath,
-      errorMessage: null,
-      meta: { strategy: captured.strategyName },
-    });
-
-    deps.runLog.log({
-      crawlRunId: userData.runId,
-      level: 'info',
-      event: 'artifact_done',
-      url: userData.normalizedUrl,
-      sitePageId: userData.sitePageId,
-      pageRunId: userData.pageRunId,
-      message: `[markdown] done ${userData.normalizedUrl}`,
-      meta: { strategy: captured.strategyName, outputPath: written.outputPath },
-    });
-
-    deps.sitePageRepository.recordArtifactResult({
-      sitePageId: userData.sitePageId,
-      runId: userData.runId,
-      artifactType: 'markdown',
-      status: 'succeeded',
+      document: context.document,
+      userData,
+      markdownAdapter: deps.markdownAdapter,
+      artifactRunRepository: deps.artifactRunRepository,
+      sitePageRepository: deps.sitePageRepository,
+      artifactWriter: deps.artifactWriter,
+      runLog: deps.runLog,
     });
   };
 }
 
 export function createMarkdownFailedRequestHandler(deps: {
+  markdownAdapter?: MarkdownCaptureAdapter;
   artifactRunRepository: ArtifactRunRepository;
   sitePageRepository: SitePageRepository;
+  artifactWriter?: FileArtifactWriter;
   runLog: RunLogRepository;
 }) {
-  return async ({ request }: { request: { userData: unknown } }, error: Error) => {
-    const userData = request.userData as MarkdownRequestUserData;
+  return async (
+    { request }: { request: { url?: string; userData: unknown; loadedUrl?: string } },
+    error: Error,
+  ) => {
+    const userData = request.userData as MarkdownRequestUserDataWithState;
+    let finalError = error;
+
+    if (
+      deps.markdownAdapter &&
+      deps.artifactWriter &&
+      request.url &&
+      !userData.markdownRequestHandlerStarted
+    ) {
+      try {
+        await captureAndRecordMarkdown({
+          requestUrl: request.url,
+          finalUrl: request.loadedUrl ?? request.url,
+          userData,
+          markdownAdapter: deps.markdownAdapter,
+          artifactRunRepository: deps.artifactRunRepository,
+          sitePageRepository: deps.sitePageRepository,
+          artifactWriter: deps.artifactWriter,
+          runLog: deps.runLog,
+        });
+        return;
+      } catch (fallbackError) {
+        const fallbackMessage =
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        finalError = new Error(
+          `${error.message}; URL-only markdown fallback failed: ${fallbackMessage}`,
+        );
+      }
+    }
 
     deps.artifactRunRepository.create({
       runId: userData.runId,
@@ -381,7 +444,7 @@ export function createMarkdownFailedRequestHandler(deps: {
       status: 'failed' satisfies ArtifactRunStatus,
       content: null,
       outputPath: null,
-      errorMessage: error.message,
+      errorMessage: finalError.message,
       meta: null,
     });
 
@@ -392,8 +455,8 @@ export function createMarkdownFailedRequestHandler(deps: {
       url: userData.normalizedUrl,
       sitePageId: userData.sitePageId,
       pageRunId: userData.pageRunId,
-      message: `[markdown] FAILED ${userData.normalizedUrl}: ${error.message}`,
-      meta: { stack: error.stack ?? null },
+      message: `[markdown] FAILED ${userData.normalizedUrl}: ${finalError.message}`,
+      meta: { stack: finalError.stack ?? null },
     });
 
     deps.sitePageRepository.recordArtifactResult({

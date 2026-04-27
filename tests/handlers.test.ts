@@ -137,6 +137,99 @@ describe('createMarkdownRequestHandler', () => {
 });
 
 describe('createMarkdownFailedRequestHandler', () => {
+  it('uses URL-only adapter fallback when LinkeDOM fails before the request handler starts', async () => {
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+    const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];
+    const writerCalls: Parameters<FileArtifactWriter['writeTextArtifact']>[0][] = [];
+    const adapterCalls: Array<{ url: string; document: Document | undefined }> = [];
+
+    const handler = createMarkdownFailedRequestHandler({
+      markdownAdapter: {
+        crawlerType: 'linkedom',
+        async capture(url, context) {
+          adapterCalls.push({ url, document: context?.document });
+          return { content: '# Fallback\n', strategyName: 'lightpanda' };
+        },
+      } satisfies MarkdownCaptureAdapter,
+      artifactRunRepository: {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
+          artifactRunCalls.push(args);
+          return 1;
+        },
+      } as unknown as ArtifactRunRepository,
+      sitePageRepository: {
+        recordArtifactResult(args: Parameters<SitePageRepository['recordArtifactResult']>[0]) {
+          sitePageCalls.push(args);
+        },
+      } as unknown as SitePageRepository,
+      artifactWriter: {
+        writeTextArtifact(args: Parameters<FileArtifactWriter['writeTextArtifact']>[0]) {
+          writerCalls.push(args);
+          return { outputPath: '/tmp/fallback.md', content: args.content };
+        },
+      } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
+    });
+
+    const userData = makeMarkdownUserData();
+    await handler(
+      { request: { url: 'https://example.com/page', userData } },
+      new Error('LinkeDOM request failed'),
+    );
+
+    expect(adapterCalls).toEqual([
+      { url: 'https://example.com/page', document: undefined },
+    ]);
+    expect(writerCalls).toHaveLength(1);
+    expect(writerCalls[0].content).toBe('# Fallback\n');
+    expect(artifactRunCalls).toHaveLength(1);
+    expect(artifactRunCalls[0].status).toBe('succeeded');
+    expect(artifactRunCalls[0].meta).toEqual({ strategy: 'lightpanda' });
+    expect(sitePageCalls).toHaveLength(1);
+    expect(sitePageCalls[0].status).toBe('succeeded');
+  });
+
+  it('does not retry URL-only fallback after the markdown request handler already ran', async () => {
+    let adapterCallCount = 0;
+    const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
+
+    const handler = createMarkdownFailedRequestHandler({
+      markdownAdapter: {
+        crawlerType: 'linkedom',
+        async capture() {
+          adapterCallCount += 1;
+          return { content: '# Fallback\n', strategyName: 'lightpanda' };
+        },
+      } satisfies MarkdownCaptureAdapter,
+      artifactRunRepository: {
+        create(args: Parameters<ArtifactRunRepository['create']>[0]) {
+          artifactRunCalls.push(args);
+          return 1;
+        },
+      } as unknown as ArtifactRunRepository,
+      sitePageRepository: {
+        recordArtifactResult: () => {},
+      } as unknown as SitePageRepository,
+      artifactWriter: {
+        writeTextArtifact: () => ({ outputPath: '/tmp/fallback.md', content: '# Fallback\n' }),
+      } as unknown as FileArtifactWriter,
+      runLog: noopRunLog,
+    });
+
+    const userData = {
+      ...makeMarkdownUserData(),
+      markdownRequestHandlerStarted: true,
+    };
+    await handler(
+      { request: { url: 'https://example.com/page', userData } },
+      new Error('Markdown capture failed'),
+    );
+
+    expect(adapterCallCount).toBe(0);
+    expect(artifactRunCalls).toHaveLength(1);
+    expect(artifactRunCalls[0].status).toBe('failed');
+  });
+
   it('records failed artifact run with error message and updates site page', async () => {
     const artifactRunCalls: Parameters<ArtifactRunRepository['create']>[0][] = [];
     const sitePageCalls: Parameters<SitePageRepository['recordArtifactResult']>[0][] = [];

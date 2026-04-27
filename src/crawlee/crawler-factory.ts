@@ -40,6 +40,15 @@ const SESSION_POOL_OPTIONS = {
   maxPoolSize: 50,
 } as const;
 
+/**
+ * Lightweight anti-blocking defaults shared by real network crawlers.
+ * The delay is per domain and helps avoid bursty Shopify/Cloudflare traffic.
+ */
+const ANTI_BLOCKING_OPTIONS = {
+  retryOnBlocked: true,
+  sameDomainDelaySecs: 1,
+} as const;
+
 /** True when system Chrome is installed on macOS. */
 const HAS_SYSTEM_CHROME =
   process.platform === 'darwin' && existsSync('/Applications/Google Chrome.app');
@@ -82,6 +91,7 @@ export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCra
       requestQueue: options.requestQueue,
       maxConcurrency: 5,
       requestHandlerTimeoutSecs: 30,
+      ...ANTI_BLOCKING_OPTIONS,
       sessionPoolOptions: SESSION_POOL_OPTIONS,
       requestHandler: createBaseRequestHandler({
         classifier: options.classifier,
@@ -140,8 +150,10 @@ export function createMarkdownCrawler(
     requestHandlerTimeoutSecs: 30,
     requestHandler: createMarkdownRequestHandler(handlerDeps),
     failedRequestHandler: createMarkdownFailedRequestHandler({
+      markdownAdapter: options.markdownAdapter,
       artifactRunRepository: options.artifactRunRepository,
       sitePageRepository: options.sitePageRepository,
+      artifactWriter: options.artifactWriter,
       runLog: options.runLog,
     }),
   };
@@ -150,6 +162,7 @@ export function createMarkdownCrawler(
     return new LinkeDOMCrawler(
       {
         ...sharedOptions,
+        ...ANTI_BLOCKING_OPTIONS,
         sessionPoolOptions: SESSION_POOL_OPTIONS,
       },
       options.configuration,
@@ -210,6 +223,7 @@ export function createScreenshotCrawler(
       {
         ...sharedOptions,
         maxConcurrency: 3,
+        ...ANTI_BLOCKING_OPTIONS,
         sessionPoolOptions: SESSION_POOL_OPTIONS,
         ...(HAS_SYSTEM_CHROME
           ? { launchContext: { launchOptions: { channel: 'chrome' as const } } }
