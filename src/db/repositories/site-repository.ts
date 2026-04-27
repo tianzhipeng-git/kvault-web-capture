@@ -103,7 +103,7 @@ export class SiteRepository {
       throw new Error(`Site ${sourceSiteId} not found`);
     }
 
-    this.updateConfig(targetSiteId, source.config);
+    this.updateConfig(targetSiteId, { ...source.config, seedUrls: [], sitemaps: [] });
   }
 }
 
