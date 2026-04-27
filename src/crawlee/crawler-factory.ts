@@ -6,6 +6,7 @@ import {
   LinkeDOMCrawler,
   PlaywrightCrawler,
   type Configuration,
+  type PlaywrightHook,
   type RequestQueue,
 } from 'crawlee';
 
@@ -52,6 +53,21 @@ const ANTI_BLOCKING_OPTIONS = {
 /** True when system Chrome is installed on macOS. */
 const HAS_SYSTEM_CHROME =
   process.platform === 'darwin' && existsSync('/Applications/Google Chrome.app');
+
+const SCREENSHOT_NAVIGATION_TIMEOUT_SECS = 45;
+const SCREENSHOT_SETTLE_MS = 3000;
+
+const SCREENSHOT_PRE_NAVIGATION_HOOKS: PlaywrightHook[] = [
+  async (_context, gotoOptions) => {
+    gotoOptions.waitUntil = 'load';
+  },
+];
+
+const SCREENSHOT_POST_NAVIGATION_HOOKS: PlaywrightHook[] = [
+  async ({ page }) => {
+    await page.waitForTimeout(SCREENSHOT_SETTLE_MS);
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Base crawler
@@ -223,6 +239,9 @@ export function createScreenshotCrawler(
       {
         ...sharedOptions,
         maxConcurrency: 3,
+        navigationTimeoutSecs: SCREENSHOT_NAVIGATION_TIMEOUT_SECS,
+        preNavigationHooks: SCREENSHOT_PRE_NAVIGATION_HOOKS,
+        postNavigationHooks: SCREENSHOT_POST_NAVIGATION_HOOKS,
         ...ANTI_BLOCKING_OPTIONS,
         sessionPoolOptions: SESSION_POOL_OPTIONS,
         ...(HAS_SYSTEM_CHROME
