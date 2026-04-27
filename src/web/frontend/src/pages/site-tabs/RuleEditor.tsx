@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Trash2, ChevronDown, ChevronUp, WandSparkles } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, WandSparkles } from "lucide-react";
 
 export const createDefaultRule = (): UrlRule => ({
   name: `rule-${Date.now()}`,
@@ -36,6 +37,49 @@ export type LabelRule = {
 };
 
 export type Rule = UrlRule | LabelRule;
+
+function RuleDescriptionText({ rule, showArtifacts }: { rule: Rule; showArtifacts: boolean }) {
+  const matchType = rule.matchType ?? 'url';
+
+  if (matchType === 'url') {
+    const urlRule = rule as UrlRule;
+    const ruleTypeText = urlRule.ruleType === 'prefix' ? 'URL前缀是' : 'URL匹配正则';
+    const vals = urlRule.values;
+    const valsSummary = vals.length === 0
+      ? '(未配置)'
+      : vals.slice(0, 3).map(v => `"${v}"`).join(', ') + (vals.length > 3 ? ', …' : '');
+
+    if (urlRule.listType === 'blacklist') {
+      return <span>{ruleTypeText} <code className="text-xs bg-muted px-1 rounded">{valsSummary}</code> 的网址，直接<strong>丢弃</strong></span>;
+    }
+    const arts = showArtifacts && urlRule.artifacts?.length
+      ? urlRule.artifacts.map(a => a === 'markdown' ? 'Markdown' : '截图').join('/')
+      : '';
+    if (urlRule.listType === 'whitelist') {
+      return <span><strong>仅限</strong> {ruleTypeText} <code className="text-xs bg-muted px-1 rounded">{valsSummary}</code> 的网址<strong>强制允许</strong>{arts ? <>，采集 <strong>{arts}</strong></> : ''}</span>;
+    }
+    return <span><strong>仅限</strong> {ruleTypeText} <code className="text-xs bg-muted px-1 rounded">{valsSummary}</code> 的网址<strong>可以入队</strong></span>;
+  }
+
+  const labelRule = rule as LabelRule;
+  const conditions = labelRule.when || [];
+  const condSummary = conditions.length === 0
+    ? '(未配置条件)'
+    : conditions.map(c => {
+        if (c.op === 'is_empty') return `${c.key}为空`;
+        const opText = c.op === 'any_of' ? 'anyof' : 'allof';
+        const valsStr = (c.values || []).slice(0, 3).map(v => `"${v}"`).join('/') + ((c.values || []).length > 3 ? '/…' : '');
+        return `${c.key}取值是${opText} ${valsStr}`;
+      }).join(' 且 ');
+  const arts = showArtifacts && labelRule.artifacts?.length
+    ? labelRule.artifacts.map(a => a === 'markdown' ? 'Markdown' : '截图').join('/')
+    : '';
+
+  if (labelRule.listType === 'blacklist') {
+    return <span>标签满足 <code className="text-xs bg-muted px-1 rounded">{condSummary}</code>，则<strong>丢弃</strong></span>;
+  }
+  return <span>标签满足 <code className="text-xs bg-muted px-1 rounded">{condSummary}</code>，则<strong>入队{arts ? `采集"${arts}"` : ''}</strong></span>;
+}
 
 export function RuleListEditor({
   rules,
@@ -134,6 +178,7 @@ function RuleEditorItem({
   isFirst: boolean;
   isLast: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const matchType = rule.matchType || 'url';
 
   const handleArtifactChange = (artifact: 'markdown' | 'screenshot', checked: boolean) => {
@@ -149,7 +194,10 @@ function RuleEditorItem({
 
   return (
     <Card className="relative overflow-hidden group">
-      <div className="absolute right-2 top-2 flex flex-col gap-1">
+      <div
+        className="absolute right-2 top-2 flex flex-col gap-1 z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Button variant="ghost" size="icon" className="h-6 w-6" disabled={isFirst} onClick={onMoveUp}>
           <ChevronUp className="w-4 h-4" />
         </Button>
@@ -166,95 +214,108 @@ function RuleEditorItem({
         )}
       </div>
 
-      <CardContent className="p-4 pt-6 pr-10 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="space-y-1">
-            <Label className="text-xs">规则名称 (需唯一)</Label>
-            <Input
-              className="h-8"
-              value={rule.name}
-              onChange={(e) => onChange({ ...rule, name: e.target.value })}
-            />
-          </div>
+      <div
+        className="flex items-center gap-2 p-3 pr-10 cursor-pointer select-none hover:bg-muted/30"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
+        <span className="font-medium text-sm shrink-0">{rule.name}</span>
+        <div className="text-xs text-muted-foreground flex-1 min-w-0 truncate">
+          <RuleDescriptionText rule={rule} showArtifacts={showArtifacts} />
+        </div>
+      </div>
 
-          {allowLabelMatch && (
+      {expanded && (
+        <CardContent className="p-4 pt-4 pr-10 space-y-4 border-t">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <Label className="text-xs">匹配模式</Label>
+              <Label className="text-xs">规则名称 (需唯一)</Label>
+              <Input
+                className="h-8"
+                value={rule.name}
+                onChange={(e) => onChange({ ...rule, name: e.target.value })}
+              />
+            </div>
+
+            {allowLabelMatch && (
+              <div className="space-y-1">
+                <Label className="text-xs">匹配模式</Label>
+                <select
+                  className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={matchType}
+                  onChange={(e) => {
+                    const val = e.target.value as 'url' | 'label';
+                    if (val === 'url') {
+                      onChange({
+                        name: rule.name,
+                        matchType: 'url',
+                        listType: rule.listType,
+                        ruleType: 'prefix',
+                        values: [],
+                        artifacts: rule.artifacts,
+                      } as UrlRule);
+                    } else {
+                      onChange({
+                        name: rule.name,
+                        matchType: 'label',
+                        listType: rule.listType,
+                        when: [],
+                        artifacts: rule.artifacts,
+                      } as LabelRule);
+                    }
+                  }}
+                >
+                  <option value="url">URL</option>
+                  <option value="label">Label(页面打标)</option>
+                </select>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-xs">规则类型 (List Type)</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={matchType}
-                onChange={(e) => {
-                  const val = e.target.value as 'url' | 'label';
-                  if (val === 'url') {
-                    onChange({
-                      name: rule.name,
-                      matchType: 'url',
-                      listType: rule.listType,
-                      ruleType: 'prefix',
-                      values: [],
-                      artifacts: rule.artifacts,
-                    } as UrlRule);
-                  } else {
-                    onChange({
-                      name: rule.name,
-                      matchType: 'label',
-                      listType: rule.listType,
-                      when: [],
-                      artifacts: rule.artifacts,
-                    } as LabelRule);
-                  }
-                }}
+                value={rule.listType}
+                onChange={(e) => onChange({ ...rule, listType: e.target.value as 'blacklist' | 'scopelist' | 'whitelist' })}
               >
-                <option value="url">URL</option>
-                <option value="label">Label(页面打标)</option>
+                <option value="scopelist">Scopelist (仅范围)</option>
+                <option value="whitelist">Whitelist (强制允许)</option>
+                <option value="blacklist">Blacklist (拒绝)</option>
               </select>
             </div>
-          )}
 
-          <div className="space-y-1">
-            <Label className="text-xs">规则类型 (List Type)</Label>
-            <select
-              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={rule.listType}
-              onChange={(e) => onChange({ ...rule, listType: e.target.value as 'blacklist' | 'scopelist' | 'whitelist' })}
-            >
-              <option value="scopelist">Scopelist (仅范围)</option>
-              <option value="whitelist">Whitelist (强制允许)</option>
-              <option value="blacklist">Blacklist (拒绝)</option>
-            </select>
+            {showArtifacts && (
+              <div className="space-y-1">
+                <Label className="text-xs">产物 (Artifacts)</Label>
+                <div className="flex gap-4 pt-1">
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(rule.artifacts || ['markdown']).includes('markdown')}
+                      onChange={(e) => handleArtifactChange('markdown', e.target.checked)}
+                    />
+                    Markdown
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(rule.artifacts || []).includes('screenshot')}
+                      onChange={(e) => handleArtifactChange('screenshot', e.target.checked)}
+                    />
+                    截图
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
-          {showArtifacts && (
-            <div className="space-y-1">
-              <Label className="text-xs">产物 (Artifacts)</Label>
-              <div className="flex gap-4 pt-1">
-                <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(rule.artifacts || ['markdown']).includes('markdown')}
-                    onChange={(e) => handleArtifactChange('markdown', e.target.checked)}
-                  />
-                  Markdown
-                </label>
-                <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(rule.artifacts || []).includes('screenshot')}
-                    onChange={(e) => handleArtifactChange('screenshot', e.target.checked)}
-                  />
-                  截图
-                </label>
-              </div>
-            </div>
+          {matchType === 'url' ? (
+            <UrlRuleFormFields rule={rule as UrlRule} onChange={onChange as (r: UrlRule) => void} />
+          ) : (
+            <LabelRuleFormFields rule={rule as LabelRule} onChange={onChange as (r: LabelRule) => void} />
           )}
-        </div>
-
-        {matchType === 'url' ? (
-          <UrlRuleFormFields rule={rule as UrlRule} onChange={onChange as (r: UrlRule) => void} />
-        ) : (
-          <LabelRuleFormFields rule={rule as LabelRule} onChange={onChange as (r: LabelRule) => void} />
-        )}
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }

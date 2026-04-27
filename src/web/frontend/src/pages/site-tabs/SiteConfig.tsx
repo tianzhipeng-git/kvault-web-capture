@@ -318,18 +318,18 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const assistantContextSummary =
     assistantTarget.kind === "single"
       ? [
-          { label: "入口", value: "规则卡片" },
-          { label: "执行点", value: rulePointLabel(assistantTarget.point) },
-          { label: "序号", value: String(assistantTarget.index + 1) },
-          { label: "规则名", value: assistantTarget.rule.name },
-          { label: "规则类型", value: ruleSummary(assistantTarget.rule) },
-        ]
+        { label: "入口", value: "规则卡片" },
+        { label: "执行点", value: rulePointLabel(assistantTarget.point) },
+        { label: "序号", value: String(assistantTarget.index + 1) },
+        { label: "规则名", value: assistantTarget.rule.name },
+        { label: "规则类型", value: ruleSummary(assistantTarget.rule) },
+      ]
       : [
-          { label: "入口", value: "规则配置表单" },
-          { label: "范围", value: "全部规则" },
-          { label: "基础规则", value: `${rulesBeforeBaseEq.length} 条` },
-          { label: "深度规则", value: `${rulesBeforeStage2Eq.length} 条` },
-        ];
+        { label: "入口", value: "规则配置表单" },
+        { label: "范围", value: "全部规则" },
+        { label: "基础规则", value: `${rulesBeforeBaseEq.length} 条` },
+        { label: "深度规则", value: `${rulesBeforeStage2Eq.length} 条` },
+      ];
 
   if (!config) {
     return <div className="animate-pulse p-8 text-muted-foreground">加载配置中...</div>;
@@ -403,9 +403,9 @@ export function SiteConfig({ siteId }: { siteId: number }) {
                 <CardTitle>基础入队规则</CardTitle>
                 <CardDescription>用于过滤不符合条件的 URL，支持黑白名单和范围限定。仅支持 URL 匹配。</CardDescription>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setRulesBeforeBaseEq([...rulesBeforeBaseEq, createDefaultRule()])}
                 className="gap-1"
               >
@@ -413,12 +413,12 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               </Button>
             </CardHeader>
             <CardContent>
-              <RuleListEditor 
-                rules={rulesBeforeBaseEq} 
-                onChange={setRulesBeforeBaseEq} 
+              <RuleListEditor
+                rules={rulesBeforeBaseEq}
+                onChange={setRulesBeforeBaseEq}
                 allowLabelMatch={false}
-                showArtifacts={false} 
-                hideAddButton 
+                showArtifacts={false}
+                hideAddButton
                 onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeBaseEq", rule, index)}
               />
             </CardContent>
@@ -428,11 +428,11 @@ export function SiteConfig({ siteId }: { siteId: number }) {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div className="flex items-baseline gap-2">
                 <CardTitle>深度爬取规则</CardTitle>
-                <CardDescription>用于指定如何截取正文，支持 URL 匹配和 HTML 标签匹配。</CardDescription>
+                <CardDescription>用于指定是否爬取Markdown/截图，支持 URL 匹配和 HTML 标签匹配。</CardDescription>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setRulesBeforeStage2Eq([...rulesBeforeStage2Eq, createDefaultRule()])}
                 className="gap-1"
               >
@@ -440,11 +440,11 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               </Button>
             </CardHeader>
             <CardContent>
-              <RuleListEditor 
-                rules={rulesBeforeStage2Eq} 
-                onChange={setRulesBeforeStage2Eq} 
-                allowLabelMatch={true} 
-                hideAddButton 
+              <RuleListEditor
+                rules={rulesBeforeStage2Eq}
+                onChange={setRulesBeforeStage2Eq}
+                allowLabelMatch={true}
+                hideAddButton
                 onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeStage2Eq", rule, index)}
               />
             </CardContent>
