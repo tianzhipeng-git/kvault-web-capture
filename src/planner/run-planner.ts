@@ -72,9 +72,9 @@ export class RunPlanner {
 
 
     // 虽然本方法是判断是否要入Base队列, 但是为了应用Update Policy, 需要判断Stage2的规则结果
-    const classificationTags = existingState?.latestClassificationTags ?? null;
+    const classificationLabels = existingState?.latestClassificationLabels ?? null;
     const currentStageDecision =
-      classificationTags === null
+      classificationLabels === null
         ? null
         : (() => {
           const decision = buildStage2EnqueueDecision({
@@ -82,7 +82,7 @@ export class RunPlanner {
             url: normalizedUrl,
             siteConfig: input.siteConfig,
             classification: {
-              tags: classificationTags,
+              labels: classificationLabels,
             },
           });
 

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Globe, ChevronRight, Download, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { ProjectTagDefinitions } from "./ProjectTagDefinitions";
+import { ProjectLabelDefinitions } from "./ProjectLabelDefinitions";
 
 function toPathSegment(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || name.trim();
@@ -213,7 +213,7 @@ export function ProjectDetails() {
         )}
       </div>
 
-      {projectId && <ProjectTagDefinitions projectId={Number(projectId)} />}
+      {projectId && <ProjectLabelDefinitions projectId={Number(projectId)} />}
     </div>
   );
 }

@@ -55,7 +55,7 @@ describe('integration spike', () => {
     siteConfig.rulesBeforeStage2Eq = [
       {
         name: 'default-markdown',
-        matchType: 'tag',
+        matchType: 'label',
         listType: 'whitelist',
         when: [
           {
@@ -266,7 +266,7 @@ describe('integration spike', () => {
       },
       {
         name: 'allow-generic',
-        matchType: 'tag',
+        matchType: 'label',
         listType: 'whitelist',
         when: [
           {
@@ -411,7 +411,7 @@ describe('integration spike', () => {
     siteConfig.rulesBeforeStage2Eq = [
       {
         name: 'default-markdown',
-        matchType: 'tag',
+        matchType: 'label',
         listType: 'whitelist',
         when: [
           {

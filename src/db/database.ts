@@ -15,7 +15,7 @@ export function initializeSchema(db: DatabaseSync): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
-      tag_definitions_json TEXT NOT NULL,
+      label_definitions_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -93,7 +93,7 @@ export function initializeSchema(db: DatabaseSync): void {
       title TEXT NOT NULL,
       meta_description TEXT NOT NULL,
       body_text TEXT NOT NULL,
-      classification_tags_json TEXT NOT NULL,
+      classification_labels_json TEXT NOT NULL,
       rule_outcome TEXT NOT NULL,
       decision_outcome TEXT NOT NULL,
       decision_reason TEXT,

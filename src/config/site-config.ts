@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 
 import type {
   ArtifactType,
+  LabelRule,
   SiteConfig,
   SiteRunOptions,
-  TagRule,
   UrlRule,
 } from '../domain/types.js';
 
@@ -72,9 +72,9 @@ function parseUrlRule(rule: unknown, fieldName: string): UrlRule {
   };
 }
 
-function parseTagRule(rule: unknown, fieldName: string): TagRule {
+function parseLabelRule(rule: unknown, fieldName: string): LabelRule {
   assert(isRecord(rule), `${fieldName} must be an object`);
-  assert(rule.matchType === 'tag', `${fieldName}.matchType must be tag`);
+  assert(rule.matchType === 'label', `${fieldName}.matchType must be label`);
   assert(
     rule.listType === 'blacklist' ||
       rule.listType === 'scopelist' ||
@@ -85,7 +85,7 @@ function parseTagRule(rule: unknown, fieldName: string): TagRule {
 
   return {
     name: typeof rule.name === 'string' ? rule.name : fieldName,
-    matchType: 'tag',
+    matchType: 'label',
     listType: rule.listType,
     when: rule.when.map((condition, conditionIndex) => {
       assert(
@@ -129,14 +129,14 @@ function parseRulesBeforeBaseEq(value: unknown): UrlRule[] {
   return rules;
 }
 
-function parseRulesBeforeStage2Eq(value: unknown): Array<UrlRule | TagRule> {
+function parseRulesBeforeStage2Eq(value: unknown): Array<UrlRule | LabelRule> {
   assert(Array.isArray(value), 'rulesBeforeStage2Eq must be an array');
 
   const rules = value.map((rule, index) => {
     assert(isRecord(rule), `rulesBeforeStage2Eq[${index}] must be an object`);
 
-    if (rule.matchType === 'tag') {
-      return parseTagRule(rule, `rulesBeforeStage2Eq[${index}]`);
+    if (rule.matchType === 'label') {
+      return parseLabelRule(rule, `rulesBeforeStage2Eq[${index}]`);
     }
 
     return parseUrlRule(rule, `rulesBeforeStage2Eq[${index}]`);
@@ -192,7 +192,7 @@ export function createDefaultSiteConfig(baseUrl: string): SiteConfig {
     rulesBeforeStage2Eq: [
       {
         name: 'default-markdown',
-        matchType: 'tag',
+        matchType: 'label',
         listType: 'whitelist',
         when: [
           {

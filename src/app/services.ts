@@ -7,7 +7,7 @@ import { ProjectExporter, type ProjectExportResult } from '../export/project-exp
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
 import { LLMClassifier } from '../classification/llm-classifier.js';
-import { extractTagDefinitionCores } from '../classification/tag-definitions.js';
+import { extractLabelDefinitionCores } from '../classification/label-definitions.js';
 import { createDefaultSiteConfig, loadSiteConfig, parseSiteConfig } from '../config/site-config.js';
 
 import { initializeSchema, openDatabase } from '../db/database.js';
@@ -117,24 +117,24 @@ export class M1App {
     };
   }
 
-  getProjectTagDefinitions(projectId: number): unknown {
+  getProjectLabelDefinitions(projectId: number): unknown {
     const project = this.projects.getById(projectId);
 
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    return project.tagDefinitions;
+    return project.labelDefinitions;
   }
 
-  updateProjectTagDefinitions(projectId: number, tagDefinitions: unknown): void {
+  updateProjectLabelDefinitions(projectId: number, labelDefinitions: unknown): void {
     const project = this.projects.getById(projectId);
 
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    this.projects.updateTagDefinitions(projectId, tagDefinitions);
+    this.projects.updateLabelDefinitions(projectId, labelDefinitions);
   }
 
   createSite(input: {
@@ -423,10 +423,10 @@ export class M1App {
       decisionCounts: Object.fromEntries(planDecisionCounts),
     });
 
-    const tagDefinitions = this.projects.getById(site.projectId)?.tagDefinitions ?? [];
+    const labelDefinitions = this.projects.getById(site.projectId)?.labelDefinitions ?? [];
     const classifier = this.classifier
-      ?? (extractTagDefinitionCores(tagDefinitions).length > 0
-        ? new LLMClassifier(tagDefinitions)
+      ?? (extractLabelDefinitionCores(labelDefinitions).length > 0
+        ? new LLMClassifier(labelDefinitions)
         : new FakeClassifier());
 
     const baseCrawler = createBaseCrawler({

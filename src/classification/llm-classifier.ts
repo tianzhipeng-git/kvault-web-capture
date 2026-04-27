@@ -3,7 +3,7 @@ import { chatCompletion } from '../utils/llm_chat.js';
 import { fetchAndRenderPrompt } from '../utils/llm_prompts.js';
 import type { ClassificationResult, ExtractedPage } from '../domain/types.js';
 import type { Classifier } from './classifier.js';
-import { tagCoresToJsonl } from './tag-definitions.js';
+import { labelCoresToJsonl } from './label-definitions.js';
 
 interface RawLabelResult {
   label_key?: unknown;
@@ -53,13 +53,13 @@ function buildPageInfo(page: ExtractedPage): string {
 }
 
 export class LLMClassifier implements Classifier {
-  constructor(private readonly tagDefinitions: unknown) { }
+  constructor(private readonly labelDefinitions: unknown) { }
 
   async classify(page: ExtractedPage): Promise<ClassificationResult> {
-    const labelsJsonl = tagCoresToJsonl(this.tagDefinitions);
+    const labelsJsonl = labelCoresToJsonl(this.labelDefinitions);
 
     if (!labelsJsonl.trim()) {
-      return { tags: {} };
+      return { labels: {} };
     }
 
     const messages = await fetchAndRenderPrompt('web-classifier-n-label-1-page', undefined, {
@@ -69,7 +69,7 @@ export class LLMClassifier implements Classifier {
     const raw = await chatCompletion(messages as ChatCompletionMessageParam[], {
       temperature: 0,
     });
-    const tags: Record<string, string[]> = {};
+    const labels: Record<string, string[]> = {};
 
     for (const item of parseRawResults(raw)) {
       if (typeof item.label_key !== 'string') {
@@ -80,10 +80,10 @@ export class LLMClassifier implements Classifier {
       const values = normalizeLabelValue(item.label_value);
 
       if (key && values.length > 0) {
-        tags[key] = values;
+        labels[key] = values;
       }
     }
 
-    return { tags };
+    return { labels };
   }
 }

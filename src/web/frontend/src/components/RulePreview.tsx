@@ -15,14 +15,14 @@ export type RulePreviewResult = {
   };
 };
 
-/** 将 ["key: value", ...] 格式的 tags 数组转成 Record<string, string[]> */
-export function tagsArrayToRecord(tags: string[]): Record<string, string[]> {
+/** 将 ["key: value", ...] 格式的 labels 数组转成 Record<string, string[]> */
+export function labelsArrayToRecord(labels: string[]): Record<string, string[]> {
   const result: Record<string, string[]> = {};
-  for (const tag of tags) {
-    const idx = tag.indexOf(': ');
+  for (const label of labels) {
+    const idx = label.indexOf(': ');
     if (idx === -1) continue;
-    const key = tag.slice(0, idx);
-    const value = tag.slice(idx + 2);
+    const key = label.slice(0, idx);
+    const value = label.slice(idx + 2);
     (result[key] ??= []).push(value);
   }
   return result;

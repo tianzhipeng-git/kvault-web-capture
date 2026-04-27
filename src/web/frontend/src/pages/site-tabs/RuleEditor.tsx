@@ -21,33 +21,33 @@ export type UrlRule = {
   artifacts?: Array<'markdown' | 'screenshot'>;
 };
 
-export type TagRuleCondition = {
+export type LabelRuleCondition = {
   key: string;
   op: 'any_of' | 'all_of' | 'is_empty';
   values?: string[];
 };
 
-export type TagRule = {
+export type LabelRule = {
   name: string;
-  matchType: 'tag';
+  matchType: 'label';
   listType: 'blacklist' | 'scopelist' | 'whitelist';
-  when: TagRuleCondition[];
+  when: LabelRuleCondition[];
   artifacts?: Array<'markdown' | 'screenshot'>;
 };
 
-export type Rule = UrlRule | TagRule;
+export type Rule = UrlRule | LabelRule;
 
 export function RuleListEditor({
   rules,
   onChange,
-  allowTagMatch = false,
+  allowLabelMatch = false,
   showArtifacts = true,
   hideAddButton = false,
   onAssistRule,
 }: {
   rules: Rule[];
   onChange: (rules: Rule[]) => void;
-  allowTagMatch?: boolean;
+  allowLabelMatch?: boolean;
   showArtifacts?: boolean;
   hideAddButton?: boolean;
   onAssistRule?: (rule: Rule, index: number) => void;
@@ -90,7 +90,7 @@ export function RuleListEditor({
         <RuleEditorItem
           key={i} // Using index is fine here if we manage order carefully, but ideally we'd use rule.name if unique
           rule={rule}
-          allowTagMatch={allowTagMatch}
+          allowLabelMatch={allowLabelMatch}
           showArtifacts={showArtifacts}
           onChange={(r) => updateRule(i, r)}
           onRemove={() => removeRule(i)}
@@ -113,7 +113,7 @@ export function RuleListEditor({
 
 function RuleEditorItem({
   rule,
-  allowTagMatch,
+  allowLabelMatch,
   showArtifacts,
   onChange,
   onRemove,
@@ -124,7 +124,7 @@ function RuleEditorItem({
   isLast,
 }: {
   rule: Rule;
-  allowTagMatch: boolean;
+  allowLabelMatch: boolean;
   showArtifacts: boolean;
   onChange: (rule: Rule) => void;
   onRemove: () => void;
@@ -177,14 +177,14 @@ function RuleEditorItem({
             />
           </div>
 
-          {allowTagMatch && (
+          {allowLabelMatch && (
             <div className="space-y-1">
               <Label className="text-xs">匹配模式</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 value={matchType}
                 onChange={(e) => {
-                  const val = e.target.value as 'url' | 'tag';
+                  const val = e.target.value as 'url' | 'label';
                   if (val === 'url') {
                     onChange({
                       name: rule.name,
@@ -197,16 +197,16 @@ function RuleEditorItem({
                   } else {
                     onChange({
                       name: rule.name,
-                      matchType: 'tag',
+                      matchType: 'label',
                       listType: rule.listType,
                       when: [],
                       artifacts: rule.artifacts,
-                    } as TagRule);
+                    } as LabelRule);
                   }
                 }}
               >
                 <option value="url">URL</option>
-                <option value="tag">Tag(页面打标)</option>
+                <option value="label">Label(页面打标)</option>
               </select>
             </div>
           )}
@@ -252,7 +252,7 @@ function RuleEditorItem({
         {matchType === 'url' ? (
           <UrlRuleFormFields rule={rule as UrlRule} onChange={onChange as (r: UrlRule) => void} />
         ) : (
-          <TagRuleFormFields rule={rule as TagRule} onChange={onChange as (r: TagRule) => void} />
+          <LabelRuleFormFields rule={rule as LabelRule} onChange={onChange as (r: LabelRule) => void} />
         )}
       </CardContent>
     </Card>
@@ -289,7 +289,7 @@ function UrlRuleFormFields({ rule, onChange }: { rule: UrlRule; onChange: (r: Ur
   );
 }
 
-function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: TagRule) => void }) {
+function LabelRuleFormFields({ rule, onChange }: { rule: LabelRule; onChange: (r: LabelRule) => void }) {
   const addCondition = () => {
     onChange({
       ...rule,
@@ -297,7 +297,7 @@ function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: Ta
     });
   };
 
-  const updateCondition = (index: number, condition: TagRuleCondition) => {
+  const updateCondition = (index: number, condition: LabelRuleCondition) => {
     const next = [...(rule.when || [])];
     next[index] = condition;
     onChange({ ...rule, when: next });
@@ -352,7 +352,7 @@ function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: Ta
             </div>
             <div className="space-y-1">
               {cond.op !== 'is_empty' ? (
-                <TagConditionValuesInput
+                <LabelConditionValuesInput
                   values={cond.values || []}
                   onChange={(values) => updateCondition(i, { ...cond, values })}
                 />
@@ -370,7 +370,7 @@ function TagRuleFormFields({ rule, onChange }: { rule: TagRule; onChange: (r: Ta
   );
 }
 
-function TagConditionValuesInput({
+function LabelConditionValuesInput({
   values,
   onChange,
 }: {

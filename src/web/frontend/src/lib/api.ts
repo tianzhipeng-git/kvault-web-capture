@@ -39,7 +39,7 @@ export interface SitePageListParams {
   pageSize?: number;
   status?: string;
   query?: string;
-  tag?: string;
+  label?: string;
   pendingReason?: string;
   discoverySource?: string;
   crawlRunId?: number;
@@ -50,7 +50,7 @@ export interface SitePageListRow {
   title: string;
   url: string;
   businessStatus: string;
-  tags: string[];
+  labels: string[];
   latestOutcome: string;
   latestHandledAt: string | null;
   needsReview: boolean;
@@ -84,7 +84,7 @@ export interface SitePageDetail {
   discoveryReferrerUrl: string | null;
   firstDiscoveredAt: string;
   updatedAt: string;
-  latestTags: string[];
+  latestLabels: string[];
   latestDecision: string | null;
   latestPendingReasonLabel: string | null;
   latestBase: ProcessingState;
@@ -129,7 +129,7 @@ export interface SitePageDetail {
       decisionReason: string | null;
       pendingReasonLabel: string | null;
       requiredArtifacts: string[];
-      tags: string[];
+      labels: string[];
       baseStatus: string;
       baseCapturePath: string | null;
       bodyPreview: string;
@@ -222,11 +222,11 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   }),
-  getProjectTagDefinitions: (projectId: number) => fetchApi(`/api/projects/${projectId}/tag-definitions`),
-  updateProjectTagDefinitions: (projectId: number, tagDefinitions: unknown) => fetchApi(`/api/projects/${projectId}/tag-definitions`, {
+  getProjectLabelDefinitions: (projectId: number) => fetchApi(`/api/projects/${projectId}/label-definitions`),
+  updateProjectLabelDefinitions: (projectId: number, labelDefinitions: unknown) => fetchApi(`/api/projects/${projectId}/label-definitions`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tagDefinitions })
+    body: JSON.stringify({ labelDefinitions })
   }),
   exportProject: (projectId: number): Promise<{ blob: Blob; filename: string }> => fetchBlobApi(`/api/projects/${projectId}/export`, {
     method: 'POST'
@@ -280,7 +280,7 @@ export const api = {
 
   previewRules: (siteId: number, data: {
     url: string;
-    tags?: Record<string, string[]>;
+    labels?: Record<string, string[]>;
     rulesBeforeBaseEq?: unknown[];
     rulesBeforeStage2Eq?: unknown[];
   }) => fetchApi(`/api/sites/${siteId}/rules/preview`, {

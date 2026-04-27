@@ -18,7 +18,7 @@ export class PageRunRepository {
     title: string;
     metaDescription: string;
     bodyText: string;
-    classificationTags: Record<string, string[]>;
+    classificationLabels: Record<string, string[]>;
     ruleOutcome: RuleOutcome;
     decisionOutcome: RuleOutcome;
     decisionReason: string | null;
@@ -38,7 +38,7 @@ export class PageRunRepository {
           title,
           meta_description,
           body_text,
-          classification_tags_json,
+          classification_labels_json,
           rule_outcome,
           decision_outcome,
           decision_reason,
@@ -56,7 +56,7 @@ export class PageRunRepository {
         input.title,
         input.metaDescription,
         input.bodyText,
-        JSON.stringify(input.classificationTags),
+        JSON.stringify(input.classificationLabels),
         input.ruleOutcome,
         input.decisionOutcome,
         input.decisionReason,
@@ -96,7 +96,7 @@ export class PageRunRepository {
           title,
           meta_description,
           body_text,
-          classification_tags_json,
+          classification_labels_json,
           rule_outcome,
           decision_outcome,
           decision_reason,

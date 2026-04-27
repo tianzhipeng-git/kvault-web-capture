@@ -7,21 +7,21 @@ type UrlRule = {
   artifacts?: Array<"markdown" | "screenshot">;
 };
 
-type TagRuleCondition = {
+type LabelRuleCondition = {
   key: string;
   op: "any_of" | "all_of" | "is_empty";
   values?: string[];
 };
 
-type TagRule = {
+type LabelRule = {
   name: string;
-  matchType: "tag";
+  matchType: "label";
   listType: "blacklist" | "scopelist" | "whitelist";
-  when: TagRuleCondition[];
+  when: LabelRuleCondition[];
   artifacts?: Array<"markdown" | "screenshot">;
 };
 
-export type Rule = UrlRule | TagRule;
+export type Rule = UrlRule | LabelRule;
 
 export interface RuleAssistantSuggestion {
   op: "update" | "create";
@@ -48,7 +48,7 @@ function extractValuesOptions(source: Record<string, unknown>): unknown[] {
   return Array.isArray(rawOptions) ? rawOptions : [];
 }
 
-export function tagDefinitionsToJsonl(input: unknown): string {
+export function labelDefinitionsToJsonl(input: unknown): string {
   const rawLabels = Array.isArray(input)
     ? input
     : isRecord(input) && Array.isArray(input.labels)

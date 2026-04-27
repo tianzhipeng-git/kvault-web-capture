@@ -102,7 +102,7 @@ Turn the spike into a durable M1 skeleton with the right business boundaries, wh
   - seed URLs
   - sitemap inputs
   - URL rules
-  - tag rules
+  - label rules
   - run options
 - refactor the Phase 0 code into explicit application modules:
   - repositories
@@ -152,7 +152,7 @@ Deliver the first real M1 operator workflow: create a site, run `seed_run`, and 
   - fetch lightweight page data
   - normalize URL
   - classify
-  - evaluate tag rules
+  - evaluate label rules
   - persist `site_pages` and `page_runs`
 - make seed-specific outcomes explicit:
   - `url_rule_denied`

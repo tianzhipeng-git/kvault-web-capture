@@ -190,7 +190,7 @@ Expected shape after crawl:
   ```
     {
       "name": "screenshot_product",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {

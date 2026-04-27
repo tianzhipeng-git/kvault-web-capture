@@ -31,7 +31,7 @@ flowchart LR
     APP --> H["src/crawlee/handlers.ts\nqueue request handlers"]
 
     H --> EXT["src/extract/extract-page.ts\nbase extraction"]
-    H --> RULES["src/rules/rule-decision.ts\nURL rules / tag rules / stage decision"]
+    H --> RULES["src/rules/rule-decision.ts\nURL rules / label rules / stage decision"]
     H --> CLS["src/classification/classifier.ts\nClassifier interface"]
     H --> MD["src/markdown/fake-markdown-adapter.ts\nMarkdown adapter interface + fake impl"]
     H --> SS["src/screenshot/fake-screenshot-adapter.ts\nScreenshot adapter interface + fake impl"]
@@ -232,7 +232,7 @@ flowchart TD
     H -- no --> I["skip current run"]
     H -- yes --> J["enqueue base request"]
     J --> K["base handler"]
-    K --> L["extract + classify + tag-rule decision"]
+    K --> L["extract + classify + label-rule decision"]
     L --> M["persist page_runs + site_pages"]
     M --> N{"artifact policy says enqueue?"}
     N -- no --> O["skip already-fresh artifacts"]

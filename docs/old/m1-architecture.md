@@ -75,7 +75,7 @@ Testing policy and accepted M1 test scope live in [docs/m1-testing.md](/Users/ti
   - projects
   - sites
   - inventory
-  - tags
+  - labels
   - rules
   - run metadata
   - result indexes
@@ -135,7 +135,7 @@ If classification fails:
 
 M1 must treat `project` and `site` as first-class business entities, not just directory names.
 
-- `project` groups sites for organization and migration, tag definations.
+- `project` groups sites for organization and migration, label definations.
 - `site` is the execution and configuration boundary
 - a site owns its config, inventory, runs, and artifact storage roots
 - creating a new site from an existing site's config must be a supported CLI flow
@@ -156,7 +156,7 @@ Purpose:
 
 - collect initial URLs from sitemap, seed URLs, and shallow discovery
 - capture lightweight base information
-- classify and tag
+- classify and label
 - build the initial inventory for review
 
 Constraints:
@@ -286,7 +286,7 @@ Config shape:
   "rulesBeforeStage2Eq": [
     {
       "name": "allow-content-pages",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {
@@ -364,13 +364,13 @@ Rule Type:
 - regex: 正则匹配
 - 同一个规则下的多个values是"或"的关系.
 
-#### 2. Tag-based rules
+#### 2. label-based rules
 
 These are based on classification results after lightweight capture.
 
 Examples:
 ```
-tag_rules:
+label_rules:
   - name: product-full-capture
     list_type: whitelist
     when:
@@ -396,7 +396,7 @@ tag_rules:
     artifacts: [screenshot]
 ```
 
-Use tag-based rules when the decision depends on page meaning rather than URL shape.
+Use label-based rules when the decision depends on page meaning rather than URL shape.
 
 Allowed placement:
 
@@ -410,19 +410,19 @@ Supported list types:
 
 Rule matching semantics:
 
-- a rule may constrain one or more tag keys
-- for a constrained tag key, the rule may require one or more values
+- a rule may constrain one or more label keys
+- for a constrained label key, the rule may require one or more values
 - page matching should use set semantics rather than single-value equality
 - M1 should support at least:
-  - `any_of`: page has at least one required value for that tag key
-  - `all_of`: page has all required values for that tag key
-  - `is_empty`: page selected no value for that tag key
+  - `any_of`: page has at least one required value for that label key
+  - `all_of`: page has all required values for that label key
+  - `is_empty`: page selected no value for that label key
 - 多个when之间是"且"的关系
 
 Decision precedence:
 
 - blacklist match wins over whitelist match
-- every tag scopelist must match, otherwise the page is denied
+- every label scopelist must match, otherwise the page is denied
 - whitelist does not just mean "allowed"; it must also declare which artifacts become required
 - if no rule can produce a final decision, the page remains `pending`
 
@@ -455,12 +455,12 @@ discovered URL
     └── enqueue base capture
           │
           ▼
-        classify + tag
+        classify + label
           │
           └── rulesBeforeStage2Eq
-                ├── any url/tag blacklist match -> deny
+                ├── any url/label blacklist match -> deny
                 ├── any scopelist mismatch -> deny
-                ├── matching url/tag whitelists -> enqueue markdown / screenshot as configured
+                ├── matching url/label whitelists -> enqueue markdown / screenshot as configured
                 └── no whitelist match -> pending
 ```
 
@@ -663,7 +663,7 @@ Suggested fields:
 - `name`
 - `slug`
 - `created_at`
-- `tag_definitions`
+- `label_definitions`
 
 ### `sites`
 
@@ -677,7 +677,7 @@ Suggested fields:
 - `base_url`
 - `storage_root`
 - `url_rules`
-- `tag_rules`
+- `label_rules`
 - `updated_at`
 - `created_at`
 
@@ -698,7 +698,7 @@ Suggested fields:
 - `discovery_source`
 - `discovery_referrer_url`
 - `last_url_rule_decision`
-- `last_tag_rule_decision`
+- `last_label_rule_decision`
 - `last_base_status`
 - `last_base_run_id`
 - `last_base_at`
@@ -734,9 +734,9 @@ Suggested fields:
 
 - `id`
 - `site_id`
-- `tag_definitions_snapshot`
+- `label_definitions_snapshot`
 - `url_rules_snapshot`
-- `tag_rules_snapshot`
+- `label_rules_snapshot`
 - `run_type`
 - `update_policy`
 - `status`

@@ -35,7 +35,7 @@ src/
   domain/              跨模块共享领域类型
   config/              站点配置解析、校验、默认配置
   planner/             启动 URL 展开、入队规划、更新策略
-  rules/               URL / Tag 规则判定
+  rules/               URL / label 规则判定
   crawlee/             Crawlee 队列、crawler factory、request handlers
   extract/             base 页面信息和链接提取
   classification/      页面分类接口
@@ -123,7 +123,7 @@ Pending 原因：
 规则有两个执行点：
 
 - `rulesBeforeBaseEq`：只支持 URL 规则，在进入 base 队列之前执行，默认 allow。
-- `rulesBeforeStage2Eq`：支持 URL 规则和 tag 规则，在 base + 分类之后执行，默认 pending。
+- `rulesBeforeStage2Eq`：支持 URL 规则和 label 规则，在 base + 分类之后执行，默认 pending。
 
 规则固定优先级：
 

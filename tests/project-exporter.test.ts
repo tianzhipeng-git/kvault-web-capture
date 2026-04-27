@@ -156,7 +156,7 @@ describe('project export', () => {
       title: 'Long Blog',
       metaDescription: 'Example blog',
       bodyText: 'Hello body',
-      classificationTags: {
+      classificationLabels: {
         content_type: ['blog'],
       },
       ruleOutcome: 'allow',

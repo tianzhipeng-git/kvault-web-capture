@@ -1,12 +1,12 @@
 import type {
   ArtifactType,
   ClassificationResult,
+  LabelRule,
+  LabelRuleCondition,
   RuleEvaluation,
   RunType,
   SiteConfig,
   StageDecision,
-  TagRule,
-  TagRuleCondition,
   UrlRule,
   UrlRuleDecision,
 } from '../domain/types.js';
@@ -32,8 +32,8 @@ function matchesUrlRule(url: string, rule: UrlRule): boolean {
   });
 }
 
-function matchesCondition(classification: ClassificationResult, condition: TagRuleCondition): boolean {
-  const values = classification.tags[condition.key] ?? [];
+function matchesCondition(classification: ClassificationResult, condition: LabelRuleCondition): boolean {
+  const values = classification.labels[condition.key] ?? [];
 
   if (condition.op === 'is_empty') {
     return values.length === 0;
@@ -48,7 +48,7 @@ function matchesCondition(classification: ClassificationResult, condition: TagRu
   return requiredValues.every((value) => values.includes(value));
 }
 
-function matchesTagRule(classification: ClassificationResult, rule: TagRule): boolean {
+function matchesLabelRule(classification: ClassificationResult, rule: LabelRule): boolean {
   return rule.when.every((condition) => matchesCondition(classification, condition));
 }
 
@@ -106,12 +106,12 @@ export function evaluateUrlRules(url: string, rules: UrlRule[]): RuleEvaluation 
   };
 }
 
-export function evaluateTagRules(
+export function evaluateLabelRules(
   classification: ClassificationResult,
-  rules: TagRule[],
+  rules: LabelRule[],
 ): RuleEvaluation {
   const matchedBlacklists = rules.filter(
-    (rule) => rule.listType === 'blacklist' && matchesTagRule(classification, rule),
+    (rule) => rule.listType === 'blacklist' && matchesLabelRule(classification, rule),
   );
 
   if (matchedBlacklists.length > 0) {
@@ -125,7 +125,7 @@ export function evaluateTagRules(
 
   const scopelists = rules.filter((rule) => rule.listType === 'scopelist');
   const failedScopelist = scopelists.find(
-    (rule) => !matchesTagRule(classification, rule),
+    (rule) => !matchesLabelRule(classification, rule),
   );
 
   if (failedScopelist) {
@@ -138,7 +138,7 @@ export function evaluateTagRules(
   }
 
   const matchedWhitelists = rules.filter(
-    (rule) => rule.listType === 'whitelist' && matchesTagRule(classification, rule),
+    (rule) => rule.listType === 'whitelist' && matchesLabelRule(classification, rule),
   );
 
   if (matchedWhitelists.length === 0) {
@@ -146,7 +146,7 @@ export function evaluateTagRules(
       outcome: 'pending',
       matchedRuleNames: scopelists.map((rule) => rule.name),
       requiredArtifacts: [],
-      reason: 'no tag rule matched',
+      reason: 'no label rule matched',
     };
   }
 
@@ -167,7 +167,7 @@ function evaluateExecutionPoint(input: {
   url: string;
   classification: ClassificationResult | null;
   urlRules: UrlRule[];
-  tagRules: TagRule[];
+  labelRules: LabelRule[];
   defaultOutcome: 'allow' | 'pending';
 }): RuleEvaluation {
   const urlEvaluation = evaluateUrlRules(input.url, input.urlRules);
@@ -176,22 +176,22 @@ function evaluateExecutionPoint(input: {
     return urlEvaluation;
   }
 
-  const tagEvaluation =
+  const labelEvaluation =
     input.classification === null
       ? null
-      : evaluateTagRules(input.classification, input.tagRules);
+      : evaluateLabelRules(input.classification, input.labelRules);
 
-  if (tagEvaluation?.outcome === 'deny') {
-    return tagEvaluation;
+  if (labelEvaluation?.outcome === 'deny') {
+    return labelEvaluation;
   }
 
   const combinedArtifacts = uniqueSorted([
     ...urlEvaluation.requiredArtifacts,
-    ...(tagEvaluation?.outcome === 'allow' ? tagEvaluation.requiredArtifacts : []),
+    ...(labelEvaluation?.outcome === 'allow' ? labelEvaluation.requiredArtifacts : []),
   ]);
   const combinedMatchedRuleNames = uniqueSorted([
     ...urlEvaluation.matchedRuleNames,
-    ...(tagEvaluation?.outcome === 'allow' ? tagEvaluation.matchedRuleNames : []),
+    ...(labelEvaluation?.outcome === 'allow' ? labelEvaluation.matchedRuleNames : []),
   ]);
 
   if (combinedArtifacts.length > 0) {
@@ -224,7 +224,7 @@ export function buildBaseEnqueueDecision(input: {
     url: input.url,
     classification: null,
     urlRules: input.siteConfig.rulesBeforeBaseEq,
-    tagRules: [],
+    labelRules: [],
     defaultOutcome: 'allow',
   });
 
@@ -271,7 +271,7 @@ export function buildStage2EnqueueDecision(input: {
     url: input.url,
     classification: input.classification,
     urlRules: rulesBeforeStage2Eq.filter((rule) => rule.matchType === 'url'),
-    tagRules: rulesBeforeStage2Eq.filter((rule) => rule.matchType === 'tag'),
+    labelRules: rulesBeforeStage2Eq.filter((rule) => rule.matchType === 'label'),
     defaultOutcome: 'pending',
   });
 
@@ -315,7 +315,7 @@ export function getDefaultSpikeConfig(seedUrl: string): SiteConfig {
     rulesBeforeStage2Eq: [
       {
         name: 'spike-allow-markdown',
-        matchType: 'tag',
+        matchType: 'label',
         listType: 'whitelist',
         when: [
           {

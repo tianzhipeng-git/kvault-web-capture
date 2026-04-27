@@ -27,7 +27,7 @@
   "rulesBeforeStage2Eq": [
     {
       "name": "allow-homepage-content",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {

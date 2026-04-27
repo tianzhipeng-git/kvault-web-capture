@@ -38,7 +38,7 @@ function writeSiteConfig(input: {
         rulesBeforeStage2Eq: [
           {
             name: 'allow-docs',
-            matchType: 'tag',
+            matchType: 'label',
             listType: 'whitelist',
             when: [
               {
@@ -51,7 +51,7 @@ function writeSiteConfig(input: {
           },
           {
             name: 'allow-product',
-            matchType: 'tag',
+            matchType: 'label',
             listType: 'whitelist',
             when: [
               {
@@ -64,7 +64,7 @@ function writeSiteConfig(input: {
           },
           {
             name: 'allow-generic',
-            matchType: 'tag',
+            matchType: 'label',
             listType: 'whitelist',
             when: [
               {

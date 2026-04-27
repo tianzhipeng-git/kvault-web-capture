@@ -118,12 +118,12 @@ export class SitePageRepository {
            last_base_status,
            last_base_at,
            (
-             SELECT classification_tags_json
+             SELECT classification_labels_json
              FROM page_runs
              WHERE page_runs.site_page_id = site_pages.id
              ORDER BY page_runs.id DESC
              LIMIT 1
-           ) AS latest_classification_tags_json,
+           ) AS latest_classification_labels_json,
            last_stage_decision_json,
            last_markdown_status,
            last_markdown_at,
@@ -139,7 +139,7 @@ export class SitePageRepository {
           inventory_status: InventoryStatus;
           last_base_status: BaseCaptureStatus | null;
           last_base_at: string | null;
-          latest_classification_tags_json: string | null;
+          latest_classification_labels_json: string | null;
           last_stage_decision_json: string | null;
           last_markdown_status: ArtifactRunStatus | null;
           last_markdown_at: string | null;
@@ -158,10 +158,10 @@ export class SitePageRepository {
       inventoryStatus: row.inventory_status,
       lastBaseStatus: row.last_base_status,
       lastBaseAt: row.last_base_at,
-      latestClassificationTags:
-        row.latest_classification_tags_json === null
+      latestClassificationLabels:
+        row.latest_classification_labels_json === null
           ? null
-          : parseJson<Record<string, string[]>>(row.latest_classification_tags_json),
+          : parseJson<Record<string, string[]>>(row.latest_classification_labels_json),
       lastStageDecision:
         row.last_stage_decision_json === null
           ? null

@@ -17,7 +17,7 @@
 这个执行点的特点：
 
 - 只支持 `matchType: "url"`
-- 不支持 tag 规则，因为页面还没抓取，也还没有分类结果
+- 不支持 label 规则，因为页面还没抓取，也还没有分类结果
 - 默认结果是 `allow`，也就是没有规则命中时仍会进入 base 抓取
 - 命中 `deny` 后页面不会进入 base 队列
 - 即使 URL 规则带了 `artifacts`，在这个执行点也不会触发 markdown / screenshot 抓取
@@ -47,12 +47,12 @@
 - 文档页抓 Markdown
 - 产品页抓 Markdown 和截图
 - 某些 URL 路径虽然会被 base 抓取，但不产出 artifact
-- 根据分类 tag 决定采集策略
+- 根据分类 label 决定采集策略
 
 这个执行点的特点：
 
-- 支持 `matchType: "url"` 和 `matchType: "tag"`
-- URL 规则和 tag 规则会一起参与判断
+- 支持 `matchType: "url"` 和 `matchType: "label"`
+- URL 规则和 label 规则会一起参与判断
 - 默认结果是 `pending`，也就是没有任何 whitelist 产出 artifact 时，页面会进入待确认状态
 - 只有规则最终产出至少一个 `artifact` 时，页面才会进入 markdown / screenshot 队列
 - `seed_run` 中即使规则判断为 allow，也会被转成 `stage2_pending`，用于摸底和调规则，不会真正产出 artifact
@@ -64,7 +64,7 @@
   "rulesBeforeStage2Eq": [
     {
       "name": "allow-docs-markdown",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {
@@ -85,16 +85,16 @@
 | --- | --- | --- |
 | 不访问登录页、搜索页、购物车等 URL | `rulesBeforeBaseEq` | URL blacklist |
 | 只允许某个域名或路径进入 base 抓取 | `rulesBeforeBaseEq` | URL scopelist |
-| 页面可以被发现和分类，但不一定产出 artifact | `rulesBeforeStage2Eq` | URL / tag whitelist |
-| 根据页面分类决定抓 Markdown 还是截图 | `rulesBeforeStage2Eq` | tag whitelist |
-| 某类分类结果一律不产出 artifact | `rulesBeforeStage2Eq` | tag blacklist |
+| 页面可以被发现和分类，但不一定产出 artifact | `rulesBeforeStage2Eq` | URL / label whitelist |
+| 根据页面分类决定抓 Markdown 还是截图 | `rulesBeforeStage2Eq` | label whitelist |
+| 某类分类结果一律不产出 artifact | `rulesBeforeStage2Eq` | label blacklist |
 | 某个路径下的页面一律抓截图 | `rulesBeforeStage2Eq` | URL whitelist + `artifacts: ["screenshot"]` |
 
 ## 2. 再选规则类型
 
 每条规则都有两个维度：
 
-- `matchType`：规则匹配什么对象，支持 `url` 或 `tag`
+- `matchType`：规则匹配什么对象，支持 `url` 或 `label`
 - `listType`：规则命中后在名单体系里的含义，支持 `blacklist`、`scopelist`、`whitelist`
 
 单条规则对象也提供了 JSON Schema，可用于编辑器提示或配置校验：
@@ -159,16 +159,16 @@ URL 匹配时，系统使用 `host + pathname + search` 做比较，不包含协
 }
 ```
 
-### 2.2 `matchType: "tag"`
+### 2.2 `matchType: "label"`
 
-Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 中。
+label 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 中。
 
 字段格式：
 
 ```json
 {
   "name": "allow-product-screenshot",
-  "matchType": "tag",
+  "matchType": "label",
   "listType": "whitelist",
   "when": [
     {
@@ -186,10 +186,10 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `name` | 否 | 规则名。不填时会使用配置路径作为默认名；建议显式填写 |
-| `matchType` | 是 | 必须是 `tag` |
+| `matchType` | 是 | 必须是 `label` |
 | `listType` | 是 | `blacklist`、`scopelist` 或 `whitelist` |
 | `when` | 是 | 条件数组，数组里的所有条件都必须匹配 |
-| `artifacts` | 否 | 支持 `markdown`、`screenshot`；tag 规则未填写时默认 `["markdown"]` |
+| `artifacts` | 否 | 支持 `markdown`、`screenshot`；label 规则未填写时默认 `["markdown"]` |
 
 `when` 中每个条件的格式：
 
@@ -205,7 +205,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `key` | 是 | 分类 tag 的键，例如 `content_type` |
+| `key` | 是 | 分类 label 的键，例如 `content_type` |
 | `op` | 是 | `any_of`、`all_of` 或 `is_empty` |
 | `values` | 视情况 | `any_of` 和 `all_of` 必填；`is_empty` 不需要 |
 
@@ -221,7 +221,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 
 ```json
 {
-  "tags": {
+  "labels": {
     "content_type": ["docs"]
   }
 }
@@ -300,7 +300,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 ```json
 {
   "name": "allow-docs-markdown",
-  "matchType": "tag",
+  "matchType": "label",
   "listType": "whitelist",
   "when": [
     {
@@ -321,7 +321,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 [
   {
     "name": "allow-product-markdown",
-    "matchType": "tag",
+    "matchType": "label",
     "listType": "whitelist",
     "when": [
       {
@@ -334,7 +334,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
   },
   {
     "name": "allow-product-screenshot",
-    "matchType": "tag",
+    "matchType": "label",
     "listType": "whitelist",
     "when": [
       {
@@ -370,7 +370,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 
 - `artifacts` 只有在 `rulesBeforeStage2Eq` 的 allow 结果中才会触发实际抓取
 - URL 规则的 `artifacts` 是可选字段；不填时不贡献 artifact
-- tag 规则不填 `artifacts` 时默认 `["markdown"]`
+- label 规则不填 `artifacts` 时默认 `["markdown"]`
 - 如果最终没有任何规则贡献 artifact，`rulesBeforeStage2Eq` 会返回 `pending`，不会抓 Markdown 或截图
 
 ## 5. 完整 JSON 示例
@@ -417,7 +417,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
     },
     {
       "name": "allow-docs-markdown",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {
@@ -434,7 +434,7 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
     },
     {
       "name": "allow-product-markdown-and-screenshot",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {
@@ -489,5 +489,5 @@ Tag 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` �
 - URL `values` 是否使用了 `host + path` 的形式，例如 `example.com/docs`
 - 多个 `scopelist` 是否真的是“全部必须满足”的关系
 - `regex` 字符串里的反斜杠是否按 JSON 规则转义，例如 `example\\.com`
-- tag 规则的 `when` 是否能对应分类器实际产出的 tag key 和 value
+- label 规则的 `when` 是否能对应分类器实际产出的 label key 和 value
 - 需要正式产出 artifact 时，是否运行的是 `crawl_run`，而不是 `seed_run`

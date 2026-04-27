@@ -4,7 +4,7 @@ export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
 export type UrlRuleDecision = 'allow' | 'deny';
 
-export type RuleMatchType = 'url' | 'tag';
+export type RuleMatchType = 'url' | 'label';
 
 export type RunType = 'seed_run' | 'crawl_run';
 
@@ -39,7 +39,7 @@ export interface ExtractedPage {
 }
 
 export interface ClassificationResult {
-  tags: Record<string, string[]>;
+  labels: Record<string, string[]>;
 }
 
 export interface UrlRule {
@@ -51,17 +51,17 @@ export interface UrlRule {
   artifacts?: ArtifactType[];
 }
 
-export interface TagRuleCondition {
+export interface LabelRuleCondition {
   key: string;
   op: 'any_of' | 'all_of' | 'is_empty';
   values?: string[];
 }
 
-export interface TagRule {
+export interface LabelRule {
   name: string;
-  matchType: 'tag';
+  matchType: 'label';
   listType: 'blacklist' | 'scopelist' | 'whitelist';
-  when: TagRuleCondition[];
+  when: LabelRuleCondition[];
   artifacts: ArtifactType[];
 }
 
@@ -74,7 +74,7 @@ export interface SiteConfig {
   seedUrls: string[];
   sitemaps: string[];
   rulesBeforeBaseEq: UrlRule[];
-  rulesBeforeStage2Eq: Array<UrlRule | TagRule>;
+  rulesBeforeStage2Eq: Array<UrlRule | LabelRule>;
   runOptions: SiteRunOptions;
 }
 
@@ -147,7 +147,7 @@ export interface HistoricalPageState {
   inventoryStatus: InventoryStatus;
   lastBaseStatus: BaseCaptureStatus | null;
   lastBaseAt: string | null;
-  latestClassificationTags: Record<string, string[]> | null;
+  latestClassificationLabels: Record<string, string[]> | null;
   lastStageDecision: StageDecisionSnapshot | null;
   lastMarkdownStatus: ArtifactRunStatus | null;
   lastMarkdownAt: string | null;

@@ -340,7 +340,7 @@ export interface SitePageListInput {
   pageSize: number;
   status?: string;
   query?: string;
-  tag?: string;
+  label?: string;
   pendingReason?: string;
   discoverySource?: string;
   crawlRunId?: number;
@@ -358,7 +358,7 @@ export class SitePageListQuery {
       title: string;
       url: string;
       businessStatus: string;
-      tags: string[];
+      labels: string[];
       latestOutcome: string;
       latestHandledAt: string | null;
       needsReview: boolean;
@@ -407,7 +407,7 @@ export class SitePageListQuery {
       args.push(input.crawlRunId, input.crawlRunId);
     }
 
-    if (input.tag) {
+    if (input.label) {
       filters.push(
         `EXISTS (
            SELECT 1
@@ -420,10 +420,10 @@ export class SitePageListQuery {
                ORDER BY pr2.id DESC
                LIMIT 1
              )
-             AND prt.classification_tags_json LIKE ?
+             AND prt.classification_labels_json LIKE ?
          )`,
       );
-      args.push(`%${input.tag}%`);
+      args.push(`%${input.label}%`);
     }
 
     const whereClause = filters.join(' AND ');
@@ -442,7 +442,7 @@ export class SitePageListQuery {
            sp.latest_title,
            sp.discovery_source,
            COALESCE(sp.last_markdown_at, sp.last_screenshot_at, sp.last_base_at) AS latest_handled_at,
-           pr.classification_tags_json,
+           pr.classification_labels_json,
            pr.decision_outcome,
            pr.required_artifacts_json,
            sp.last_markdown_status,
@@ -467,8 +467,8 @@ export class SitePageListQuery {
       pageSize: input.pageSize,
       rows: rows.map((row) => {
         const record = row as Record<string, unknown>;
-        const tags = parseJson<Record<string, string[]>>(
-          (record.classification_tags_json as string | null | undefined) ?? null,
+        const labels = parseJson<Record<string, string[]>>(
+          (record.classification_labels_json as string | null | undefined) ?? null,
         );
         const requiredArtifacts =
           parseJson<string[]>((record.required_artifacts_json as string | null | undefined) ?? null) ??
@@ -481,7 +481,7 @@ export class SitePageListQuery {
           title: String(record.latest_title ?? record.normalized_url),
           url: String(record.normalized_url),
           businessStatus: toInventoryStatusLabel(String(record.inventory_status)),
-          tags: Object.entries(tags ?? {}).flatMap(([key, values]) =>
+          labels: Object.entries(labels ?? {}).flatMap(([key, values]) =>
             values.map((value) => `${key}: ${value}`),
           ),
           latestOutcome:
@@ -514,7 +514,7 @@ interface LatestPageRunRow {
   title: string;
   meta_description: string;
   body_text: string;
-  classification_tags_json: string;
+  classification_labels_json: string;
   decision_outcome: string;
   decision_reason: string | null;
   pending_reason: string | null;
@@ -613,7 +613,7 @@ export class SitePageDetailQuery {
     discoveryReferrerUrl: string | null;
     firstDiscoveredAt: string;
     updatedAt: string;
-    latestTags: string[];
+    latestLabels: string[];
     latestDecision: string | null;
     latestPendingReasonLabel: string | null;
     latestBase: ReturnType<typeof buildProcessingState>;
@@ -659,7 +659,7 @@ export class SitePageDetailQuery {
         decisionReason: string | null;
         pendingReasonLabel: string | null;
         requiredArtifacts: string[];
-        tags: string[];
+        labels: string[];
         baseStatus: string;
         baseCapturePath: string | null;
         bodyPreview: string;
@@ -740,7 +740,7 @@ export class SitePageDetailQuery {
              title,
              meta_description,
              body_text,
-             classification_tags_json,
+             classification_labels_json,
              decision_outcome,
              decision_reason,
              pending_reason,
@@ -785,11 +785,11 @@ export class SitePageDetailQuery {
         : (parseJson<string[]>(latestPageRun.required_artifacts_json) ?? []);
     const decisionOutcome = latestPageRun?.decision_outcome ?? null;
     const pendingReason = latestPageRun?.pending_reason ?? page.last_pending_reason;
-    const tagsObject =
+    const labelsObject =
       latestPageRun === null
         ? null
-        : parseJson<Record<string, string[]>>(latestPageRun.classification_tags_json);
-    const tags = Object.entries(tagsObject ?? {}).flatMap(([key, values]) =>
+        : parseJson<Record<string, string[]>>(latestPageRun.classification_labels_json);
+    const labels = Object.entries(labelsObject ?? {}).flatMap(([key, values]) =>
       values.map((value) => `${key}: ${value}`),
     );
     const markdownArtifact = latestArtifactByType.get('markdown') ?? null;
@@ -802,7 +802,7 @@ export class SitePageDetailQuery {
            pr.crawl_run_id,
            pr.title,
            pr.body_text,
-           pr.classification_tags_json,
+           pr.classification_labels_json,
            pr.decision_outcome,
            pr.decision_reason,
            pr.pending_reason,
@@ -818,7 +818,7 @@ export class SitePageDetailQuery {
         crawl_run_id: number;
         title: string;
         body_text: string;
-        classification_tags_json: string;
+        classification_labels_json: string;
         decision_outcome: string;
         decision_reason: string | null;
         pending_reason: string | null;
@@ -889,8 +889,8 @@ export class SitePageDetailQuery {
       pageRuns: pageRuns
         .filter((pageRun) => pageRun.crawl_run_id === run.id)
         .map((pageRun) => {
-          const pageRunTags = parseJson<Record<string, string[]>>(
-            pageRun.classification_tags_json,
+          const pageRunLabels = parseJson<Record<string, string[]>>(
+            pageRun.classification_labels_json,
           ) ?? {};
           const pageRunRequiredArtifacts =
             parseJson<string[]>(pageRun.required_artifacts_json) ?? [];
@@ -902,7 +902,7 @@ export class SitePageDetailQuery {
             decisionReason: pageRun.decision_reason,
             pendingReasonLabel: toPendingReasonLabel(pageRun.pending_reason),
             requiredArtifacts: pageRunRequiredArtifacts,
-            tags: Object.entries(pageRunTags).flatMap(([key, values]) =>
+            labels: Object.entries(pageRunLabels).flatMap(([key, values]) =>
               values.map((value) => `${key}: ${value}`),
             ),
             baseStatus: pageRun.base_capture_status,
@@ -936,7 +936,7 @@ export class SitePageDetailQuery {
       discoveryReferrerUrl: page.discovery_referrer_url,
       firstDiscoveredAt: page.first_discovered_at,
       updatedAt: page.updated_at,
-      latestTags: tags,
+      latestLabels: labels,
       latestDecision: decisionOutcome,
       latestPendingReasonLabel: toPendingReasonLabel(pendingReason),
       latestBase: buildProcessingState({

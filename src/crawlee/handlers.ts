@@ -134,7 +134,7 @@ export function createBaseRequestHandler(deps: {
       title: extracted.title,
       metaDescription: extracted.metaDescription,
       bodyText: extracted.bodyText,
-      classificationTags: classification?.tags ?? {},
+      classificationLabels: classification?.labels ?? {},
       ruleOutcome: decision.ruleOutcome,
       decisionOutcome: decision.pageOutcome,
       decisionReason: decision.reason,

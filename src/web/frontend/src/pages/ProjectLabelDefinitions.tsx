@@ -9,19 +9,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-interface TagValueOption {
+interface LabelValueOption {
   value: string;
   description: string;
 }
 
-interface TagDefinitionCore {
+interface LabelDefinitionCore {
   key: string;
   name: string;
   description: string;
   value_type: string;
   nullable: boolean;
   allow_extra_values: boolean;
-  values_options: TagValueOption[];
+  values_options: LabelValueOption[];
 }
 
 function pretty(value: unknown): string {
@@ -40,7 +40,7 @@ function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function extractOptions(source: Record<string, unknown>): TagValueOption[] {
+function extractOptions(source: Record<string, unknown>): LabelValueOption[] {
   const valuesConfig = isRecord(source.values_config) ? source.values_config : null;
   const rawOptions = source.values_options ?? source.valuesOptions ?? valuesConfig?.options;
 
@@ -55,7 +55,7 @@ function extractOptions(source: Record<string, unknown>): TagValueOption[] {
     .filter((option) => option.value || option.description);
 }
 
-function extractCores(input: unknown): TagDefinitionCore[] {
+function extractCores(input: unknown): LabelDefinitionCore[] {
   const labels = Array.isArray(input)
     ? input
     : isRecord(input) && Array.isArray(input.labels)
@@ -83,7 +83,7 @@ function extractCores(input: unknown): TagDefinitionCore[] {
   }).filter((label) => label.key);
 }
 
-function buildDocument(labels: TagDefinitionCore[]) {
+function buildDocument(labels: LabelDefinitionCore[]) {
   return {
     version: 1,
     labels: labels.map((label) => ({
@@ -103,7 +103,7 @@ function buildDocument(labels: TagDefinitionCore[]) {
   };
 }
 
-function createEmptyLabel(): TagDefinitionCore {
+function createEmptyLabel(): LabelDefinitionCore {
   return {
     key: "",
     name: "",
@@ -115,9 +115,9 @@ function createEmptyLabel(): TagDefinitionCore {
   };
 }
 
-export function ProjectTagDefinitions({ projectId }: { projectId: number }) {
+export function ProjectLabelDefinitions({ projectId }: { projectId: number }) {
   const [jsonDraft, setJsonDraft] = useState("");
-  const [labels, setLabels] = useState<TagDefinitionCore[]>([]);
+  const [labels, setLabels] = useState<LabelDefinitionCore[]>([]);
   const [expandedLabels, setExpandedLabels] = useState<Set<number>>(new Set());
   const [isSaving, setIsSaving] = useState(false);
 
@@ -129,16 +129,16 @@ export function ProjectTagDefinitions({ projectId }: { projectId: number }) {
   };
 
   useEffect(() => {
-    api.getProjectTagDefinitions(projectId).then((response) => {
-      hydrate(response.tagDefinitions ?? { version: 1, labels: [] });
+    api.getProjectLabelDefinitions(projectId).then((response) => {
+      hydrate(response.labelDefinitions ?? { version: 1, labels: [] });
     });
   }, [projectId]);
 
   const saveDefinitions = async (nextDefinitions: unknown, successMessage: string) => {
     setIsSaving(true);
     try {
-      const response = await api.updateProjectTagDefinitions(projectId, nextDefinitions);
-      hydrate(response.tagDefinitions);
+      const response = await api.updateProjectLabelDefinitions(projectId, nextDefinitions);
+      hydrate(response.labelDefinitions);
       toast.success(successMessage);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "保存失败。");
@@ -147,13 +147,13 @@ export function ProjectTagDefinitions({ projectId }: { projectId: number }) {
     }
   };
 
-  const updateLabel = (index: number, updates: Partial<TagDefinitionCore>) => {
+  const updateLabel = (index: number, updates: Partial<LabelDefinitionCore>) => {
     setLabels((current) => current.map((label, itemIndex) => (
       itemIndex === index ? { ...label, ...updates } : label
     )));
   };
 
-  const updateOption = (labelIndex: number, optionIndex: number, updates: Partial<TagValueOption>) => {
+  const updateOption = (labelIndex: number, optionIndex: number, updates: Partial<LabelValueOption>) => {
     setLabels((current) => current.map((label, itemIndex) => {
       if (itemIndex !== labelIndex) return label;
       return {

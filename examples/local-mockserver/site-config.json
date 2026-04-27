@@ -19,7 +19,7 @@
   "rulesBeforeStage2Eq": [
     {
       "name": "allow-content-pages",
-      "matchType": "tag",
+      "matchType": "label",
       "listType": "whitelist",
       "when": [
         {

@@ -4,7 +4,7 @@ import type { SiteConfig } from '../src/domain/types.js';
 import {
   buildBaseEnqueueDecision,
   buildStage2EnqueueDecision,
-  evaluateTagRules,
+  evaluateLabelRules,
   evaluateUrlRules,
 } from '../src/rules/rule-decision.js';
 
@@ -90,17 +90,17 @@ describe('rule decision', () => {
     });
   });
 
-  it('returns pending when no whitelist tag rule matches', () => {
-    const result = evaluateTagRules(
+  it('returns pending when no whitelist label rule matches', () => {
+    const result = evaluateLabelRules(
       {
-        tags: {
+        labels: {
           content_type: ['generic'],
         },
       },
       [
         {
           name: 'docs-only',
-          matchType: 'tag',
+          matchType: 'label',
           listType: 'whitelist',
           when: [
             {
@@ -118,14 +118,14 @@ describe('rule decision', () => {
       outcome: 'pending',
       matchedRuleNames: [],
       requiredArtifacts: [],
-      reason: 'no tag rule matched',
+      reason: 'no label rule matched',
     });
   });
 
-  it('requires every tag scopelist to match', () => {
-    const result = evaluateTagRules(
+  it('requires every label scopelist to match', () => {
+    const result = evaluateLabelRules(
       {
-        tags: {
+        labels: {
           content_type: ['docs'],
           audience: ['guest'],
         },
@@ -133,7 +133,7 @@ describe('rule decision', () => {
       [
         {
           name: 'must-be-docs',
-          matchType: 'tag',
+          matchType: 'label',
           listType: 'scopelist',
           when: [
             {
@@ -146,7 +146,7 @@ describe('rule decision', () => {
         },
         {
           name: 'must-be-internal',
-          matchType: 'tag',
+          matchType: 'label',
           listType: 'scopelist',
           when: [
             {
@@ -168,7 +168,7 @@ describe('rule decision', () => {
     });
   });
 
-  it('allows stage2 from url whitelist artifacts without a tag whitelist match', () => {
+  it('allows stage2 from url whitelist artifacts without a label whitelist match', () => {
     const result = buildStage2EnqueueDecision({
       runType: 'crawl_run',
       siteConfig: {
@@ -192,7 +192,7 @@ describe('rule decision', () => {
       },
       url: 'https://example.com/docs/api',
       classification: {
-        tags: {
+        labels: {
           content_type: ['other'],
         },
       },
@@ -218,7 +218,7 @@ describe('rule decision', () => {
         rulesBeforeStage2Eq: [
           {
             name: 'docs-markdown',
-            matchType: 'tag',
+            matchType: 'label',
             listType: 'whitelist',
             when: [
               {
@@ -237,7 +237,7 @@ describe('rule decision', () => {
       },
       url: 'https://example.com/docs',
       classification: {
-        tags: {
+        labels: {
           content_type: ['docs'],
         },
       },
@@ -276,7 +276,7 @@ describe('rule decision', () => {
         },
         {
           name: 'allow-docs',
-          matchType: 'tag',
+          matchType: 'label',
           listType: 'whitelist',
           when: [
             {
@@ -312,7 +312,7 @@ describe('rule decision', () => {
         url: 'https://example.com/blog/post',
         siteConfig,
         classification: {
-          tags: {
+          labels: {
             content_type: ['docs'],
           },
         },

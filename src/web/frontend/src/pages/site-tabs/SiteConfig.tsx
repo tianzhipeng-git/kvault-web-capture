@@ -14,11 +14,11 @@ import type { LlmChatMessage } from "@/lib/api";
 import {
   applyRuleAssistantSuggestions,
   parseAssistantJson,
-  tagDefinitionsToJsonl,
+  labelDefinitionsToJsonl,
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
-import { RulePreviewResultGrid, tagsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
+import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 function RulePreviewDialog({
   siteId,
@@ -59,10 +59,10 @@ function RulePreviewDialog({
     setIsPreviewing(true);
     setPreviewResult(null);
     try {
-      const tags = tagsArrayToRecord(page.tags);
+      const labels = labelsArrayToRecord(page.labels);
       const result = await api.previewRules(siteId, {
         url: page.url,
-        tags: Object.keys(tags).length > 0 ? tags : undefined,
+        labels: Object.keys(labels).length > 0 ? labels : undefined,
         rulesBeforeBaseEq,
         rulesBeforeStage2Eq,
       });
@@ -101,8 +101,8 @@ function RulePreviewDialog({
               >
                 <div className="font-medium truncate">{page.title}</div>
                 <div className="text-xs text-muted-foreground truncate">{page.url}</div>
-                {page.tags.length > 0 && (
-                  <div className="text-xs text-muted-foreground/70 truncate mt-0.5">{page.tags.join(', ')}</div>
+                {page.labels.length > 0 && (
+                  <div className="text-xs text-muted-foreground/70 truncate mt-0.5">{page.labels.join(', ')}</div>
                 )}
               </button>
             ))}
@@ -173,7 +173,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [sites, setSites] = useState<Array<{ siteId: number; siteName: string }>>([]);
   const [sourceSiteId, setSourceSiteId] = useState("");
   const [projectId, setProjectId] = useState<number | null>(null);
-  const [tagDefinitions, setTagDefinitions] = useState<unknown>([]);
+  const [labelDefinitions, setLabelDefinitions] = useState<unknown>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantTarget, setAssistantTarget] = useState<AssistantTarget>({ kind: "generic" });
@@ -194,8 +194,8 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     api.getSiteConfig(siteId).then(hydrate);
     api.getSiteOverview(siteId).then((overview) => {
       setProjectId(overview.projectId);
-      api.getProjectTagDefinitions(overview.projectId).then((data) => {
-        setTagDefinitions(data.tagDefinitions ?? []);
+      api.getProjectLabelDefinitions(overview.projectId).then((data) => {
+        setLabelDefinitions(data.labelDefinitions ?? []);
       });
       api.getSites(overview.projectId).then((data) => {
         setSites((data.items || []).filter((site: { siteId: number }) => site.siteId !== siteId));
@@ -268,11 +268,11 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   };
 
   const buildAssistantContext = (userInput: string, _history: LlmChatMessage[]) => {
-    const tagsJsonl = tagDefinitionsToJsonl(tagDefinitions);
+    const labelsJsonl = labelDefinitionsToJsonl(labelDefinitions);
 
     if (assistantTarget.kind === "single") {
       return {
-        tags_jsonl: tagsJsonl,
+        labels_jsonl: labelsJsonl,
         rule_point: assistantTarget.point,
         rule_obj: JSON.stringify(assistantTarget.rule, null, 2),
         user_input: userInput,
@@ -280,7 +280,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     }
 
     return {
-      tags_jsonl: tagsJsonl,
+      labels_jsonl: labelsJsonl,
       rulesBeforeBaseEq: JSON.stringify(rulesBeforeBaseEq, null, 2),
       rulesBeforeStage2Eq: JSON.stringify(rulesBeforeStage2Eq, null, 2),
       page_info: "",
@@ -416,7 +416,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               <RuleListEditor 
                 rules={rulesBeforeBaseEq} 
                 onChange={setRulesBeforeBaseEq} 
-                allowTagMatch={false} 
+                allowLabelMatch={false}
                 showArtifacts={false} 
                 hideAddButton 
                 onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeBaseEq", rule, index)}
@@ -443,7 +443,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               <RuleListEditor 
                 rules={rulesBeforeStage2Eq} 
                 onChange={setRulesBeforeStage2Eq} 
-                allowTagMatch={true} 
+                allowLabelMatch={true} 
                 hideAddButton 
                 onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeStage2Eq", rule, index)}
               />

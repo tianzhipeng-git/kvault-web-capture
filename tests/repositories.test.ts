@@ -72,7 +72,7 @@ describe('repositories', () => {
       title: 'Docs',
       metaDescription: 'Example docs',
       bodyText: 'hello docs',
-      classificationTags: {
+      classificationLabels: {
         content_type: ['docs'],
       },
       ruleOutcome: 'allow',

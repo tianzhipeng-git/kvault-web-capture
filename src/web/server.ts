@@ -273,21 +273,21 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
   });
 
-  server.get('/api/projects/:projectId/tag-definitions', async (request) => {
+  server.get('/api/projects/:projectId/label-definitions', async (request) => {
     const params = request.params as { projectId: string };
     return {
-      tagDefinitions: app.getProjectTagDefinitions(parseProjectId(params.projectId)),
+      labelDefinitions: app.getProjectLabelDefinitions(parseProjectId(params.projectId)),
     };
   });
 
-  server.put('/api/projects/:projectId/tag-definitions', async (request) => {
+  server.put('/api/projects/:projectId/label-definitions', async (request) => {
     const params = request.params as { projectId: string };
-    const body = (request.body ?? {}) as { tagDefinitions?: unknown };
-    const tagDefinitions = body.tagDefinitions ?? [];
-    app.updateProjectTagDefinitions(parseProjectId(params.projectId), tagDefinitions);
+    const body = (request.body ?? {}) as { labelDefinitions?: unknown };
+    const labelDefinitions = body.labelDefinitions ?? [];
+    app.updateProjectLabelDefinitions(parseProjectId(params.projectId), labelDefinitions);
     return {
       status: 'ok',
-      tagDefinitions,
+      labelDefinitions,
     };
   });
 
@@ -378,7 +378,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const body = (request.body ?? {}) as {
       url: string;
-      tags?: Record<string, string[]>;
+      labels?: Record<string, string[]>;
       rulesBeforeBaseEq?: unknown[];
       rulesBeforeStage2Eq?: unknown[];
     };
@@ -391,7 +391,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
 
     const baseDecision = buildBaseEnqueueDecision({ url: body.url, siteConfig });
-    const classification = body.tags && Object.keys(body.tags).length > 0 ? { tags: body.tags } : null;
+    const classification = body.labels && Object.keys(body.labels).length > 0 ? { labels: body.labels } : null;
     const stage2Decision = buildStage2EnqueueDecision({ runType: 'crawl_run', url: body.url, siteConfig, classification });
 
     return { baseDecision, stage2Decision };
@@ -499,7 +499,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       pageSize: Number(query.pageSize ?? '20'),
       status: query.status,
       query: query.query,
-      tag: query.tag,
+      label: query.label,
       pendingReason: query.pendingReason,
       discoverySource: query.discoverySource,
       crawlRunId,

@@ -15,12 +15,12 @@ import type { LlmChatMessage } from "@/lib/api";
 import {
   applyRuleAssistantSuggestions,
   parseAssistantJson,
-  tagDefinitionsToJsonl,
+  labelDefinitionsToJsonl,
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
 import { CheckCircle2, CircleDashed, Filter, History, Image, Play, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
-import { RulePreviewResultGrid, tagsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
+import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
   { value: "", label: "全部状态" },
@@ -229,7 +229,7 @@ function PageDetailDialog({
   const [expandedLogRunId, setExpandedLogRunId] = useState<number | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(null);
-  const [tagDefinitions, setTagDefinitions] = useState<unknown>([]);
+  const [labelDefinitions, setLabelDefinitions] = useState<unknown>([]);
   const [rulePreviewResult, setRulePreviewResult] = useState<RulePreviewResult | null>(null);
   const [isPreviewingRules, setIsPreviewingRules] = useState(false);
 
@@ -245,14 +245,14 @@ function PageDetailDialog({
   useEffect(() => {
     if (!detail) {
       setSiteConfig(null);
-      setTagDefinitions([]);
+      setLabelDefinitions([]);
       return;
     }
 
     api.getSiteConfig(detail.siteId).then((config) => setSiteConfig(config as SiteConfigShape));
     api.getSiteOverview(detail.siteId).then((overview) => {
-      api.getProjectTagDefinitions(overview.projectId).then((data) => {
-        setTagDefinitions(data.tagDefinitions ?? []);
+      api.getProjectLabelDefinitions(overview.projectId).then((data) => {
+        setLabelDefinitions(data.labelDefinitions ?? []);
       });
     });
   }, [detail]);
@@ -260,7 +260,7 @@ function PageDetailDialog({
   const buildPageInfo = (pageDetail: SitePageDetail): string => [
     `url: ${pageDetail.url}`,
     `title: ${pageDetail.title}`,
-    `tags: ${pageDetail.latestTags.length > 0 ? pageDetail.latestTags.join(", ") : "无"}`,
+    `labels: ${pageDetail.latestLabels.length > 0 ? pageDetail.latestLabels.join(", ") : "无"}`,
     `根据当前规则是否应该base抓取: ${pageDetail.latestBase.shouldRun ? "是" : "否"}`,
     `根据当前规则是否应该Markdown抓取: ${pageDetail.latestMarkdown.shouldRun ? "是" : "否"}`,
     `根据当前规则是否应该截图: ${pageDetail.latestScreenshot.shouldRun ? "是" : "否"}`,
@@ -270,7 +270,7 @@ function PageDetailDialog({
   ].join("\n");
 
   const buildAssistantContext = (userInput: string, _history: LlmChatMessage[]) => ({
-    tags_jsonl: tagDefinitionsToJsonl(tagDefinitions),
+    labels_jsonl: labelDefinitionsToJsonl(labelDefinitions),
     rulesBeforeBaseEq: JSON.stringify(siteConfig?.rulesBeforeBaseEq ?? [], null, 2),
     rulesBeforeStage2Eq: JSON.stringify(siteConfig?.rulesBeforeStage2Eq ?? [], null, 2),
     page_info: detail ? buildPageInfo(detail) : "",
@@ -315,10 +315,10 @@ function PageDetailDialog({
     setIsPreviewingRules(true);
     setRulePreviewResult(null);
     try {
-      const tags = tagsArrayToRecord(detail.latestTags);
+      const labels = labelsArrayToRecord(detail.latestLabels);
       const result = await api.previewRules(detail.siteId, {
         url: detail.url,
-        tags: Object.keys(tags).length > 0 ? tags : undefined,
+        labels: Object.keys(labels).length > 0 ? labels : undefined,
       });
       setRulePreviewResult(result);
     } catch (error) {
@@ -363,9 +363,9 @@ function PageDetailDialog({
                 <div>发现来源：{detail.discoverySource}</div>
                 <div>发现时间：{formatDate(detail.firstDiscoveredAt)}</div>
               </div>
-              {detail.latestTags.length > 0 && (
+              {detail.latestLabels.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {detail.latestTags.map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                  {detail.latestLabels.map((label) => <Badge key={label} variant="secondary">{label}</Badge>)}
                 </div>
               )}
             </div>
@@ -467,7 +467,7 @@ export function PageReview({
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const [tag, setTag] = useState("");
+  const [label, setLabel] = useState("");
   const [pendingReason, setPendingReason] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [detail, setDetail] = useState<SitePageDetail | null>(null);
@@ -480,7 +480,7 @@ export function PageReview({
       pageSize,
       query,
       status,
-      tag,
+      label,
       pendingReason,
       crawlRunId,
     })
@@ -489,7 +489,7 @@ export function PageReview({
         setTotal(data.total || 0);
       })
       .finally(() => setIsLoading(false));
-  }, [crawlRunId, page, pendingReason, query, siteId, status, tag]);
+  }, [crawlRunId, page, pendingReason, query, siteId, status, label]);
 
   const openDetail = async (sitePageId: number) => {
     const nextDetail = await api.getSitePageDetail(siteId, sitePageId);
@@ -520,8 +520,8 @@ export function PageReview({
             <select className="h-10 rounded-md border bg-background px-3 text-sm" value={pendingReason} onChange={(event) => { setPage(1); setPendingReason(event.target.value); }}>
               {pendingReasonOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <Input placeholder="Tag 过滤" value={tag} onChange={(event) => { setPage(1); setTag(event.target.value); }} />
-            <Button variant="outline" className="gap-2" onClick={() => { setPage(1); setQuery(""); setStatus(""); setTag(""); setPendingReason(""); }}>
+            <Input placeholder="Label 过滤" value={label} onChange={(event) => { setPage(1); setLabel(event.target.value); }} />
+            <Button variant="outline" className="gap-2" onClick={() => { setPage(1); setQuery(""); setStatus(""); setLabel(""); setPendingReason(""); }}>
               <Filter className="w-4 h-4" />
               重置
             </Button>

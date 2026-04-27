@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find)",
+      "Bash(git grep:*)",
+      "Bash(grep)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(grep -rn)"
+    ]
+  }
+}

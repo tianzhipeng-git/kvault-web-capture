@@ -11,8 +11,8 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 - 页面清单：站点内所有发现过的页面，按 normalized URL 去重。
 - 运行批次：一次 `seed_run` 或 `crawl_run`。
 - Base capture：轻量页面信息，包括 title、meta description、body text 和链接发现。
-- 分类标签：页面 base 信息经过分类器后得到的 tag，例如 `content_type: docs`。
-- 采集规则：根据 URL 或 tag 决定页面是否继续采集，以及需要哪些 artifact。
+- 分类标签：页面 base 信息经过分类器后得到的 label，例如 `content_type: docs`。
+- 采集规则：根据 URL 或 label 决定页面是否继续采集，以及需要哪些 artifact。
 - Artifact：当前支持 `markdown` 和 `screenshot`。
 
 ## 典型工作流
@@ -20,7 +20,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 ```text
 1. 创建项目
 2. 创建站点，填写 base URL 和 storageRoot
-3. 配置 seedUrls、sitemaps、URL 规则、Tag 规则和抓取深度
+3. 配置 seedUrls、sitemaps、URL 规则、label 规则和抓取深度
 4. 启动 seed_run 做初步摸底
 5. 查看页面清单、待确认页面、样本 base capture
 6. 调整规则
@@ -55,7 +55,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 - `seedUrls`：普通入口页面。
 - `sitemaps`：站点地图入口，会递归解析 sitemap index。
 - `rulesBeforeBaseEq`：base 前 URL 规则。
-- `rulesBeforeStage2Eq`：base + 分类之后的 URL / tag 规则。
+- `rulesBeforeStage2Eq`：base + 分类之后的 URL / label 规则。
 - `runOptions.seedMaxDepth`：seed run 链接递归深度。
 - `runOptions.crawlMaxDepth`：crawl run 链接递归深度。
 
@@ -79,7 +79,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 
 ### Stage 2 前规则
 
-`rulesBeforeStage2Eq` 在 base capture 和分类之后执行。它可以看 URL，也可以看分类 tag。这个阶段决定页面最终是：
+`rulesBeforeStage2Eq` 在 base capture 和分类之后执行。它可以看 URL，也可以看分类 label。这个阶段决定页面最终是：
 
 - deny：不继续采集
 - pending：等待用户调整规则或人工复核
@@ -90,7 +90,7 @@ allow 规则应声明 `artifacts`，例如：
 ```json
 {
   "name": "docs-full-capture",
-  "matchType": "tag",
+  "matchType": "label",
   "listType": "whitelist",
   "when": [
     {
@@ -103,7 +103,7 @@ allow 规则应声明 `artifacts`，例如：
 }
 ```
 
-Tag 条件支持：
+label 条件支持：
 
 - `any_of`
 - `all_of`
@@ -120,7 +120,7 @@ Seed run 用于快速建立页面清单，不做最终重采集。
 - 从 `seedUrls` 和 `sitemaps` 开始。
 - sitemap 会递归解析，只把实际页面 URL 放入队列。
 - base crawler 抓 title、meta、body text 和链接。
-- 分类器打 tag。
+- 分类器打 label。
 - 执行 stage2 规则，但不运行 markdown / screenshot。
 - 原本 allow 的页面会变成 pending，原因是 `seed_run`。
 - 运行中发现的链接也会进入同一套规划流程。
@@ -174,7 +174,7 @@ Crawl run 支持三种更新策略：
 - `stage2_skipped`：base 后规则判定跳过深入采集。
 - `stage2_captured`：要求的 artifact 全部成功。
 
-页面列表支持按状态、关键词、tag、pending reason、discovery source 和 run 过滤。
+页面列表支持按状态、关键词、label、pending reason、discovery source 和 run 过滤。
 
 ## 页面详情与预览
 
@@ -182,7 +182,7 @@ Crawl run 支持三种更新策略：
 
 - 当前业务状态
 - 发现来源和 referrer
-- 最新 tag
+- 最新 label
 - 最新 base / markdown / screenshot 状态
 - 最新 page run
 - base 和 markdown 内容预览

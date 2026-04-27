@@ -11,7 +11,7 @@ interface ProjectRow {
   id: number;
   name: string;
   slug: string;
-  tag_definitions_json: string;
+  label_definitions_json: string;
   created_at: string;
 }
 
@@ -49,7 +49,7 @@ interface PageExportRow {
   title: string | null;
   meta_description: string | null;
   body_text: string | null;
-  classification_tags_json: string | null;
+  classification_labels_json: string | null;
   decision_outcome: string | null;
   decision_reason: string | null;
   pending_reason: string | null;
@@ -178,10 +178,10 @@ function hasSuccessfulBaseCapture(page: PageExportRow): boolean {
   return page.last_base_status === 'succeeded' || page.base_capture_status === 'succeeded';
 }
 
-function flattenTags(value: string | null): string {
-  const tags = parseJson<Record<string, string[]>>(value) ?? {};
-  return Object.entries(tags)
-    .flatMap(([key, values]) => values.map((tag) => `${key}: ${tag}`))
+function flattenLabels(value: string | null): string {
+  const labels = parseJson<Record<string, string[]>>(value) ?? {};
+  return Object.entries(labels)
+    .flatMap(([key, values]) => values.map((label) => `${key}: ${label}`))
     .join('; ');
 }
 
@@ -243,7 +243,7 @@ async function createPageListWorkbook(
     { header: 'latest_decision_reason', key: 'latestDecisionReason', width: 32 },
     { header: 'pending_reason', key: 'pendingReason', width: 22 },
     { header: 'required_artifacts', key: 'requiredArtifacts', width: 22 },
-    { header: 'tags', key: 'tags', width: 36 },
+    { header: 'labels', key: 'labels', width: 36 },
     { header: 'base_status', key: 'baseStatus', width: 18 },
     { header: 'base_at', key: 'baseAt', width: 26 },
     { header: 'markdown_status', key: 'markdownStatus', width: 18 },
@@ -277,7 +277,7 @@ async function createPageListWorkbook(
       latestDecisionReason: page.decision_reason ?? '',
       pendingReason: page.pending_reason ?? page.last_pending_reason ?? '',
       requiredArtifacts: requiredArtifacts(page.required_artifacts_json),
-      tags: flattenTags(page.classification_tags_json),
+      labels: flattenLabels(page.classification_labels_json),
       baseStatus: page.base_capture_status ?? page.last_base_status ?? '',
       baseAt: page.last_base_at ?? '',
       markdownStatus: page.last_markdown_status ?? '',
@@ -341,7 +341,7 @@ export class ProjectExporter {
 
   async exportProject(input: { projectId: number; outputPath?: string }): Promise<ProjectExportResult> {
     const project = this.db
-      .prepare('SELECT id, name, slug, tag_definitions_json, created_at FROM projects WHERE id = ?')
+      .prepare('SELECT id, name, slug, label_definitions_json, created_at FROM projects WHERE id = ?')
       .get(input.projectId) as ProjectRow | undefined;
 
     if (!project) {
@@ -371,7 +371,7 @@ export class ProjectExporter {
         exportedAt,
         siteCount: sites.length,
         pageCount: projectPageCount,
-        tagDefinitions: parseJson<unknown>(project.tag_definitions_json),
+        labelDefinitions: parseJson<unknown>(project.label_definitions_json),
       });
 
       for (const site of sites) {
@@ -423,7 +423,7 @@ export class ProjectExporter {
                   decisionReason: page.decision_reason,
                   pendingReason: page.pending_reason,
                   requiredArtifacts: parseJson<unknown>(page.required_artifacts_json),
-                  classificationTags: parseJson<unknown>(page.classification_tags_json),
+                  classificationLabels: parseJson<unknown>(page.classification_labels_json),
                   baseCaptureStatus: page.base_capture_status,
                   baseCapturePath: page.base_capture_path,
                   finishedAt: page.base_finished_at,
@@ -524,7 +524,7 @@ export class ProjectExporter {
            pr.title,
            pr.meta_description,
            pr.body_text,
-           pr.classification_tags_json,
+           pr.classification_labels_json,
            pr.decision_outcome,
            pr.decision_reason,
            pr.pending_reason,

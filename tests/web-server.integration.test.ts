@@ -118,7 +118,7 @@ describe('web server', () => {
         rulesBeforeStage2Eq: [
           {
             name: 'allow-content',
-            matchType: 'tag',
+            matchType: 'label',
             listType: 'whitelist',
             when: [
               {

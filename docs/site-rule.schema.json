@@ -8,7 +8,7 @@
       "$ref": "#/$defs/urlRule"
     },
     {
-      "$ref": "#/$defs/tagRule"
+      "$ref": "#/$defs/labelRule"
     }
   ],
   "$defs": {
@@ -75,8 +75,8 @@
         "values"
       ]
     },
-    "tagRule": {
-      "title": "Tag rule",
+    "labelRule": {
+      "title": "label rule",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -85,7 +85,7 @@
           "minLength": 1
         },
         "matchType": {
-          "const": "tag"
+          "const": "label"
         },
         "listType": {
           "$ref": "#/$defs/listType"
@@ -93,7 +93,7 @@
         "when": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/tagCondition"
+            "$ref": "#/$defs/labelCondition"
           }
         },
         "artifacts": {
@@ -109,8 +109,8 @@
         "when"
       ]
     },
-    "tagCondition": {
-      "title": "Tag rule condition",
+    "labelCondition": {
+      "title": "label rule condition",
       "type": "object",
       "additionalProperties": false,
       "properties": {
