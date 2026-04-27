@@ -217,6 +217,8 @@ export class M1App {
     updatePolicy: UpdatePolicy;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
+    initialUrls?: string[] | null;
+    crawlMaxDepthOverride?: number | null;
   }): Promise<SpikeRunSummary> {
     return this.executeRun({
       siteId: input.siteId,
@@ -224,6 +226,8 @@ export class M1App {
       updatePolicy: input.updatePolicy,
       targetSuccessCount: input.targetSuccessCount,
       staleAfterMs: input.staleAfterMs,
+      initialUrls: input.initialUrls ?? null,
+      crawlMaxDepthOverride: input.crawlMaxDepthOverride ?? null,
     });
   }
 
@@ -253,6 +257,8 @@ export class M1App {
     updatePolicy: UpdatePolicy;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
+    initialUrls?: string[] | null;
+    crawlMaxDepthOverride?: number | null;
   }): Promise<SpikeRunSummary> {
     const site = this.sites.getById(input.siteId);
 
@@ -305,6 +311,8 @@ export class M1App {
     updatePolicy: UpdatePolicy;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
+    initialUrls?: string[] | null;
+    crawlMaxDepthOverride?: number | null;
   }, runId: number): Promise<SpikeRunSummary> {
     const site = this.sites.getById(input.siteId);
 
@@ -326,24 +334,30 @@ export class M1App {
     const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
     const targetTracker =
       input.runType === 'crawl_run' ? new RunTargetTracker(input.targetSuccessCount) : undefined;
-    const knownUrls =
-      input.runType === 'crawl_run'
-        ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
-        : [];
 
-    const startupCandidates = await expandStartupUrlCandidates({
-      seedUrls: site.config.seedUrls,
-      sitemapUrls: site.config.sitemaps,
-      knownUrls,
-    });
+    const effectiveConfig = input.crawlMaxDepthOverride !== null && input.crawlMaxDepthOverride !== undefined
+      ? { ...site.config, runOptions: { ...site.config.runOptions, crawlMaxDepth: input.crawlMaxDepthOverride } }
+      : site.config;
+
+    let startupCandidates: Awaited<ReturnType<typeof expandStartupUrlCandidates>>;
+    if (input.initialUrls && input.initialUrls.length > 0) {
+      startupCandidates = input.initialUrls.map((url) => ({ url, discoverySource: 'inventory' as const }));
+    } else {
+      const knownUrls =
+        input.runType === 'crawl_run'
+          ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
+          : [];
+      startupCandidates = await expandStartupUrlCandidates({
+        seedUrls: site.config.seedUrls,
+        sitemapUrls: site.config.sitemaps,
+        knownUrls,
+      });
+    }
 
     logger.info('Expanded startup URL candidates', {
       runId,
       siteId: site.id,
       candidateCount: startupCandidates.length,
-      seedUrlCount: site.config.seedUrls.length,
-      sitemapCount: site.config.sitemaps.length,
-      knownUrlCount: knownUrls.length,
     });
 
     let firstSitePageId = 0;
@@ -358,7 +372,7 @@ export class M1App {
         discoveredUrl: candidate.url,
         discoverySource: candidate.discoverySource,
         discoveryReferrerUrl: null,
-        siteConfig: site.config,
+        siteConfig: effectiveConfig,
         runType: input.runType,
         updatePolicy: input.updatePolicy,
         staleAfterMs: input.staleAfterMs,
@@ -433,7 +447,7 @@ export class M1App {
       requestQueue: baseQueue,
       configuration,
       classifier,
-      siteConfig: site.config,
+      siteConfig: effectiveConfig,
       runType: input.runType,
       updatePolicy: input.updatePolicy,
       staleAfterMs: input.staleAfterMs,

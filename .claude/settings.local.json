@@ -6,7 +6,9 @@
       "Bash(grep)",
       "Bash(npm run:*)",
       "Bash(npm test:*)",
-      "Bash(grep -rn)"
+      "Bash(grep -rn)",
+      "Bash(find /Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture -maxdepth 3 -type d ! -path */node_modules*)",
+      "Bash(grep:*)"
     ]
   }
 }

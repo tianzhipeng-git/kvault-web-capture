@@ -19,7 +19,7 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
-import { CheckCircle2, CircleDashed, Filter, History, Image, Play, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
@@ -456,11 +456,13 @@ export function PageReview({
   crawlRunId,
   title = "页面清单",
   description = "以 site_pages 为基本单位查看站点页面。",
+  onRecrawlStarted,
 }: {
   siteId: number;
   crawlRunId?: number;
   title?: string;
   description?: string;
+  onRecrawlStarted?: () => void;
 }) {
   const [pages, setPages] = useState<SitePageListRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -471,6 +473,10 @@ export function PageReview({
   const [pendingReason, setPendingReason] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [detail, setDetail] = useState<SitePageDetail | null>(null);
+  const [selectedPages, setSelectedPages] = useState<Map<number, { url: string; title: string }>>(new Map());
+  const [viewSelectedOpen, setViewSelectedOpen] = useState(false);
+  const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
+  const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
   const pageSize = 20;
 
   useEffect(() => {
@@ -496,6 +502,55 @@ export function PageReview({
     setDetail(nextDetail);
   };
 
+  const togglePage = (item: SitePageListRow) => {
+    setSelectedPages((prev) => {
+      const next = new Map(prev);
+      if (next.has(item.sitePageId)) {
+        next.delete(item.sitePageId);
+      } else {
+        next.set(item.sitePageId, { url: item.url, title: item.title });
+      }
+      return next;
+    });
+  };
+
+  const allCurrentSelected = pages.length > 0 && pages.every((p) => selectedPages.has(p.sitePageId));
+
+  const toggleAll = () => {
+    setSelectedPages((prev) => {
+      const next = new Map(prev);
+      if (allCurrentSelected) {
+        for (const p of pages) next.delete(p.sitePageId);
+      } else {
+        for (const p of pages) next.set(p.sitePageId, { url: p.url, title: p.title });
+      }
+      return next;
+    });
+  };
+
+  const submitRecrawl = async () => {
+    if (selectedPages.size === 0) return;
+    const count = selectedPages.size;
+    setIsSubmittingRecrawl(true);
+    try {
+      await api.startCrawlRun(siteId, {
+        updatePolicy: 'force_recrawl_all',
+        targetSuccessCount: null,
+        staleAfterMs: null,
+        initialUrls: [...selectedPages.values()].map((p) => p.url),
+        crawlMaxDepthOverride: 0,
+      });
+      setConfirmRecrawlOpen(false);
+      setSelectedPages(new Map());
+      toast.success(`已提交 ${count} 个页面的重跑任务。`);
+      onRecrawlStarted?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '提交失败。');
+    } finally {
+      setIsSubmittingRecrawl(false);
+    }
+  };
+
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
   return (
@@ -506,7 +561,20 @@ export function PageReview({
             <CardTitle>{title}</CardTitle>
             <CardDescription>{description}</CardDescription>
           </div>
-          {crawlRunId && <Badge variant="secondary" className="shrink-0">Run #{crawlRunId}</Badge>}
+          <div className="flex items-center gap-2 shrink-0">
+            {crawlRunId && <Badge variant="secondary">Run #{crawlRunId}</Badge>}
+            {onRecrawlStarted && selectedPages.size > 0 && (
+              <>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setViewSelectedOpen(true)}>
+                  查看已选 ({selectedPages.size})
+                </Button>
+                <Button size="sm" className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setConfirmRecrawlOpen(true)}>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  重跑已选 ({selectedPages.size})
+                </Button>
+              </>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
@@ -531,6 +599,17 @@ export function PageReview({
             <Table>
               <TableHeader>
                 <TableRow>
+                  {onRecrawlStarted && (
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer"
+                        checked={allCurrentSelected}
+                        onChange={toggleAll}
+                        title="全选当前页"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>页面</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>发现来源</TableHead>
@@ -540,20 +619,30 @@ export function PageReview({
               </TableHeader>
               <TableBody>
                 {pages.map((item) => (
-                  <TableRow key={item.sitePageId} className="cursor-pointer hover:bg-muted/50" onClick={() => openDetail(item.sitePageId)}>
-                    <TableCell className="max-w-[360px]">
+                  <TableRow key={item.sitePageId} className="cursor-pointer hover:bg-muted/50">
+                    {onRecrawlStarted && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer"
+                          checked={selectedPages.has(item.sitePageId)}
+                          onChange={() => togglePage(item)}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell className="max-w-[360px]" onClick={() => openDetail(item.sitePageId)}>
                       <div className="font-medium truncate">{item.title}</div>
                       <div className="text-xs text-muted-foreground truncate">{item.url}</div>
                     </TableCell>
-                    <TableCell><Badge variant={statusVariant(item)}>{item.businessStatus}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{item.discoverySource}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.captureSummary}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(item.latestHandledAt)}</TableCell>
+                    <TableCell onClick={() => openDetail(item.sitePageId)}><Badge variant={statusVariant(item)}>{item.businessStatus}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{item.discoverySource}</TableCell>
+                    <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{item.captureSummary}</TableCell>
+                    <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{formatDate(item.latestHandledAt)}</TableCell>
                   </TableRow>
                 ))}
                 {pages.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={onRecrawlStarted ? 6 : 5} className="py-10 text-center text-muted-foreground">
                       {isLoading ? "加载中..." : "暂无符合条件的页面。"}
                     </TableCell>
                   </TableRow>
@@ -573,6 +662,60 @@ export function PageReview({
       </Card>
 
       <PageDetailDialog detail={detail} onClose={() => setDetail(null)} />
+
+      {/* 查看已选对话框 */}
+      <Dialog open={viewSelectedOpen} onOpenChange={setViewSelectedOpen}>
+        <DialogContent className="max-w-2xl max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>已选页面（{selectedPages.size} 个）</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1">
+            {[...selectedPages.entries()].map(([id, p]) => (
+              <div key={id} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{p.title}</div>
+                  <div className="text-xs text-muted-foreground truncate">{p.url}</div>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => setSelectedPages((prev) => { const next = new Map(prev); next.delete(id); return next; })}
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 重跑已选确认对话框 */}
+      <Dialog open={confirmRecrawlOpen} onOpenChange={setConfirmRecrawlOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>确认重跑已选页面</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            <p>即将对 <span className="font-semibold">{selectedPages.size}</span> 个页面提交重新爬取任务，参数如下：</p>
+            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+              <li>更新策略：强制重新采集（force_recrawl_all）</li>
+              <li>爬取深度：0（仅爬取所选页面，不递归）</li>
+            </ul>
+            <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
+              {[...selectedPages.values()].map((p) => (
+                <div key={p.url} className="text-xs truncate text-muted-foreground">{p.url}</div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setConfirmRecrawlOpen(false)} disabled={isSubmittingRecrawl}>取消</Button>
+              <Button className="gap-2 bg-amber-600 hover:bg-amber-700 text-white" onClick={submitRecrawl} disabled={isSubmittingRecrawl}>
+                {isSubmittingRecrawl ? <RotateCcw className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                确认提交
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

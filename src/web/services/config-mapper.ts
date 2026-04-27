@@ -16,6 +16,8 @@ export interface CrawlRunFormInput {
   updatePolicy?: UpdatePolicy;
   targetSuccessCount?: number | null;
   staleAfterMs?: number | null;
+  initialUrls?: string[];
+  crawlMaxDepthOverride?: number;
 }
 
 export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfig {
@@ -35,10 +37,16 @@ export function mapRunForm(input: CrawlRunFormInput): {
   updatePolicy: UpdatePolicy;
   targetSuccessCount: number | null;
   staleAfterMs: number | null;
+  initialUrls: string[] | null;
+  crawlMaxDepthOverride: number | null;
 } {
   return {
     updatePolicy: input.updatePolicy ?? 'force_recrawl_all',
     targetSuccessCount: input.targetSuccessCount ?? null,
     staleAfterMs: input.staleAfterMs ?? null,
+    initialUrls: Array.isArray(input.initialUrls) && input.initialUrls.length > 0
+      ? (input.initialUrls as unknown[]).filter((u): u is string => typeof u === 'string')
+      : null,
+    crawlMaxDepthOverride: typeof input.crawlMaxDepthOverride === 'number' ? input.crawlMaxDepthOverride : null,
   };
 }

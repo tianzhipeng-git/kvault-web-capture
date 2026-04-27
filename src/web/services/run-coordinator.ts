@@ -36,6 +36,8 @@ export class RunCoordinator {
       updatePolicy: UpdatePolicy;
       targetSuccessCount: number | null;
       staleAfterMs: number | null;
+      initialUrls: string[] | null;
+      crawlMaxDepthOverride: number | null;
     },
   ): Promise<SpikeRunSummary> {
     return this.start(input.siteId, 'crawl', () => app.runCrawl(input));
