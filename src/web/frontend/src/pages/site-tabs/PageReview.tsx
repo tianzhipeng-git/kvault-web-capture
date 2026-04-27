@@ -340,7 +340,7 @@ function PageDetailDialog({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-lg font-semibold">{detail.title}</div>
-                  <div className="text-sm text-muted-foreground break-all">{detail.url}</div>
+                  <a href={detail.url} target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground break-all hover:underline">{detail.url}</a>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button type="button" variant="outline" className="gap-2" onClick={runRulePreview} disabled={isPreviewingRules}>
