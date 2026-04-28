@@ -25,8 +25,14 @@ export class RunCoordinator {
     }));
   }
 
-  startSeed(app: M1App, siteId: number): Promise<SpikeRunSummary> {
-    return this.start(siteId, 'seed', () => app.runSeed(siteId));
+  startSeed(
+    app: M1App,
+    input: {
+      siteId: number;
+      targetSuccessCount: number | null;
+    },
+  ): Promise<SpikeRunSummary> {
+    return this.start(input.siteId, 'seed', () => app.runSeed(input));
   }
 
   startCrawl(

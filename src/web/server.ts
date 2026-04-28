@@ -400,7 +400,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.post('/api/sites/:siteId/runs/seed', async (request, reply) => {
     const params = request.params as { siteId: string };
     const siteId = parseSiteId(params.siteId);
-    void coordinator.startSeed(app, siteId).catch(() => { });
+    const input = mapRunForm((request.body ?? {}) as Record<string, unknown>);
+    void coordinator.startSeed(app, {
+      siteId,
+      targetSuccessCount: input.targetSuccessCount,
+    }).catch(() => { });
     const latestRun = runQuery.getLatestRunForSite(siteId, 'seed_run');
 
     if (!latestRun) {

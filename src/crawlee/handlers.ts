@@ -180,7 +180,11 @@ export function createBaseRequestHandler(deps: {
       pendingReason: decision.pendingReason,
     });
 
-    if (deps.runType === 'crawl_run' && decision.pageOutcome === 'allow') {
+    const isTargetSuccessCandidate =
+      decision.pageOutcome === 'allow' ||
+      (deps.runType === 'seed_run' && decision.pendingReason === 'seed_run');
+
+    if (isTargetSuccessCandidate) {
       const targetState = deps.targetTracker?.recordCandidateSuccess();
 
       if (targetState?.reachedNow) {

@@ -202,12 +202,20 @@ export class M1App {
     this.sites.updateConfig(siteId, parseSiteConfig(config));
   }
 
-  async runSeed(siteId: number): Promise<SpikeRunSummary> {
+  async runSeed(input: number | {
+    siteId: number;
+    targetSuccessCount: number | null;
+  }): Promise<SpikeRunSummary> {
+    const normalizedInput =
+      typeof input === 'number'
+        ? { siteId: input, targetSuccessCount: null }
+        : input;
+
     return this.executeRun({
-      siteId,
+      siteId: normalizedInput.siteId,
       runType: 'seed_run',
       updatePolicy: 'force_recrawl_all',
-      targetSuccessCount: null,
+      targetSuccessCount: normalizedInput.targetSuccessCount,
       staleAfterMs: null,
     });
   }
@@ -332,8 +340,7 @@ export class M1App {
     const baseQueue = await openRunQueue(runId, 'base', configuration);
     const markdownQueue = await openRunQueue(runId, 'markdown', configuration);
     const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
-    const targetTracker =
-      input.runType === 'crawl_run' ? new RunTargetTracker(input.targetSuccessCount) : undefined;
+    const targetTracker = new RunTargetTracker(input.targetSuccessCount);
 
     const effectiveConfig = input.crawlMaxDepthOverride !== null && input.crawlMaxDepthOverride !== undefined
       ? { ...site.config, runOptions: { ...site.config.runOptions, crawlMaxDepth: input.crawlMaxDepthOverride } }

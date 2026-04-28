@@ -250,7 +250,11 @@ export const api = {
     method: 'POST'
   }),
   
-  startSeedRun: (siteId: number) => fetchApi(`/api/sites/${siteId}/runs/seed`, { method: 'POST' }),
+  startSeedRun: (siteId: number, config: any = {}) => fetchApi(`/api/sites/${siteId}/runs/seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  }),
   startCrawlRun: (siteId: number, config: any) => fetchApi(`/api/sites/${siteId}/runs/crawl`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
