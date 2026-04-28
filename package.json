@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/utils/llm_config.yaml dist/src/utils/",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:migrate:sqlite-to-postgres": "node --import tsx src/scripts/migrate-sqlite-to-postgres.ts",
     "web": "node --import tsx src/web/server.ts",
     "test": "vitest run"
   },
