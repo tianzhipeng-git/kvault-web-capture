@@ -527,6 +527,32 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     });
   });
 
+  server.get('/api/sites/:siteId/pages/export', async (request, reply) => {
+    const params = request.params as { siteId: string };
+    const query = request.query as Record<string, string | undefined>;
+    const crawlRunId = query.crawlRunId === undefined ? undefined : Number(query.crawlRunId);
+
+    if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
+      throw new Error('crawlRunId 无效。');
+    }
+
+    const result = await app.exportSitePageList({
+      siteId: parseSiteId(params.siteId),
+      status: query.status,
+      query: query.query,
+      label: query.label,
+      pendingReason: query.pendingReason,
+      discoverySource: query.discoverySource,
+      crawlRunId,
+    });
+
+    return reply
+      .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
+      .header('Content-Length', statSync(result.outputPath).size)
+      .send(createReadStream(result.outputPath));
+  });
+
   server.get('/api/sites/:siteId/pages/:sitePageId', async (request) => {
     const params = request.params as { siteId: string; sitePageId: string };
     return sitePageDetailQuery.getPageDetail(

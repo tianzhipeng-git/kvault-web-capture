@@ -249,5 +249,18 @@ describe('project export', () => {
     expect(sheet?.getRow(2).getCell(3).value).toBe(longUrl);
     expect(sheet?.getRow(3).getCell(3).value).toBe(deniedUrl);
     expect(sheet?.getRow(3).getCell(25).value).toBe('');
+
+    const pageListOutputPath = join(dir, 'site-pages.xlsx');
+    const pageListResult = await app.exportSitePageList({
+      siteId: site.id,
+      outputPath: pageListOutputPath,
+      status: 'url_rule_denied',
+    });
+    const pageListWorkbook = new ExcelJS.Workbook();
+    await pageListWorkbook.xlsx.readFile(pageListResult.outputPath);
+    const pageListSheet = pageListWorkbook.getWorksheet('pages');
+    expect(pageListResult.pageCount).toBe(1);
+    expect(pageListSheet?.getRow(2).getCell(3).value).toBe(deniedUrl);
+    expect(pageListSheet?.getRow(3).getCell(3).value).toBeNull();
   });
 });

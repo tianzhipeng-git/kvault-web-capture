@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path';
 import ExcelJS from 'exceljs';
 import { ZipFile } from 'yazl';
 
-import type { DbClient } from '../db/database.js';
+import type { DbClient, DbValue } from '../db/database.js';
 import type { Clock } from '../utils/clock.js';
 
 interface ProjectRow {
@@ -79,6 +79,24 @@ export interface ProjectExportResult {
   siteCount: number;
   pageCount: number;
   artifactFileCount: number;
+}
+
+export interface SitePageListExportInput {
+  siteId: number;
+  outputPath?: string;
+  status?: string;
+  query?: string;
+  label?: string;
+  pendingReason?: string;
+  discoverySource?: string;
+  crawlRunId?: number;
+}
+
+export interface SitePageListExportResult {
+  outputPath: string;
+  fileName: string;
+  siteId: number;
+  pageCount: number;
 }
 
 function parseJson<T>(value: string | null): T | null {
@@ -180,6 +198,78 @@ function excelColumnLetter(index: number): string {
 function defaultExportPath(project: ProjectRow, exportedAt: string): string {
   const timestamp = exportedAt.replace(/[:.]/g, '-');
   return join('.local', 'exports', `${project.slug || `project-${project.id}`}-${timestamp}.zip`);
+}
+
+function defaultSitePageListExportPath(site: SiteRow, exportedAt: string): string {
+  const timestamp = exportedAt.replace(/[:.]/g, '-');
+  return join(
+    '.local',
+    'exports',
+    `${sanitizeSegment(site.name, `site-${site.id}`)}-pages-${timestamp}.xlsx`,
+  );
+}
+
+function buildPageFilters(input: SitePageListExportInput): { whereClause: string; args: DbValue[] } {
+  const filters: string[] = ['sp.site_id = ?'];
+  const args: DbValue[] = [input.siteId];
+
+  if (input.status) {
+    filters.push('sp.inventory_status = ?');
+    args.push(input.status);
+  }
+
+  if (input.query) {
+    filters.push('(sp.normalized_url LIKE ? OR COALESCE(sp.latest_title, \'\') LIKE ?)');
+    args.push(`%${input.query}%`, `%${input.query}%`);
+  }
+
+  if (input.pendingReason) {
+    filters.push('sp.last_pending_reason = ?');
+    args.push(input.pendingReason);
+  }
+
+  if (input.discoverySource) {
+    filters.push('sp.discovery_source = ?');
+    args.push(input.discoverySource);
+  }
+
+  if (input.crawlRunId !== undefined) {
+    filters.push(
+      `(EXISTS (
+         SELECT 1
+         FROM page_runs pr_run_filter
+         WHERE pr_run_filter.site_page_id = sp.id
+           AND pr_run_filter.crawl_run_id = ?
+       ) OR EXISTS (
+         SELECT 1
+         FROM artifact_runs ar_run_filter
+         WHERE ar_run_filter.site_page_id = sp.id
+           AND ar_run_filter.crawl_run_id = ?
+       ))`,
+    );
+    args.push(input.crawlRunId, input.crawlRunId);
+  }
+
+  if (input.label) {
+    filters.push(
+      `EXISTS (
+         SELECT 1
+         FROM page_runs prt
+         WHERE prt.site_page_id = sp.id
+           AND prt.id = (
+             SELECT pr2.id
+             FROM page_runs pr2
+             WHERE pr2.site_page_id = sp.id
+             ORDER BY pr2.id DESC
+             LIMIT 1
+           )
+           AND prt.classification_labels_json LIKE ?
+       )`,
+    );
+    args.push(`%${input.label}%`);
+  }
+
+  return { whereClause: filters.join(' AND '), args };
 }
 
 function addJson(zip: ZipFile, path: string, value: unknown): void {
@@ -528,6 +618,34 @@ export class ProjectExporter {
     };
   }
 
+  async exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {
+    const site = await this.db.get<SiteRow>(
+        `SELECT id, project_id, name, base_url, storage_root, config_json, updated_at, created_at
+         FROM sites
+         WHERE id = ?`,
+      [input.siteId],
+    );
+
+    if (!site) {
+      throw new Error(`Site ${input.siteId} not found`);
+    }
+
+    const exportedAt = this.clock.now();
+    const outputPath = input.outputPath ?? defaultSitePageListExportPath(site, exportedAt);
+    mkdirSync(dirname(outputPath), { recursive: true });
+
+    const pages = await this.listPages(input.siteId, input);
+    const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(input.siteId));
+    await writePageListWorkbook(outputPath, pages, artifacts, new Map());
+
+    return {
+      outputPath,
+      fileName: basename(outputPath),
+      siteId: site.id,
+      pageCount: pages.length,
+    };
+  }
+
   private async countProjectPages(projectId: number): Promise<number> {
     const row = await this.db.get<{ count: number }>(
         `SELECT COUNT(sp.id) AS count
@@ -539,7 +657,11 @@ export class ProjectExporter {
     return Number(row?.count ?? 0);
   }
 
-  private async listPages(siteId: number): Promise<PageExportRow[]> {
+  private async listPages(
+    siteId: number,
+    filters?: Omit<SitePageListExportInput, 'siteId'>,
+  ): Promise<PageExportRow[]> {
+    const { whereClause, args } = buildPageFilters({ siteId, ...filters });
     return this.db.all<PageExportRow>(
         `SELECT
            sp.id,
@@ -579,9 +701,9 @@ export class ProjectExporter {
            ORDER BY pr2.id DESC
            LIMIT 1
          )
-         WHERE sp.site_id = ?
+         WHERE ${whereClause}
          ORDER BY sp.id`,
-      [siteId],
+      args,
     );
   }
 

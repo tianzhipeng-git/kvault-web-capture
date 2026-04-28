@@ -19,7 +19,7 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
-import { CheckCircle2, CircleDashed, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Download, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
@@ -457,12 +457,14 @@ export function PageReview({
   title = "页面清单",
   description = "以 site_pages 为基本单位查看站点页面。",
   onRecrawlStarted,
+  enableExport = false,
 }: {
   siteId: number;
   crawlRunId?: number;
   title?: string;
   description?: string;
   onRecrawlStarted?: () => void;
+  enableExport?: boolean;
 }) {
   const [pages, setPages] = useState<SitePageListRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -477,6 +479,7 @@ export function PageReview({
   const [viewSelectedOpen, setViewSelectedOpen] = useState(false);
   const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
   const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const pageSize = 20;
 
   useEffect(() => {
@@ -551,6 +554,32 @@ export function PageReview({
     }
   };
 
+  const exportPages = async () => {
+    setIsExporting(true);
+    try {
+      const { blob, filename } = await api.exportSitePages(siteId, {
+        query,
+        status,
+        label,
+        pendingReason,
+        crawlRunId,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('页面清单已导出。');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '导出失败。');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
   return (
@@ -563,6 +592,12 @@ export function PageReview({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {crawlRunId && <Badge variant="secondary">Run #{crawlRunId}</Badge>}
+            {enableExport && (
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPages} disabled={isExporting}>
+                <Download className="w-3.5 h-3.5" />
+                {isExporting ? "导出中..." : "导出 XLSX"}
+              </Button>
+            )}
             {onRecrawlStarted && selectedPages.size > 0 && (
               <>
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setViewSelectedOpen(true)}>

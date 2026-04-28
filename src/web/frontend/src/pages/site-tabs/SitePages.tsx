@@ -9,6 +9,7 @@ export function SitePages({ siteId }: { siteId: number }) {
       siteId={siteId}
       title="页面清单"
       description="以 site_pages 为基本单位查看全站页面、最新三类爬取状态与历史运行记录。"
+      enableExport
       onRecrawlStarted={() => navigate(`/sites/${siteId}/crawl`)}
     />
   );

@@ -273,6 +273,15 @@ export const api = {
     ).toString();
     return fetchApi(`/api/sites/${siteId}/pages?${q}`);
   },
+  exportSitePages: (siteId: number, params: Omit<SitePageListParams, "page" | "pageSize">): Promise<{ blob: Blob; filename: string }> => {
+    const q = new URLSearchParams(
+      Object.entries(params).reduce<Record<string, string>>((acc, [key, value]) => {
+        if (value !== undefined && value !== "") acc[key] = String(value);
+        return acc;
+      }, {})
+    ).toString();
+    return fetchBlobApi(`/api/sites/${siteId}/pages/export?${q}`);
+  },
   getSitePageDetail: (siteId: number, sitePageId: number) => fetchApi(`/api/sites/${siteId}/pages/${sitePageId}`),
   getPendingReview: (siteId: number) => fetchApi(`/api/sites/${siteId}/pending-review`),
   getRunLogs: (runId: number, params?: { sitePageId?: number }): Promise<{ items: RunLogItem[]; errorMessage: string | null }> => {

@@ -3,7 +3,12 @@ import { mkdirSync } from 'node:fs';
 import { Configuration } from 'crawlee';
 
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
-import { ProjectExporter, type ProjectExportResult } from '../export/project-exporter.js';
+import {
+  ProjectExporter,
+  type ProjectExportResult,
+  type SitePageListExportInput,
+  type SitePageListExportResult,
+} from '../export/project-exporter.js';
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
 import { LLMClassifier } from '../classification/llm-classifier.js';
@@ -263,6 +268,10 @@ export class M1App {
 
   exportProject(projectId: number, outputPath?: string): Promise<ProjectExportResult> {
     return this.projectExporter.exportProject({ projectId, outputPath });
+  }
+
+  exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {
+    return this.projectExporter.exportSitePageList(input);
   }
 
   private async executeRun(input: {
