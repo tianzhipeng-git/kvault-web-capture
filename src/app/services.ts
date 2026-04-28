@@ -329,11 +329,11 @@ export class M1App {
     }
 
     const configuration = new Configuration({
-      persistStorage: true,
-      purgeOnStart: false,
-      storageClientOptions: {
-        localDataDirectory: site.storageRoot,
-      },
+      // Crawlee queues are only transient schedulers for a single run. The durable
+      // crawl state lives in SQLite and artifacts, so keeping queues in memory
+      // avoids local request_queues lock-file races during long crawls.
+      persistStorage: false,
+      purgeOnStart: true,
     });
 
     const artifactWriter = new FileArtifactWriter(site.storageRoot);

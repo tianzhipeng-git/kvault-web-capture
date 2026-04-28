@@ -1,6 +1,6 @@
 ## 一句话说明
 
-Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭代”的方式，把一个站点中的页面发现出来，按规则和分类决定是否采集，并产出 base 文本、Markdown 和截图等结果。
+Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭代”的方式，把一个站点中的页面发现出来，**按规则和分类决定是否采集，并产出 base 文本、Markdown 和截图等结果**。
 
 技术架构见[technical-module-structure](docs/technical-module-structure.md)
 
