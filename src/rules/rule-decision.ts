@@ -305,31 +305,3 @@ export function buildStage2EnqueueDecision(input: {
 
   return input.runType === 'seed_run' ? applySeedRunPending(decision) : decision;
 }
-
-export function getDefaultSpikeConfig(seedUrl: string): SiteConfig {
-  const url = new URL(seedUrl);
-  return {
-    seedUrls: [seedUrl],
-    sitemaps: [],
-    rulesBeforeBaseEq: [],
-    rulesBeforeStage2Eq: [
-      {
-        name: 'spike-allow-markdown',
-        matchType: 'label',
-        listType: 'whitelist',
-        when: [
-          {
-            key: 'content_type',
-            op: 'any_of',
-            values: ['docs', 'product', 'generic'],
-          },
-        ],
-        artifacts: ['markdown'],
-      },
-    ],
-    runOptions: {
-      seedMaxDepth: 1,
-      crawlMaxDepth: url.hostname.endsWith('.local') ? 1 : 2,
-    },
-  };
-}

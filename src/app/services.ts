@@ -26,8 +26,8 @@ import {
 import type {
   BaseRequestUserData,
   RunType,
+  RunSummary,
   SiteConfig,
-  SpikeRunSummary,
   UpdatePolicy,
 } from '../domain/types.js';
 import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
@@ -211,7 +211,7 @@ export class M1App {
   async runSeed(input: number | {
     siteId: number;
     targetSuccessCount: number | null;
-  }): Promise<SpikeRunSummary> {
+  }): Promise<RunSummary> {
     const normalizedInput =
       typeof input === 'number'
         ? { siteId: input, targetSuccessCount: null }
@@ -233,7 +233,7 @@ export class M1App {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
-  }): Promise<SpikeRunSummary> {
+  }): Promise<RunSummary> {
     return this.executeRun({
       siteId: input.siteId,
       runType: 'crawl_run',
@@ -273,7 +273,7 @@ export class M1App {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
-  }): Promise<SpikeRunSummary> {
+  }): Promise<RunSummary> {
     const site = await this.sites.getById(input.siteId);
 
     if (!site) {
@@ -327,7 +327,7 @@ export class M1App {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
-  }, runId: number): Promise<SpikeRunSummary> {
+  }, runId: number): Promise<RunSummary> {
     const site = await this.sites.getById(input.siteId);
 
     if (!site) {

@@ -1,11 +1,11 @@
 import type { M1App } from '../../app/services.js';
-import type { SpikeRunSummary, UpdatePolicy } from '../../domain/types.js';
+import type { RunSummary, UpdatePolicy } from '../../domain/types.js';
 
 interface ActiveRun {
   siteId: number;
   kind: 'seed' | 'crawl';
   startedAt: string;
-  promise: Promise<SpikeRunSummary>;
+  promise: Promise<RunSummary>;
 }
 
 export class RunCoordinator {
@@ -31,7 +31,7 @@ export class RunCoordinator {
       siteId: number;
       targetSuccessCount: number | null;
     },
-  ): Promise<SpikeRunSummary> {
+  ): Promise<RunSummary> {
     return this.start(input.siteId, 'seed', () => app.runSeed(input));
   }
 
@@ -45,15 +45,15 @@ export class RunCoordinator {
       initialUrls: string[] | null;
       crawlMaxDepthOverride: number | null;
     },
-  ): Promise<SpikeRunSummary> {
+  ): Promise<RunSummary> {
     return this.start(input.siteId, 'crawl', () => app.runCrawl(input));
   }
 
   private start(
     siteId: number,
     kind: 'seed' | 'crawl',
-    run: () => Promise<SpikeRunSummary>,
-  ): Promise<SpikeRunSummary> {
+    run: () => Promise<RunSummary>,
+  ): Promise<RunSummary> {
     if (this.activeRuns.has(siteId)) {
       throw new Error('当前站点已有运行中的任务，请等待完成后再重新发起。');
     }

@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { resolve } from 'node:path';
 
 import { M1App } from './app/services.js';
-import { runIntegrationSpike } from './spike/run-integration-spike.js';
 import type { UpdatePolicy } from './domain/types.js';
 
 function getArg(flag: string, fallback?: string): string | undefined {
@@ -27,7 +26,6 @@ function getRequiredArg(flag: string): string {
 
 function printUsage(): void {
   console.log(`Usage:
-  pnpm spike --url <seed-url> [--db ./.local/spike.db] [--storage ./.local/crawlee]
   node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
   node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/state.db]
@@ -48,22 +46,6 @@ async function main(): Promise<void> {
   if (!command) {
     printUsage();
     process.exitCode = 1;
-    return;
-  }
-
-  if (command === 'spike') {
-    const seedUrl = getRequiredArg('--url');
-    const storageDir = resolve(getArg('--storage', '.local/crawlee')!);
-    const siteName = getArg('--site-name');
-
-    const summary = await runIntegrationSpike({
-      dbPath,
-      storageDir,
-      seedUrl,
-      siteName,
-    });
-
-    console.log(JSON.stringify(summary, null, 2));
     return;
   }
 

@@ -163,14 +163,7 @@ export interface CrawlRunCreateInput {
   configSnapshot: SiteConfig;
 }
 
-export interface SpikeRunOptions {
-  dbPath: string;
-  storageDir: string;
-  seedUrl: string;
-  siteName?: string;
-}
-
-export interface SpikeRunSummary {
+export interface RunSummary {
   runId: number;
   siteId: number;
   sitePageId: number;
