@@ -22,10 +22,11 @@
 
 
 ## todo
-db支持postgresql
+
 
 
 ## 已完成
+db支持postgresql
 部署到ecs美国
 重新爬取指定页面的功能
 页面详情的弹窗上的 页面url 加上可点击, 新标签页打开

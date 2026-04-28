@@ -131,9 +131,11 @@ class PostgresDbClient implements DbClient {
 
 export async function openDatabase(options: string | OpenDatabaseOptions): Promise<DbClient> {
   const normalized = typeof options === 'string' ? { path: options } : options;
+  const explicitPath = normalized.path;
+  const explicitUrl = typeof options === 'string' ? undefined : normalized.url;
   const url =
-    normalized.url ??
-    (typeof options === 'string' ? undefined : process.env.KVAULT_DATABASE_URL);
+    explicitUrl ??
+    (normalized.dialect === 'postgres' || !explicitPath ? process.env.KVAULT_DATABASE_URL : undefined);
   const dialect =
     normalized.dialect ??
     (url && /^postgres(?:ql)?:\/\//i.test(url) ? 'postgres' : 'sqlite');

@@ -25,6 +25,26 @@ describe('repositories', () => {
     openHandles.length = 0;
   });
 
+  it('prefers an explicit sqlite path over KVAULT_DATABASE_URL', async () => {
+    const previousDatabaseUrl = process.env.KVAULT_DATABASE_URL;
+    process.env.KVAULT_DATABASE_URL = 'postgres://user:password@example.invalid:5432/kvault';
+
+    try {
+      const dir = createTempDir('kvault-repos-env-');
+      const db = await openDatabase({ path: join(dir, 'state.db') });
+      openHandles.push(db);
+
+      expect(db.dialect).toBe('sqlite');
+      await initializeSchema(db);
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.KVAULT_DATABASE_URL;
+      } else {
+        process.env.KVAULT_DATABASE_URL = previousDatabaseUrl;
+      }
+    }
+  });
+
   it('persists the M1 business model and inventory read paths', async () => {
     const dir = createTempDir('kvault-repos-');
     const db = await openDatabase(join(dir, 'state.db'));
