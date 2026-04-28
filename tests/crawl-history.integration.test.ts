@@ -98,13 +98,13 @@ async function createConfiguredApp(input: {
 }): Promise<{ app: M1App; siteId: number; dbPath: string; configPath: string }> {
   const dbPath = join(input.dir, 'state.db');
   const storageRoot = join(input.dir, 'storage');
-  const app = new M1App({
+  const app = await M1App.create({
     dbPath,
     markdownAdapter: input.markdownAdapter ?? new FakeMarkdownCaptureAdapter(),
     screenshotAdapter: input.screenshotAdapter ?? new FakeScreenshotCaptureAdapter(),
   });
-  const project = app.createProject('Crawl Project');
-  const site = app.createSite({
+  const project = await app.createProject('Crawl Project');
+  const site = await app.createSite({
     projectSlug: project.slug,
     name: 'crawl-site',
     baseUrl: input.server.baseUrl,
@@ -117,7 +117,7 @@ async function createConfiguredApp(input: {
     docsArtifacts: input.docsArtifacts ?? ['markdown', 'screenshot'],
     productArtifacts: input.productArtifacts ?? ['markdown', 'screenshot'],
   });
-  app.importSiteConfig(site.id, configPath);
+  await app.importSiteConfig(site.id, configPath);
 
   return {
     app,
@@ -133,7 +133,7 @@ describe('crawl history planning', () => {
 
   afterEach(async () => {
     while (apps.length > 0) {
-      apps.pop()!.close();
+      await apps.pop()!.close();
     }
 
     while (servers.length > 0) {
@@ -192,7 +192,7 @@ describe('crawl history planning', () => {
       docsArtifacts: ['markdown'],
       productArtifacts: ['markdown', 'screenshot'],
     });
-    app.importSiteConfig(siteId, configPath);
+    await app.importSiteConfig(siteId, configPath);
 
     const secondRun = await app.runCrawl({
       siteId,
@@ -201,35 +201,38 @@ describe('crawl history planning', () => {
       staleAfterMs: null,
     });
 
-    const db = openDatabase(dbPath);
+    const db = await openDatabase(dbPath);
     try {
-      const rerunPageRows = db.prepare(
+      const rerunPageRows = await db.all<{
+        normalized_url: string;
+        required_artifacts_json: string;
+      }>(
         `SELECT sp.normalized_url, pr.required_artifacts_json
          FROM page_runs pr
          INNER JOIN site_pages sp ON sp.id = pr.site_page_id
          WHERE pr.crawl_run_id = ?`,
-      ).all(secondRun.runId) as Array<{
-        normalized_url: string;
-        required_artifacts_json: string;
-      }>;
+        [secondRun.runId],
+      );
 
-      const rerunArtifactRows = db.prepare(
+      const rerunArtifactRows = await db.all<{
+        artifact_type: string;
+      }>(
         `SELECT artifact_type
          FROM artifact_runs
          WHERE crawl_run_id = ?`,
-      ).all(secondRun.runId) as Array<{
-        artifact_type: string;
-      }>;
-      const crawlRunRow = db.prepare(
-        `SELECT successful_page_count, candidate_page_count, pending_page_count, denied_page_count
-         FROM crawl_runs
-         WHERE id = ?`,
-      ).get(secondRun.runId) as {
+        [secondRun.runId],
+      );
+      const crawlRunRow = await db.get<{
         successful_page_count: number;
         candidate_page_count: number;
         pending_page_count: number;
         denied_page_count: number;
-      };
+      }>(
+        `SELECT successful_page_count, candidate_page_count, pending_page_count, denied_page_count
+         FROM crawl_runs
+         WHERE id = ?`,
+        [secondRun.runId],
+      );
 
       expect(firstRun.pageRuns).toBe(2);
       expect(firstRun.artifactRuns).toBe(2);
@@ -253,7 +256,7 @@ describe('crawl history planning', () => {
         },
       ]);
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
@@ -295,20 +298,21 @@ describe('crawl history planning', () => {
       staleAfterMs: null,
     });
 
-    const db = openDatabase(dbPath);
+    const db = await openDatabase(dbPath);
     try {
-      db.prepare(
+      await db.run(
         `UPDATE site_pages
          SET last_base_at = ?, last_markdown_at = ?, last_screenshot_at = ?
          WHERE site_id = ?`,
-      ).run(
+        [
         '2020-01-01T00:00:00.000Z',
         '2020-01-01T00:00:00.000Z',
         '2020-01-01T00:00:00.000Z',
         siteId,
+        ],
       );
     } finally {
-      db.close();
+      await db.close();
     }
 
     const rerun = await app.runCrawl({

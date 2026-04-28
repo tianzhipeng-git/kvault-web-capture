@@ -16,7 +16,7 @@ export class RunPlanner {
     private readonly clock: Clock,
   ) { }
 
-  planRequest(input: {
+  async planRequest(input: {
     siteId: number;
     discoveredUrl: string;
     discoverySource: string;
@@ -25,7 +25,7 @@ export class RunPlanner {
     runType: RunType;
     updatePolicy: UpdatePolicy;
     staleAfterMs: number | null;
-  }): PlannedRequest {
+  }): Promise<PlannedRequest> {
     const normalizedUrl = normalizeUrl(input.discoveredUrl);
 
     // 规则执行点1, rulesBeforeBaseEq
@@ -33,10 +33,10 @@ export class RunPlanner {
       url: normalizedUrl,
       siteConfig: input.siteConfig,
     });
-    const existingState = this.sitePageRepository.getHistoricalState(input.siteId, normalizedUrl);
+    const existingState = await this.sitePageRepository.getHistoricalState(input.siteId, normalizedUrl);
     const sitePageId =
       existingState?.sitePageId ??
-      this.sitePageRepository.upsertDiscovery({
+      await this.sitePageRepository.upsertDiscovery({
         siteId: input.siteId,
         discoveredUrl: input.discoveredUrl,
         normalizedUrl,
@@ -48,7 +48,7 @@ export class RunPlanner {
       });
 
     if (!baseDecision.enqueue) {
-      this.sitePageRepository.markUrlRuleDenied(sitePageId);
+      await this.sitePageRepository.markUrlRuleDenied(sitePageId);
       return {
         siteId: input.siteId,
         sitePageId,

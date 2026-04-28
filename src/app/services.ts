@@ -10,7 +10,7 @@ import { LLMClassifier } from '../classification/llm-classifier.js';
 import { extractLabelDefinitionCores } from '../classification/label-definitions.js';
 import { createDefaultSiteConfig, loadSiteConfig, parseSiteConfig } from '../config/site-config.js';
 
-import { initializeSchema, openDatabase } from '../db/database.js';
+import { initializeSchema, openDatabase, type DbClient } from '../db/database.js';
 import {
   ArtifactRunRepository,
   PageRunRepository,
@@ -51,33 +51,34 @@ import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.
 
 export interface M1AppOptions {
   dbPath: string;
+  databaseUrl?: string;
   classifier?: Classifier;
   markdownAdapter?: MarkdownCaptureAdapter;
   screenshotAdapter?: ScreenshotCaptureAdapter;
 }
 
 export class M1App {
-  private readonly db;
+  private db!: DbClient;
 
   private readonly clock;
 
-  private readonly projects;
+  private projects!: ProjectRepository;
 
-  private readonly sites;
+  private sites!: SiteRepository;
 
-  private readonly runs;
+  private runs!: RunRepository;
 
-  private readonly sitePages;
+  private sitePages!: SitePageRepository;
 
-  private readonly pageRuns;
+  private pageRuns!: PageRunRepository;
 
-  private readonly artifactRuns;
+  private artifactRuns!: ArtifactRunRepository;
 
-  private readonly runLogs;
+  private runLogs!: RunLogRepository;
 
-  private readonly planner;
+  private planner!: RunPlanner;
 
-  private readonly projectExporter;
+  private projectExporter!: ProjectExporter;
 
   private readonly classifier: Classifier | null;
 
@@ -85,19 +86,8 @@ export class M1App {
 
   private readonly screenshotAdapter: ScreenshotCaptureAdapter;
 
-  constructor(private readonly options: M1AppOptions) {
-    this.db = openDatabase(this.options.dbPath);
+  private constructor(private readonly options: M1AppOptions) {
     this.clock = new SystemClock();
-    this.projects = new ProjectRepository(this.db, this.clock);
-    this.sites = new SiteRepository(this.db, this.clock);
-    this.runs = new RunRepository(this.db, this.clock);
-    this.sitePages = new SitePageRepository(this.db, this.clock);
-    this.pageRuns = new PageRunRepository(this.db, this.clock);
-    this.artifactRuns = new ArtifactRunRepository(this.db, this.clock);
-    this.runLogs = new RunLogRepository(this.db, this.clock);
-    this.planner = new RunPlanner(this.sitePages, this.clock);
-    this.projectExporter = new ProjectExporter(this.db, this.clock);
-    initializeSchema(this.db);
     this.classifier = options.classifier ?? null;
 
     this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
@@ -105,20 +95,36 @@ export class M1App {
       options.screenshotAdapter ?? new PlaywrightScreenshotCaptureAdapter();
   }
 
-  close(): void {
-    this.db.close();
+  static async create(options: M1AppOptions): Promise<M1App> {
+    const app = new M1App(options);
+    app.db = await openDatabase({ path: options.dbPath, url: options.databaseUrl });
+    app.projects = new ProjectRepository(app.db, app.clock);
+    app.sites = new SiteRepository(app.db, app.clock);
+    app.runs = new RunRepository(app.db, app.clock);
+    app.sitePages = new SitePageRepository(app.db, app.clock);
+    app.pageRuns = new PageRunRepository(app.db, app.clock);
+    app.artifactRuns = new ArtifactRunRepository(app.db, app.clock);
+    app.runLogs = new RunLogRepository(app.db, app.clock);
+    app.planner = new RunPlanner(app.sitePages, app.clock);
+    app.projectExporter = new ProjectExporter(app.db, app.clock);
+    await initializeSchema(app.db);
+    return app;
   }
 
-  createProject(name: string): { id: number; slug: string } {
-    const project = this.projects.create(name);
+  async close(): Promise<void> {
+    await this.db.close();
+  }
+
+  async createProject(name: string): Promise<{ id: number; slug: string }> {
+    const project = await this.projects.create(name);
     return {
       id: project.id,
       slug: project.slug,
     };
   }
 
-  getProjectLabelDefinitions(projectId: number): unknown {
-    const project = this.projects.getById(projectId);
+  async getProjectLabelDefinitions(projectId: number): Promise<unknown> {
+    const project = await this.projects.getById(projectId);
 
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
@@ -127,34 +133,34 @@ export class M1App {
     return project.labelDefinitions;
   }
 
-  updateProjectLabelDefinitions(projectId: number, labelDefinitions: unknown): void {
-    const project = this.projects.getById(projectId);
+  async updateProjectLabelDefinitions(projectId: number, labelDefinitions: unknown): Promise<void> {
+    const project = await this.projects.getById(projectId);
 
     if (!project) {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    this.projects.updateLabelDefinitions(projectId, labelDefinitions);
+    await this.projects.updateLabelDefinitions(projectId, labelDefinitions);
   }
 
-  createSite(input: {
+  async createSite(input: {
     projectId?: number;
     projectSlug?: string;
     name: string;
     baseUrl: string;
     storageRoot: string;
-  }): { id: number; name: string } {
+  }): Promise<{ id: number; name: string }> {
     const project = input.projectId != null
-      ? this.projects.getById(input.projectId)
+      ? await this.projects.getById(input.projectId)
       : input.projectSlug != null
-        ? this.projects.getBySlug(input.projectSlug)
+        ? await this.projects.getBySlug(input.projectSlug)
         : null;
 
     if (!project) {
       throw new Error(`Project not found`);
     }
 
-    const site = this.sites.create({
+    const site = await this.sites.create({
       projectId: project.id,
       name: input.name,
       baseUrl: input.baseUrl,
@@ -168,22 +174,22 @@ export class M1App {
     };
   }
 
-  importSiteConfig(siteId: number, configPath: string): void {
-    const site = this.sites.getById(siteId);
+  async importSiteConfig(siteId: number, configPath: string): Promise<void> {
+    const site = await this.sites.getById(siteId);
 
     if (!site) {
       throw new Error(`Site ${siteId} not found`);
     }
 
-    this.sites.updateConfig(siteId, loadSiteConfig(configPath));
+    await this.sites.updateConfig(siteId, loadSiteConfig(configPath));
   }
 
-  cloneSiteConfig(sourceSiteId: number, targetSiteId: number): void {
-    this.sites.cloneConfig(sourceSiteId, targetSiteId);
+  async cloneSiteConfig(sourceSiteId: number, targetSiteId: number): Promise<void> {
+    await this.sites.cloneConfig(sourceSiteId, targetSiteId);
   }
 
-  getSiteConfig(siteId: number): SiteConfig {
-    const site = this.sites.getById(siteId);
+  async getSiteConfig(siteId: number): Promise<SiteConfig> {
+    const site = await this.sites.getById(siteId);
 
     if (!site) {
       throw new Error(`Site ${siteId} not found`);
@@ -192,14 +198,14 @@ export class M1App {
     return site.config;
   }
 
-  updateSiteConfig(siteId: number, config: SiteConfig): void {
-    const site = this.sites.getById(siteId);
+  async updateSiteConfig(siteId: number, config: SiteConfig): Promise<void> {
+    const site = await this.sites.getById(siteId);
 
     if (!site) {
       throw new Error(`Site ${siteId} not found`);
     }
 
-    this.sites.updateConfig(siteId, parseSiteConfig(config));
+    await this.sites.updateConfig(siteId, parseSiteConfig(config));
   }
 
   async runSeed(input: number | {
@@ -239,19 +245,19 @@ export class M1App {
     });
   }
 
-  getInventorySummary(siteId: number): InventorySummary {
+  async getInventorySummary(siteId: number): Promise<InventorySummary> {
     return this.sitePages.summarizeInventory(siteId);
   }
 
-  listPendingPages(siteId: number): InventoryPageRow[] {
+  async listPendingPages(siteId: number): Promise<InventoryPageRow[]> {
     return this.sitePages.listByInventoryStatus(siteId, 'stage2_pending');
   }
 
-  listDeniedPages(siteId: number): InventoryPageRow[] {
+  async listDeniedPages(siteId: number): Promise<InventoryPageRow[]> {
     return this.sitePages.listByInventoryStatus(siteId, 'url_rule_denied');
   }
 
-  listSampleCaptures(siteId: number, limit: number): SampleCaptureRow[] {
+  async listSampleCaptures(siteId: number, limit: number): Promise<SampleCaptureRow[]> {
     return this.pageRuns.listSampleCaptures(siteId, limit);
   }
 
@@ -268,7 +274,7 @@ export class M1App {
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
   }): Promise<SpikeRunSummary> {
-    const site = this.sites.getById(input.siteId);
+    const site = await this.sites.getById(input.siteId);
 
     if (!site) {
       throw new Error(`Site ${input.siteId} not found`);
@@ -276,7 +282,7 @@ export class M1App {
 
     mkdirSync(site.storageRoot, { recursive: true });
 
-    const runId = this.runs.createRun({
+    const runId = await this.runs.createRun({
       siteId: site.id,
       runType: input.runType,
       updatePolicy: input.updatePolicy,
@@ -289,7 +295,7 @@ export class M1App {
       runId,
     });
 
-    this.runLogs.log({
+    await this.runLogs.log({
       crawlRunId: runId,
       level: 'info',
       event: 'runtime_log_ready',
@@ -322,7 +328,7 @@ export class M1App {
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
   }, runId: number): Promise<SpikeRunSummary> {
-    const site = this.sites.getById(input.siteId);
+    const site = await this.sites.getById(input.siteId);
 
     if (!site) {
       throw new Error(`Site ${input.siteId} not found`);
@@ -352,7 +358,7 @@ export class M1App {
     } else {
       const knownUrls =
         input.runType === 'crawl_run'
-          ? this.sitePages.listKnownUrls(site.id).map((row) => row.discoveredUrl)
+          ? (await this.sitePages.listKnownUrls(site.id)).map((row) => row.discoveredUrl)
           : [];
       startupCandidates = await expandStartupUrlCandidates({
         seedUrls: site.config.seedUrls,
@@ -377,7 +383,7 @@ export class M1App {
     const planDecisionCounts = new Map<string, number>();
 
     for (const candidate of startupCandidates) {
-      const planned = this.planner.planRequest({
+      const planned = await this.planner.planRequest({
         siteId: site.id,
         discoveredUrl: candidate.url,
         discoverySource: candidate.discoverySource,
@@ -453,7 +459,7 @@ export class M1App {
       decisionCounts: Object.fromEntries(planDecisionCounts),
     });
 
-    const labelDefinitions = this.projects.getById(site.projectId)?.labelDefinitions ?? [];
+    const labelDefinitions = (await this.projects.getById(site.projectId))?.labelDefinitions ?? [];
     const classifier = this.classifier
       ?? (extractLabelDefinitionCores(labelDefinitions).length > 0
         ? new LLMClassifier(labelDefinitions)
@@ -498,7 +504,7 @@ export class M1App {
       runLog: this.runLogs,
     });
 
-    this.runLogs.log({
+    await this.runLogs.log({
       crawlRunId: runId,
       level: 'info',
       event: 'crawl_started',
@@ -519,9 +525,9 @@ export class M1App {
         await screenshotCrawler.run();
       }
 
-      this.runs.refreshCounts(runId);
-      this.runs.finishRun(runId, 'succeeded');
-      this.runLogs.log({
+      await this.runs.refreshCounts(runId);
+      await this.runs.finishRun(runId, 'succeeded');
+      await this.runLogs.log({
         crawlRunId: runId,
         level: 'info',
         event: 'crawl_finished',
@@ -529,9 +535,9 @@ export class M1App {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.runs.refreshCounts(runId);
-      this.runs.finishRun(runId, 'failed', errorMessage);
-      this.runLogs.log({
+      await this.runs.refreshCounts(runId);
+      await this.runs.finishRun(runId, 'failed', errorMessage);
+      await this.runLogs.log({
         crawlRunId: runId,
         level: 'error',
         event: 'crawl_error',
@@ -546,8 +552,8 @@ export class M1App {
       siteId: site.id,
       sitePageId: firstSitePageId,
       normalizedUrl: firstNormalizedUrl,
-      pageRuns: this.pageRuns.countByRun(runId),
-      artifactRuns: this.artifactRuns.countByRun(runId),
+      pageRuns: await this.pageRuns.countByRun(runId),
+      artifactRuns: await this.artifactRuns.countByRun(runId),
     };
   }
 }

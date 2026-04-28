@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
-import type { DatabaseSync } from 'node:sqlite';
 
+import type { DbClient, DbValue } from '../../db/database.js';
 import type { SiteConfig } from '../../domain/types.js';
 
 function parseJson<T>(value: string | null): T | null {
@@ -122,11 +122,10 @@ export interface ProjectListItem {
 }
 
 export class ProjectListQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  listProjects(): ProjectListItem[] {
-    return this.db
-      .prepare(
+  async listProjects(): Promise<ProjectListItem[]> {
+    const rows = await this.db.all(
         `SELECT
            p.id,
            p.name,
@@ -136,11 +135,10 @@ export class ProjectListQuery {
          FROM projects p
          LEFT JOIN sites s ON s.project_id = p.id
          LEFT JOIN crawl_runs cr ON cr.site_id = s.id
-         GROUP BY p.id
+         GROUP BY p.id, p.name, p.slug
          ORDER BY p.name`,
-      )
-      .all()
-      .map((row) => ({
+    );
+    return rows.map((row) => ({
         projectId: Number((row as Record<string, unknown>).id),
         projectName: String((row as Record<string, unknown>).name),
         projectSlug: String((row as Record<string, unknown>).slug),
@@ -151,7 +149,7 @@ export class ProjectListQuery {
       }));
   }
 
-  listSites(projectId: number): Array<{
+  async listSites(projectId: number): Promise<Array<{
     siteId: number;
     siteName: string;
     baseUrl: string;
@@ -160,9 +158,8 @@ export class ProjectListQuery {
     pagesNeedReview: number;
     pagesReadyForCapture: number;
     latestRunAt: string | null;
-  }> {
-    return this.db
-      .prepare(
+  }>> {
+    const rows = await this.db.all(
         `SELECT
            s.id,
            s.name,
@@ -175,11 +172,11 @@ export class ProjectListQuery {
          LEFT JOIN site_pages sp ON sp.site_id = s.id
          LEFT JOIN crawl_runs cr ON cr.site_id = s.id
          WHERE s.project_id = ?
-         GROUP BY s.id
+         GROUP BY s.id, s.name, s.base_url
          ORDER BY s.name`,
-      )
-      .all(projectId)
-      .map((row) => {
+      [projectId],
+    );
+    return rows.map((row) => {
         const pendingPages = asCount((row as Record<string, number | null>).pending_pages ?? null);
         const capturedPages = asCount(
           (row as Record<string, number | null>).captured_pages ?? null,
@@ -202,9 +199,9 @@ export class ProjectListQuery {
 }
 
 export class SiteOverviewQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  getSiteOverview(siteId: number): {
+  async getSiteOverview(siteId: number): Promise<{
     siteId: number;
     siteName: string;
     projectId: number;
@@ -218,8 +215,8 @@ export class SiteOverviewQuery {
     pagesCaptured: number;
     totalPages: number;
     latestSuccessfulCaptureAt: string | null;
-    latestSeedRun: ReturnType<RunSummaryQuery['getLatestRunForSite']>;
-    latestCrawlRun: ReturnType<RunSummaryQuery['getLatestRunForSite']>;
+    latestSeedRun: Awaited<ReturnType<RunSummaryQuery['getLatestRunForSite']>>;
+    latestCrawlRun: Awaited<ReturnType<RunSummaryQuery['getLatestRunForSite']>>;
     ruleReviewHints: string[];
     workflowSteps: Array<{
       key: string;
@@ -227,9 +224,20 @@ export class SiteOverviewQuery {
       status: 'todo' | 'active' | 'done';
       description: string;
     }>;
-  } {
-    const row = this.db
-      .prepare(
+  }> {
+    const row = await this.db.get<{
+        id: number;
+        name: string;
+        base_url: string;
+        config_json: string;
+        project_id: number;
+        project_name: string;
+        total_pages: number;
+        pending_pages: number | null;
+        denied_pages: number | null;
+        captured_pages: number | null;
+        latest_successful_capture_at: string | null;
+      }>(
         `SELECT
            s.id,
            s.name,
@@ -246,23 +254,9 @@ export class SiteOverviewQuery {
          INNER JOIN projects p ON p.id = s.project_id
          LEFT JOIN site_pages sp ON sp.site_id = s.id
          WHERE s.id = ?
-         GROUP BY s.id`,
-      )
-      .get(siteId) as
-      | {
-        id: number;
-        name: string;
-        base_url: string;
-        config_json: string;
-        project_id: number;
-        project_name: string;
-        total_pages: number;
-        pending_pages: number | null;
-        denied_pages: number | null;
-        captured_pages: number | null;
-        latest_successful_capture_at: string | null;
-      }
-      | undefined;
+         GROUP BY s.id, s.name, s.base_url, s.config_json, p.id, p.name`,
+      [siteId],
+    );
 
     if (!row) {
       throw new Error(`Site ${siteId} not found`);
@@ -273,8 +267,8 @@ export class SiteOverviewQuery {
     const capturedPages = asCount(row.captured_pages);
     const config = JSON.parse(row.config_json) as SiteConfig;
     const runSummaryQuery = new RunSummaryQuery(this.db);
-    const latestSeedRun = runSummaryQuery.getLatestRunForSite(siteId, 'seed_run');
-    const latestCrawlRun = runSummaryQuery.getLatestRunForSite(siteId, 'crawl_run');
+    const latestSeedRun = await runSummaryQuery.getLatestRunForSite(siteId, 'seed_run');
+    const latestCrawlRun = await runSummaryQuery.getLatestRunForSite(siteId, 'crawl_run');
 
     return {
       siteId: row.id,
@@ -347,9 +341,9 @@ export interface SitePageListInput {
 }
 
 export class SitePageListQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  listPages(input: SitePageListInput): {
+  async listPages(input: SitePageListInput): Promise<{
     total: number;
     page: number;
     pageSize: number;
@@ -366,9 +360,9 @@ export class SitePageListQuery {
       discoverySource: string;
       captureSummary: string;
     }>;
-  } {
+  }> {
     const filters: string[] = ['sp.site_id = ?'];
-    const args: Array<number | string> = [input.siteId];
+    const args: DbValue[] = [input.siteId];
 
     if (input.status) {
       filters.push('sp.inventory_status = ?');
@@ -427,13 +421,13 @@ export class SitePageListQuery {
     }
 
     const whereClause = filters.join(' AND ');
-    const totalRow = this.db
-      .prepare(`SELECT COUNT(*) AS count FROM site_pages sp WHERE ${whereClause}`)
-      .get(...args) as { count: number };
+    const totalRow = await this.db.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM site_pages sp WHERE ${whereClause}`,
+      args,
+    );
 
     const offset = (input.page - 1) * input.pageSize;
-    const rows = this.db
-      .prepare(
+    const rows = await this.db.all(
         `SELECT
            sp.id,
            sp.normalized_url,
@@ -458,11 +452,11 @@ export class SitePageListQuery {
          WHERE ${whereClause}
          ORDER BY latest_handled_at DESC, sp.id DESC
          LIMIT ? OFFSET ?`,
-      )
-      .all(...args, input.pageSize, offset);
+      [...args, input.pageSize, offset],
+    );
 
     return {
-      total: totalRow.count,
+      total: Number(totalRow?.count ?? 0),
       page: input.page,
       pageSize: input.pageSize,
       rows: rows.map((row) => {
@@ -599,9 +593,9 @@ function buildProcessingState(input: {
 }
 
 export class SitePageDetailQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  getPageDetail(siteId: number, sitePageId: number): {
+  async getPageDetail(siteId: number, sitePageId: number): Promise<{
     sitePageId: number;
     siteId: number;
     title: string;
@@ -675,9 +669,29 @@ export class SitePageDetailQuery {
         finishedAt: string | null;
       }>;
     }>;
-  } {
-    const page = this.db
-      .prepare(
+  }> {
+    const page = await this.db.get<{
+        id: number;
+        site_id: number;
+        discovered_url: string;
+        normalized_url: string;
+        inventory_status: string;
+        discovery_source: string;
+        discovery_referrer_url: string | null;
+        latest_title: string | null;
+        last_pending_reason: string | null;
+        last_base_status: string | null;
+        last_base_run_id: number | null;
+        last_base_at: string | null;
+        last_markdown_status: string | null;
+        last_markdown_run_id: number | null;
+        last_markdown_at: string | null;
+        last_screenshot_status: string | null;
+        last_screenshot_run_id: number | null;
+        last_screenshot_at: string | null;
+        first_discovered_at: string;
+        updated_at: string;
+      }>(
         `SELECT
            id,
            site_id,
@@ -701,39 +715,15 @@ export class SitePageDetailQuery {
            updated_at
          FROM site_pages
          WHERE site_id = ? AND id = ?`,
-      )
-      .get(siteId, sitePageId) as
-      | {
-        id: number;
-        site_id: number;
-        discovered_url: string;
-        normalized_url: string;
-        inventory_status: string;
-        discovery_source: string;
-        discovery_referrer_url: string | null;
-        latest_title: string | null;
-        last_pending_reason: string | null;
-        last_base_status: string | null;
-        last_base_run_id: number | null;
-        last_base_at: string | null;
-        last_markdown_status: string | null;
-        last_markdown_run_id: number | null;
-        last_markdown_at: string | null;
-        last_screenshot_status: string | null;
-        last_screenshot_run_id: number | null;
-        last_screenshot_at: string | null;
-        first_discovered_at: string;
-        updated_at: string;
-      }
-      | undefined;
+      [siteId, sitePageId],
+    );
 
     if (!page) {
       throw new Error(`Site page ${sitePageId} not found`);
     }
 
     const latestPageRun =
-      (this.db
-        .prepare(
+      (await this.db.get<LatestPageRunRow>(
           `SELECT
              id,
              crawl_run_id,
@@ -752,17 +742,10 @@ export class SitePageDetailQuery {
            WHERE site_page_id = ?
            ORDER BY id DESC
            LIMIT 1`,
-        )
-        .get(sitePageId) as LatestPageRunRow | undefined) ?? null;
+        [sitePageId],
+      )) ?? null;
 
-    const latestArtifacts = this.db
-      .prepare(
-        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at
-         FROM artifact_runs
-         WHERE site_page_id = ?
-         ORDER BY id DESC`,
-      )
-      .all(sitePageId) as Array<{
+    const latestArtifacts = await this.db.all<{
         id: number;
         artifact_type: string;
         status: string;
@@ -770,7 +753,13 @@ export class SitePageDetailQuery {
         content: string | null;
         error_message: string | null;
         finished_at: string | null;
-      }>;
+      }>(
+        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at
+         FROM artifact_runs
+         WHERE site_page_id = ?
+         ORDER BY id DESC`,
+      [sitePageId],
+    );
 
     const latestArtifactByType = new Map<string, (typeof latestArtifacts)[number]>();
     for (const artifact of latestArtifacts) {
@@ -795,8 +784,19 @@ export class SitePageDetailQuery {
     const markdownArtifact = latestArtifactByType.get('markdown') ?? null;
     const screenshotArtifact = latestArtifactByType.get('screenshot') ?? null;
 
-    const pageRuns = this.db
-      .prepare(
+    const pageRuns = await this.db.all<{
+        id: number;
+        crawl_run_id: number;
+        title: string;
+        body_text: string;
+        classification_labels_json: string;
+        decision_outcome: string;
+        decision_reason: string | null;
+        pending_reason: string | null;
+        required_artifacts_json: string;
+        base_capture_status: string;
+        base_capture_path: string | null;
+      }>(
         `SELECT
            pr.id,
            pr.crawl_run_id,
@@ -812,23 +812,20 @@ export class SitePageDetailQuery {
          FROM page_runs pr
          WHERE pr.site_page_id = ?
          ORDER BY pr.crawl_run_id DESC, pr.id DESC`,
-      )
-      .all(sitePageId) as Array<{
+      [sitePageId],
+    );
+
+    const artifactRuns = await this.db.all<{
         id: number;
         crawl_run_id: number;
-        title: string;
-        body_text: string;
-        classification_labels_json: string;
-        decision_outcome: string;
-        decision_reason: string | null;
-        pending_reason: string | null;
-        required_artifacts_json: string;
-        base_capture_status: string;
-        base_capture_path: string | null;
-      }>;
-
-    const artifactRuns = this.db
-      .prepare(
+        page_run_id: number;
+        artifact_type: string;
+        status: string;
+        output_path: string | null;
+        content: string | null;
+        error_message: string | null;
+        finished_at: string | null;
+      }>(
         `SELECT
            id,
            crawl_run_id,
@@ -842,18 +839,8 @@ export class SitePageDetailQuery {
          FROM artifact_runs
          WHERE site_page_id = ?
          ORDER BY crawl_run_id DESC, id DESC`,
-      )
-      .all(sitePageId) as Array<{
-        id: number;
-        crawl_run_id: number;
-        page_run_id: number;
-        artifact_type: string;
-        status: string;
-        output_path: string | null;
-        content: string | null;
-        error_message: string | null;
-        finished_at: string | null;
-      }>;
+      [sitePageId],
+    );
 
     const runIds = Array.from(
       new Set([
@@ -864,20 +851,19 @@ export class SitePageDetailQuery {
     const runRows =
       runIds.length === 0
         ? []
-        : (this.db
-          .prepare(
-            `SELECT id, run_type, status, started_at, finished_at
-               FROM crawl_runs
-               WHERE id IN (${runIds.map(() => '?').join(',')})
-               ORDER BY id DESC`,
-          )
-          .all(...runIds) as Array<{
+        : await this.db.all<{
             id: number;
             run_type: string;
             status: string;
             started_at: string;
             finished_at: string | null;
-          }>);
+          }>(
+            `SELECT id, run_type, status, started_at, finished_at
+               FROM crawl_runs
+               WHERE id IN (${runIds.map(() => '?').join(',')})
+               ORDER BY id DESC`,
+          runIds,
+        );
 
     const runHistory = runRows.map((run) => ({
       runId: run.id,
@@ -1007,23 +993,20 @@ export class SitePageDetailQuery {
     };
   }
 
-  getArtifactFile(siteId: number, artifactRunId: number): {
+  async getArtifactFile(siteId: number, artifactRunId: number): Promise<{
     artifactType: string;
     outputPath: string;
-  } {
-    const artifact = this.db
-      .prepare(
+  }> {
+    const artifact = await this.db.get<{
+        artifact_type: string;
+        output_path: string | null;
+      }>(
         `SELECT ar.artifact_type, ar.output_path
          FROM artifact_runs ar
          JOIN site_pages sp ON sp.id = ar.site_page_id
          WHERE sp.site_id = ? AND ar.id = ?`,
-      )
-      .get(siteId, artifactRunId) as
-      | {
-        artifact_type: string;
-        output_path: string | null;
-      }
-      | undefined;
+      [siteId, artifactRunId],
+    );
 
     if (!artifact?.output_path || !existsSync(artifact.output_path)) {
       throw new Error(`Artifact ${artifactRunId} not found`);
@@ -1037,9 +1020,9 @@ export class SitePageDetailQuery {
 }
 
 export class RunSummaryQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  listSiteRuns(siteId: number): Array<{
+  async listSiteRuns(siteId: number): Promise<Array<{
     runId: number;
     runType: string;
     runTypeLabel: string;
@@ -1052,9 +1035,8 @@ export class RunSummaryQuery {
     deniedPages: number;
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
-  }> {
-    return this.db
-      .prepare(
+  }>> {
+    const rows = await this.db.all(
         `SELECT
            id,
            run_type,
@@ -1069,9 +1051,9 @@ export class RunSummaryQuery {
          FROM crawl_runs
          WHERE site_id = ?
          ORDER BY id DESC`,
-      )
-      .all(siteId)
-      .map((row) => {
+      [siteId],
+    );
+    return rows.map((row) => {
         const record = row as Record<string, unknown>;
         const config = JSON.parse(String(record.config_snapshot_json)) as SiteConfig;
 
@@ -1093,7 +1075,7 @@ export class RunSummaryQuery {
       });
   }
 
-  getLatestRunForSite(siteId: number, runType: 'seed_run' | 'crawl_run'): {
+  async getLatestRunForSite(siteId: number, runType: 'seed_run' | 'crawl_run'): Promise<{
     runId: number;
     runTypeLabel: string;
     statusLabel: string;
@@ -1102,11 +1084,11 @@ export class RunSummaryQuery {
     successfulPages: number;
     pendingPages: number;
     deniedPages: number;
-  } | null {
-    return this.listSiteRuns(siteId).find((run) => run.runType === runType) ?? null;
+  } | null> {
+    return (await this.listSiteRuns(siteId)).find((run) => run.runType === runType) ?? null;
   }
 
-  getRunSummary(runId: number): {
+  async getRunSummary(runId: number): Promise<{
     runId: number;
     siteId: number;
     runTypeLabel: string;
@@ -1119,9 +1101,20 @@ export class RunSummaryQuery {
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
     issues: string[];
-  } {
-    const row = this.db
-      .prepare(
+  }> {
+    const row = await this.db.get<{
+        id: number;
+        site_id: number;
+        run_type: string;
+        status: string;
+        started_at: string;
+        finished_at: string | null;
+        successful_page_count: number;
+        pending_page_count: number;
+        denied_page_count: number;
+        target_success_count: number | null;
+        config_snapshot_json: string;
+      }>(
         `SELECT
            id,
            site_id,
@@ -1136,22 +1129,8 @@ export class RunSummaryQuery {
            config_snapshot_json
          FROM crawl_runs
          WHERE id = ?`,
-      )
-      .get(runId) as
-      | {
-        id: number;
-        site_id: number;
-        run_type: string;
-        status: string;
-        started_at: string;
-        finished_at: string | null;
-        successful_page_count: number;
-        pending_page_count: number;
-        denied_page_count: number;
-        target_success_count: number | null;
-        config_snapshot_json: string;
-      }
-      | undefined;
+      [runId],
+    );
 
     if (!row) {
       throw new Error(`Run ${runId} not found`);
@@ -1189,9 +1168,9 @@ export class RunSummaryQuery {
 }
 
 export class PendingReviewQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  getPendingReview(siteId: number): Array<{
+  async getPendingReview(siteId: number): Promise<Array<{
     reason: string;
     reasonLabel: string;
     count: number;
@@ -1203,9 +1182,8 @@ export class PendingReviewQuery {
       preview: string;
       matchedRules: string[];
     }>;
-  }> {
-    const groups = this.db
-      .prepare(
+  }>> {
+    const groups = await this.db.all(
         `SELECT
            sp.last_pending_reason,
            COUNT(*) AS count
@@ -1213,14 +1191,13 @@ export class PendingReviewQuery {
          WHERE sp.site_id = ? AND sp.inventory_status = 'stage2_pending'
          GROUP BY sp.last_pending_reason
          ORDER BY count DESC`,
-      )
-      .all(siteId);
+      [siteId],
+    );
 
-    return groups.map((group) => {
+    return Promise.all(groups.map(async (group) => {
       const record = group as Record<string, unknown>;
       const reason = String(record.last_pending_reason ?? 'unknown');
-      const pages = this.db
-        .prepare(
+      const pages = (await this.db.all(
           `SELECT
              sp.id,
              sp.normalized_url,
@@ -1237,9 +1214,8 @@ export class PendingReviewQuery {
            WHERE sp.site_id = ? AND sp.inventory_status = 'stage2_pending' AND sp.last_pending_reason = ?
            ORDER BY sp.id DESC
            LIMIT 5`,
-        )
-        .all(siteId, reason)
-        .map((page) => {
+        [siteId, reason],
+      )).map((page) => {
           const pageRecord = page as Record<string, unknown>;
           const previewSource = String(pageRecord.body_text ?? '');
 
@@ -1262,7 +1238,7 @@ export class PendingReviewQuery {
             : '调整分类或采集规则后，再重新发起一次运行。',
         pages,
       };
-    });
+    }));
   }
 }
 
@@ -1280,25 +1256,18 @@ export interface RunLogItem {
 }
 
 export class RunLogQuery {
-  constructor(private readonly db: DatabaseSync) { }
+  constructor(private readonly db: DbClient) { }
 
-  listRunLogs(runId: number, sitePageId?: number): RunLogItem[] {
+  async listRunLogs(runId: number, sitePageId?: number): Promise<RunLogItem[]> {
     const filters = ['crawl_run_id = ?'];
-    const params: number[] = [runId];
+    const params: DbValue[] = [runId];
 
     if (sitePageId !== undefined) {
       filters.push('site_page_id = ?');
       params.push(sitePageId);
     }
 
-    const rows = this.db
-      .prepare(
-        `SELECT id, crawl_run_id, site_page_id, page_run_id, level, event, url, message, meta_json, created_at
-         FROM run_logs
-         WHERE ${filters.join(' AND ')}
-         ORDER BY id ASC`,
-      )
-      .all(...params) as Array<{
+    const rows = await this.db.all<{
         id: number;
         crawl_run_id: number;
         site_page_id: number | null;
@@ -1309,7 +1278,13 @@ export class RunLogQuery {
         message: string;
         meta_json: string | null;
         created_at: string;
-      }>;
+      }>(
+        `SELECT id, crawl_run_id, site_page_id, page_run_id, level, event, url, message, meta_json, created_at
+         FROM run_logs
+         WHERE ${filters.join(' AND ')}
+         ORDER BY id ASC`,
+      params,
+    );
 
     return rows.map((row) => ({
       logId: row.id,
@@ -1325,20 +1300,20 @@ export class RunLogQuery {
     }));
   }
 
-  getRunErrorMessage(runId: number): string | null {
-    const row = this.db
-      .prepare(`SELECT error_message FROM crawl_runs WHERE id = ?`)
-      .get(runId) as { error_message: string | null } | undefined;
+  async getRunErrorMessage(runId: number): Promise<string | null> {
+    const row = await this.db.get<{ error_message: string | null }>(
+      `SELECT error_message FROM crawl_runs WHERE id = ?`,
+      [runId],
+    );
     return row?.error_message ?? null;
   }
 
-  getRuntimeLog(runId: number, tailLines = 500): {
+  async getRuntimeLog(runId: number, tailLines = 500): Promise<{
     relativePath: string;
     content: string;
     truncated: boolean;
-  } | null {
-    const row = this.db
-      .prepare(
+  } | null> {
+    const row = await this.db.get<{ storage_root: string; meta_json: string | null }>(
         `SELECT s.storage_root, rl.meta_json
          FROM run_logs rl
          INNER JOIN crawl_runs cr ON cr.id = rl.crawl_run_id
@@ -1346,8 +1321,8 @@ export class RunLogQuery {
          WHERE rl.crawl_run_id = ? AND rl.event = 'runtime_log_ready'
          ORDER BY rl.id DESC
          LIMIT 1`,
-      )
-      .get(runId) as { storage_root: string; meta_json: string | null } | undefined;
+      [runId],
+    );
 
     if (!row?.meta_json) {
       return null;

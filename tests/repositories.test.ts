@@ -16,20 +16,20 @@ import { SystemClock } from '../src/utils/clock.js';
 import { createTempDir } from './helpers/tmp.js';
 
 describe('repositories', () => {
-  const openHandles: Array<{ close: () => void }> = [];
+  const openHandles: Array<{ close: () => Promise<void> }> = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const handle of openHandles) {
-      handle.close();
+      await handle.close();
     }
     openHandles.length = 0;
   });
 
-  it('persists the M1 business model and inventory read paths', () => {
+  it('persists the M1 business model and inventory read paths', async () => {
     const dir = createTempDir('kvault-repos-');
-    const db = openDatabase(join(dir, 'state.db'));
+    const db = await openDatabase(join(dir, 'state.db'));
     openHandles.push(db);
-    initializeSchema(db);
+    await initializeSchema(db);
 
     const clock = new SystemClock();
     const projects = new ProjectRepository(db, clock);
@@ -39,22 +39,22 @@ describe('repositories', () => {
     const pageRuns = new PageRunRepository(db, clock);
     const artifactRuns = new ArtifactRunRepository(db, clock);
 
-    const project = projects.create('Example Project');
-    const site = sites.create({
+    const project = await projects.create('Example Project');
+    const site = await sites.create({
       projectId: project.id,
       name: 'example-site',
       baseUrl: 'https://example.com',
       storageRoot: dir,
       config: createDefaultSiteConfig('https://example.com/docs'),
     });
-    const runId = runs.createRun({
+    const runId = await runs.createRun({
       siteId: site.id,
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
       configSnapshot: site.config,
     });
-    const sitePageId = pages.upsertDiscovery({
+    const sitePageId = await pages.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
@@ -64,7 +64,7 @@ describe('repositories', () => {
       urlRuleDecision: 'allow',
     });
 
-    const pageRunId = pageRuns.create({
+    const pageRunId = await pageRuns.create({
       runId,
       sitePageId,
       baseCaptureStatus: 'succeeded',
@@ -82,7 +82,7 @@ describe('repositories', () => {
       requiredArtifacts: ['markdown', 'screenshot'],
     });
 
-    pages.recordBaseCapture({
+    await pages.recordBaseCapture({
       sitePageId,
       runId,
       title: 'Docs',
@@ -91,7 +91,7 @@ describe('repositories', () => {
       pendingReason: null,
     });
 
-    const markdownArtifactRunId = artifactRuns.create({
+    const markdownArtifactRunId = await artifactRuns.create({
       runId,
       pageRunId,
       sitePageId,
@@ -103,14 +103,14 @@ describe('repositories', () => {
       meta: { strategy: 'defuddle' },
     });
 
-    pages.recordArtifactResult({
+    await pages.recordArtifactResult({
       sitePageId,
       runId,
       artifactType: 'markdown',
       status: 'succeeded',
     });
 
-    const screenshotArtifactRunId = artifactRuns.create({
+    const screenshotArtifactRunId = await artifactRuns.create({
       runId,
       pageRunId,
       sitePageId,
@@ -122,7 +122,7 @@ describe('repositories', () => {
       meta: { tool: 'playwright' },
     });
 
-    pages.recordArtifactResult({
+    await pages.recordArtifactResult({
       sitePageId,
       runId,
       artifactType: 'screenshot',
@@ -132,9 +132,9 @@ describe('repositories', () => {
     expect(pageRunId).toBeGreaterThan(0);
     expect(markdownArtifactRunId).toBeGreaterThan(0);
     expect(screenshotArtifactRunId).toBeGreaterThan(0);
-    expect(pageRuns.countByRun(runId)).toBe(1);
-    expect(artifactRuns.countByRun(runId)).toBe(2);
-    expect(pages.summarizeInventory(site.id)).toEqual({
+    expect(await pageRuns.countByRun(runId)).toBe(1);
+    expect(await artifactRuns.countByRun(runId)).toBe(2);
+    expect(await pages.summarizeInventory(site.id)).toEqual({
       totalPages: 1,
       pendingPages: 0,
       deniedPages: 0,

@@ -67,12 +67,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  const app = new M1App({ dbPath });
+  const app = await M1App.create({ dbPath, databaseUrl: process.env.KVAULT_DATABASE_URL });
 
   try {
     switch (command) {
       case 'project:create': {
-        const result = app.createProject(getRequiredArg('--name'));
+        const result = await app.createProject(getRequiredArg('--name'));
         console.log(JSON.stringify(result, null, 2));
         return;
       }
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
         return;
       }
       case 'site:create': {
-        const result = app.createSite({
+        const result = await app.createSite({
           projectSlug: getRequiredArg('--project'),
           name: getRequiredArg('--name'),
           baseUrl: getRequiredArg('--base-url'),
@@ -96,12 +96,12 @@ async function main(): Promise<void> {
         return;
       }
       case 'site:import-config': {
-        app.importSiteConfig(Number(getRequiredArg('--site')), resolve(getRequiredArg('--file')));
+        await app.importSiteConfig(Number(getRequiredArg('--site')), resolve(getRequiredArg('--file')));
         console.log(JSON.stringify({ status: 'ok' }, null, 2));
         return;
       }
       case 'site:clone-config': {
-        app.cloneSiteConfig(
+        await app.cloneSiteConfig(
           Number(getRequiredArg('--from-site')),
           Number(getRequiredArg('--to-site')),
         );
@@ -132,22 +132,22 @@ async function main(): Promise<void> {
       }
       case 'site:inventory-summary': {
         console.log(
-          JSON.stringify(app.getInventorySummary(Number(getRequiredArg('--site'))), null, 2),
+          JSON.stringify(await app.getInventorySummary(Number(getRequiredArg('--site'))), null, 2),
         );
         return;
       }
       case 'site:pending': {
-        console.log(JSON.stringify(app.listPendingPages(Number(getRequiredArg('--site'))), null, 2));
+        console.log(JSON.stringify(await app.listPendingPages(Number(getRequiredArg('--site'))), null, 2));
         return;
       }
       case 'site:denied': {
-        console.log(JSON.stringify(app.listDeniedPages(Number(getRequiredArg('--site'))), null, 2));
+        console.log(JSON.stringify(await app.listDeniedPages(Number(getRequiredArg('--site'))), null, 2));
         return;
       }
       case 'site:sample-captures': {
         console.log(
           JSON.stringify(
-            app.listSampleCaptures(
+            await app.listSampleCaptures(
               Number(getRequiredArg('--site')),
               Number(getArg('--limit', '5')),
             ),
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
         process.exitCode = 1;
     }
   } finally {
-    app.close();
+    await app.close();
   }
 }
 

@@ -80,7 +80,7 @@ export function createBaseRequestHandler(deps: {
     const userData = request.userData as BaseRequestUserData;
 
     if (deps.targetTracker?.isReached()) {
-      deps.runLog.log({
+      await deps.runLog.log({
         crawlRunId: userData.runId,
         level: 'info',
         event: 'base_page_skipped_target_reached',
@@ -95,7 +95,7 @@ export function createBaseRequestHandler(deps: {
     }
 
     const extracted = extractPageContent(request.loadedUrl ?? request.url, $);
-    const historyBeforeCapture = deps.sitePageRepository.getHistoricalState(
+    const historyBeforeCapture = await deps.sitePageRepository.getHistoricalState(
       userData.siteId,
       extracted.normalizedUrl,
     );
@@ -139,7 +139,7 @@ export function createBaseRequestHandler(deps: {
       }),
     });
 
-    const pageRunId = deps.pageRunRepository.create({
+    const pageRunId = await deps.pageRunRepository.create({
       runId: userData.runId,
       sitePageId: userData.sitePageId,
       baseCaptureStatus: 'succeeded',
@@ -155,7 +155,7 @@ export function createBaseRequestHandler(deps: {
       requiredArtifacts: decision.requiredArtifacts,
     });
 
-    deps.runLog.log({
+    await deps.runLog.log({
       crawlRunId: userData.runId,
       level: 'info',
       event: 'base_page_done',
@@ -171,7 +171,7 @@ export function createBaseRequestHandler(deps: {
       },
     });
 
-    deps.sitePageRepository.recordBaseCapture({
+    await deps.sitePageRepository.recordBaseCapture({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
       title: extracted.title,
@@ -188,7 +188,7 @@ export function createBaseRequestHandler(deps: {
       const targetState = deps.targetTracker?.recordCandidateSuccess();
 
       if (targetState?.reachedNow) {
-        deps.runLog.log({
+        await deps.runLog.log({
           crawlRunId: userData.runId,
           level: 'info',
           event: 'target_success_count_reached',
@@ -263,7 +263,7 @@ export function createBaseRequestHandler(deps: {
     }
 
     for (const link of extracted.links) {
-      const plannedRequest = deps.runPlanner.planRequest({
+      const plannedRequest = await deps.runPlanner.planRequest({
         siteId: userData.siteId,
         discoveredUrl: link,
         discoverySource: 'page_link',
@@ -306,18 +306,18 @@ export function createBaseFailedRequestHandler(deps: {
   ) => {
     const userData = request.userData as BaseRequestUserData;
 
-    deps.pageRunRepository.createFailed({
+    await deps.pageRunRepository.createFailed({
       runId: userData.runId,
       sitePageId: userData.sitePageId,
       errorMessage: error.message,
     });
 
-    deps.sitePageRepository.recordBaseCaptureFailed({
+    await deps.sitePageRepository.recordBaseCaptureFailed({
       runId: userData.runId,
       sitePageId: userData.sitePageId,
     });
 
-    deps.runLog.log({
+    await deps.runLog.log({
       crawlRunId: userData.runId,
       level: 'error',
       event: 'base_page_failed',
@@ -352,7 +352,7 @@ async function captureAndRecordMarkdown(input: {
     extension: 'md',
   });
 
-  input.artifactRunRepository.create({
+  await input.artifactRunRepository.create({
     runId: input.userData.runId,
     pageRunId: input.userData.pageRunId,
     sitePageId: input.userData.sitePageId,
@@ -364,7 +364,7 @@ async function captureAndRecordMarkdown(input: {
     meta: { strategy: captured.strategyName },
   });
 
-  input.runLog.log({
+  await input.runLog.log({
     crawlRunId: input.userData.runId,
     level: 'info',
     event: 'artifact_done',
@@ -375,7 +375,7 @@ async function captureAndRecordMarkdown(input: {
     meta: { strategy: captured.strategyName, outputPath: written.outputPath },
   });
 
-  input.sitePageRepository.recordArtifactResult({
+  await input.sitePageRepository.recordArtifactResult({
     sitePageId: input.userData.sitePageId,
     runId: input.userData.runId,
     artifactType: 'markdown',
@@ -453,7 +453,7 @@ export function createMarkdownFailedRequestHandler(deps: {
       }
     }
 
-    deps.artifactRunRepository.create({
+    await deps.artifactRunRepository.create({
       runId: userData.runId,
       pageRunId: userData.pageRunId,
       sitePageId: userData.sitePageId,
@@ -465,7 +465,7 @@ export function createMarkdownFailedRequestHandler(deps: {
       meta: null,
     });
 
-    deps.runLog.log({
+    await deps.runLog.log({
       crawlRunId: userData.runId,
       level: 'error',
       event: 'artifact_failed',
@@ -476,7 +476,7 @@ export function createMarkdownFailedRequestHandler(deps: {
       meta: { stack: finalError.stack ?? null },
     });
 
-    deps.sitePageRepository.recordArtifactResult({
+    await deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
       artifactType: 'markdown',
@@ -510,7 +510,7 @@ export function createScreenshotRequestHandler(deps: {
       extension: capture.extension,
     });
 
-    deps.artifactRunRepository.create({
+    await deps.artifactRunRepository.create({
       runId: userData.runId,
       pageRunId: userData.pageRunId,
       sitePageId: userData.sitePageId,
@@ -522,7 +522,7 @@ export function createScreenshotRequestHandler(deps: {
       meta: { tool: capture.toolName },
     });
 
-    deps.runLog.log({
+    await deps.runLog.log({
       crawlRunId: userData.runId,
       level: 'info',
       event: 'artifact_done',
@@ -533,7 +533,7 @@ export function createScreenshotRequestHandler(deps: {
       meta: { tool: capture.toolName, outputPath: written.outputPath },
     });
 
-    deps.sitePageRepository.recordArtifactResult({
+    await deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
       artifactType: 'screenshot',
@@ -550,7 +550,7 @@ export function createScreenshotFailedRequestHandler(deps: {
   return async ({ request }: { request: { userData: unknown } }, error: Error) => {
     const userData = request.userData as ScreenshotRequestUserData;
 
-    deps.artifactRunRepository.create({
+    await deps.artifactRunRepository.create({
       runId: userData.runId,
       pageRunId: userData.pageRunId,
       sitePageId: userData.sitePageId,
@@ -562,7 +562,7 @@ export function createScreenshotFailedRequestHandler(deps: {
       meta: null,
     });
 
-    deps.runLog.log({
+    await deps.runLog.log({
       crawlRunId: userData.runId,
       level: 'error',
       event: 'artifact_failed',
@@ -573,7 +573,7 @@ export function createScreenshotFailedRequestHandler(deps: {
       meta: { stack: error.stack ?? null },
     });
 
-    deps.sitePageRepository.recordArtifactResult({
+    await deps.sitePageRepository.recordArtifactResult({
       sitePageId: userData.sitePageId,
       runId: userData.runId,
       artifactType: 'screenshot',

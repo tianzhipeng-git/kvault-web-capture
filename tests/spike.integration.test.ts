@@ -40,8 +40,8 @@ describe('integration spike', () => {
     const dbPath = join(dir, 'spike.db');
     const storageDir = join(dir, 'storage');
     const baseUrl = 'https://example.com/docs?utm_source=test';
-    const db = openDatabase(dbPath);
-    initializeSchema(db);
+    const db = await openDatabase(dbPath);
+    await initializeSchema(db);
     const clock = new SystemClock();
     const projectRepository = new ProjectRepository(db, clock);
     const siteRepository = new SiteRepository(db, clock);
@@ -50,7 +50,7 @@ describe('integration spike', () => {
     const pageRunRepository = new PageRunRepository(db, clock);
     const artifactRunRepository = new ArtifactRunRepository(db, clock);
     const planner = new RunPlanner(sitePageRepository, clock);
-    const project = projectRepository.create('Spike Project');
+    const project = await projectRepository.create('Spike Project');
     const siteConfig = createDefaultSiteConfig(baseUrl);
     siteConfig.rulesBeforeStage2Eq = [
       {
@@ -67,21 +67,21 @@ describe('integration spike', () => {
         artifacts: ['markdown', 'screenshot'],
       },
     ];
-    const site = siteRepository.create({
+    const site = await siteRepository.create({
       projectId: project.id,
       name: 'example-docs',
       baseUrl: 'https://example.com',
       storageRoot: storageDir,
       config: siteConfig,
     });
-    const runId = runRepository.createRun({
+    const runId = await runRepository.createRun({
       siteId: site.id,
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
       configSnapshot: site.config,
     });
-    const sitePageId = sitePageRepository.upsertDiscovery({
+    const sitePageId = await sitePageRepository.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: baseUrl,
       normalizedUrl: 'https://example.com/docs',
@@ -178,40 +178,38 @@ describe('integration spike', () => {
         request: screenshotRequest!,
       });
 
-      const pageRun = db
-        .prepare(
-          `SELECT base_capture_path, title, meta_description, decision_outcome, required_artifacts_json
-           FROM page_runs
-           WHERE crawl_run_id = ?`,
-        )
-        .get(runId) as {
+      const pageRun = await db.get<{
           base_capture_path: string | null;
           title: string;
           meta_description: string;
           decision_outcome: string;
           required_artifacts_json: string;
-        };
+        }>(
+          `SELECT base_capture_path, title, meta_description, decision_outcome, required_artifacts_json
+           FROM page_runs
+           WHERE crawl_run_id = ?`,
+          [runId],
+        );
 
-      const artifactRuns = db
-        .prepare(
-          `SELECT artifact_type, status, content, output_path
-           FROM artifact_runs
-           WHERE crawl_run_id = ?
-           ORDER BY artifact_type`,
-        )
-        .all(runId) as Array<{
+      const artifactRuns = await db.all<{
           artifact_type: string;
           status: string;
           content: string | null;
           output_path: string;
-        }>;
+        }>(
+          `SELECT artifact_type, status, content, output_path
+           FROM artifact_runs
+           WHERE crawl_run_id = ?
+           ORDER BY artifact_type`,
+          [runId],
+        );
 
-      expect(pageRun.title).toBe('Example Docs');
-      expect(pageRun.meta_description).toBe('Tiny docs page');
-      expect(pageRun.decision_outcome).toBe('allow');
-      expect(pageRun.required_artifacts_json).toBe('["markdown","screenshot"]');
-      expect(pageRun.base_capture_path).toBeTruthy();
-      expect(existsSync(pageRun.base_capture_path!)).toBe(true);
+      expect(pageRun?.title).toBe('Example Docs');
+      expect(pageRun?.meta_description).toBe('Tiny docs page');
+      expect(pageRun?.decision_outcome).toBe('allow');
+      expect(pageRun?.required_artifacts_json).toBe('["markdown","screenshot"]');
+      expect(pageRun?.base_capture_path).toBeTruthy();
+      expect(existsSync(pageRun!.base_capture_path!)).toBe(true);
 
       expect(artifactRuns).toHaveLength(2);
       expect(artifactRuns[0]?.artifact_type).toBe('markdown');
@@ -222,10 +220,10 @@ describe('integration spike', () => {
       expect(artifactRuns[1]?.status).toBe('succeeded');
       expect(artifactRuns[1]?.content).toBeNull();
       expect(existsSync(artifactRuns[1]!.output_path)).toBe(true);
-      expect(pageRunRepository.countByRun(runId)).toBe(1);
-      expect(artifactRunRepository.countByRun(runId)).toBe(2);
+      expect(await pageRunRepository.countByRun(runId)).toBe(1);
+      expect(await artifactRunRepository.countByRun(runId)).toBe(2);
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
@@ -234,8 +232,8 @@ describe('integration spike', () => {
     const dbPath = join(dir, 'spike.db');
     const storageDir = join(dir, 'storage');
     const baseUrl = 'https://example.com/blog/post';
-    const db = openDatabase(dbPath);
-    initializeSchema(db);
+    const db = await openDatabase(dbPath);
+    await initializeSchema(db);
     const clock = new SystemClock();
     const projectRepository = new ProjectRepository(db, clock);
     const siteRepository = new SiteRepository(db, clock);
@@ -244,7 +242,7 @@ describe('integration spike', () => {
     const pageRunRepository = new PageRunRepository(db, clock);
     const artifactRunRepository = new ArtifactRunRepository(db, clock);
     const planner = new RunPlanner(sitePageRepository, clock);
-    const project = projectRepository.create('Spike Project');
+    const project = await projectRepository.create('Spike Project');
     const siteConfig = createDefaultSiteConfig(baseUrl);
 
     siteConfig.rulesBeforeBaseEq = [
@@ -279,21 +277,21 @@ describe('integration spike', () => {
       },
     ];
 
-    const site = siteRepository.create({
+    const site = await siteRepository.create({
       projectId: project.id,
       name: 'example-blog',
       baseUrl: 'https://example.com',
       storageRoot: storageDir,
       config: siteConfig,
     });
-    const runId = runRepository.createRun({
+    const runId = await runRepository.createRun({
       siteId: site.id,
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
       configSnapshot: site.config,
     });
-    const sitePageId = sitePageRepository.upsertDiscovery({
+    const sitePageId = await sitePageRepository.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: baseUrl,
       normalizedUrl: baseUrl,
@@ -365,21 +363,20 @@ describe('integration spike', () => {
 
       expect(await markdownQueue.fetchNextRequest()).toBeNull();
       expect(await screenshotQueue.fetchNextRequest()).toBeNull();
-      expect(pageRunRepository.countByRun(runId)).toBe(1);
-      expect(artifactRunRepository.countByRun(runId)).toBe(0);
+      expect(await pageRunRepository.countByRun(runId)).toBe(1);
+      expect(await artifactRunRepository.countByRun(runId)).toBe(0);
 
-      const pageRun = db
-        .prepare(
-          `SELECT rule_outcome, decision_outcome, decision_reason, required_artifacts_json
-           FROM page_runs
-           WHERE crawl_run_id = ?`,
-        )
-        .get(runId) as {
+      const pageRun = await db.get<{
           rule_outcome: string;
           decision_outcome: string;
           decision_reason: string | null;
           required_artifacts_json: string;
-        };
+        }>(
+          `SELECT rule_outcome, decision_outcome, decision_reason, required_artifacts_json
+           FROM page_runs
+           WHERE crawl_run_id = ?`,
+          [runId],
+        );
 
       expect(pageRun).toEqual({
         rule_outcome: 'deny',
@@ -388,7 +385,7 @@ describe('integration spike', () => {
         required_artifacts_json: '[]',
       });
     } finally {
-      db.close();
+      await db.close();
     }
   });
 
@@ -397,8 +394,8 @@ describe('integration spike', () => {
     const dbPath = join(dir, 'spike.db');
     const storageDir = join(dir, 'storage');
     const baseUrl = 'https://example.com/docs';
-    const db = openDatabase(dbPath);
-    initializeSchema(db);
+    const db = await openDatabase(dbPath);
+    await initializeSchema(db);
     const clock = new SystemClock();
     const projectRepository = new ProjectRepository(db, clock);
     const siteRepository = new SiteRepository(db, clock);
@@ -406,7 +403,7 @@ describe('integration spike', () => {
     const sitePageRepository = new SitePageRepository(db, clock);
     const pageRunRepository = new PageRunRepository(db, clock);
     const planner = new RunPlanner(sitePageRepository, clock);
-    const project = projectRepository.create('Target Project');
+    const project = await projectRepository.create('Target Project');
     const siteConfig = createDefaultSiteConfig(baseUrl);
     siteConfig.rulesBeforeStage2Eq = [
       {
@@ -423,21 +420,21 @@ describe('integration spike', () => {
         artifacts: ['markdown', 'screenshot'],
       },
     ];
-    const site = siteRepository.create({
+    const site = await siteRepository.create({
       projectId: project.id,
       name: 'target-site',
       baseUrl: 'https://example.com',
       storageRoot: storageDir,
       config: siteConfig,
     });
-    const runId = runRepository.createRun({
+    const runId = await runRepository.createRun({
       siteId: site.id,
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: 1,
       configSnapshot: site.config,
     });
-    const sitePageId = sitePageRepository.upsertDiscovery({
+    const sitePageId = await sitePageRepository.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: baseUrl,
       normalizedUrl: baseUrl,
@@ -507,12 +504,12 @@ describe('integration spike', () => {
         $: fakeDom,
       } as never);
 
-      expect(pageRunRepository.countByRun(runId)).toBe(1);
+      expect(await pageRunRepository.countByRun(runId)).toBe(1);
       expect(await markdownQueue.fetchNextRequest()).not.toBeNull();
       expect(await screenshotQueue.fetchNextRequest()).not.toBeNull();
       expect(await baseQueue.fetchNextRequest()).toBeNull();
     } finally {
-      db.close();
+      await db.close();
     }
   });
 });

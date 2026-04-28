@@ -4,13 +4,13 @@ import type { SpikeRunOptions, SpikeRunSummary } from '../domain/types.js';
 export async function runIntegrationSpike(
   options: SpikeRunOptions,
 ): Promise<SpikeRunSummary> {
-  const app = new M1App({
+  const app = await M1App.create({
     dbPath: options.dbPath,
   });
 
   try {
-    const project = app.createProject('spike-project');
-    const site = app.createSite({
+    const project = await app.createProject('spike-project');
+    const site = await app.createSite({
       projectSlug: project.slug,
       name: options.siteName ?? 'spike-site',
       baseUrl: new URL(options.seedUrl).origin,
@@ -24,6 +24,6 @@ export async function runIntegrationSpike(
       staleAfterMs: null,
     });
   } finally {
-    app.close();
+    await app.close();
   }
 }

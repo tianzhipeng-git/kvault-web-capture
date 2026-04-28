@@ -119,8 +119,25 @@ function readFrontendAsset(name: string): string {
   return readFileSync(join(frontendDir, name), 'utf8');
 }
 
+async function waitForLatestRun(
+  runQuery: RunSummaryQuery,
+  siteId: number,
+  runType: 'seed_run' | 'crawl_run',
+) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const latestRun = await runQuery.getLatestRunForSite(siteId, runType);
+    if (latestRun) {
+      return latestRun;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  return null;
+}
+
 export interface WebServerOptions {
   dbPath: string;
+  databaseUrl?: string;
   adminPassword: string;
   port?: number;
   host?: string;
@@ -132,8 +149,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   const server = Fastify({
     logger: false,
   });
-  const app = new M1App({ dbPath: options.dbPath });
-  const queryDb = openDatabase(options.dbPath);
+  const app = await M1App.create({ dbPath: options.dbPath, databaseUrl: options.databaseUrl });
+  const queryDb = await openDatabase({ path: options.dbPath, url: options.databaseUrl });
   const auth = new SessionAuth(options.adminPassword, options.sessionTtlMs ?? 1000 * 60 * 60 * 8);
   const coordinator = new RunCoordinator(options.maxConcurrentRuns ?? 2);
   const projectQuery = new ProjectListQuery(queryDb);
@@ -147,8 +164,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   await auth.register(server);
 
   server.addHook('onClose', async () => {
-    app.close();
-    queryDb.close();
+    await app.close();
+    await queryDb.close();
   });
 
   server.setErrorHandler((error, _request, reply) => {
@@ -252,7 +269,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
 
   server.get('/api/projects', async () => ({
-    items: projectQuery.listProjects(),
+    items: await projectQuery.listProjects(),
   }));
 
   server.post('/api/projects', async (request, reply) => {
@@ -269,14 +286,14 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/projects/:projectId/sites', async (request) => {
     const params = request.params as { projectId: string };
     return {
-      items: projectQuery.listSites(parseProjectId(params.projectId)),
+      items: await projectQuery.listSites(parseProjectId(params.projectId)),
     };
   });
 
   server.get('/api/projects/:projectId/label-definitions', async (request) => {
     const params = request.params as { projectId: string };
     return {
-      labelDefinitions: app.getProjectLabelDefinitions(parseProjectId(params.projectId)),
+      labelDefinitions: await app.getProjectLabelDefinitions(parseProjectId(params.projectId)),
     };
   });
 
@@ -284,7 +301,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { projectId: string };
     const body = (request.body ?? {}) as { labelDefinitions?: unknown };
     const labelDefinitions = body.labelDefinitions ?? [];
-    app.updateProjectLabelDefinitions(parseProjectId(params.projectId), labelDefinitions);
+    await app.updateProjectLabelDefinitions(parseProjectId(params.projectId), labelDefinitions);
     return {
       status: 'ok',
       labelDefinitions,
@@ -347,7 +364,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const config = mapConfigFormToSiteConfig(body);
-    app.updateSiteConfig(parseSiteId(params.siteId), config);
+    await app.updateSiteConfig(parseSiteId(params.siteId), config);
     return {
       status: 'ok',
       config,
@@ -358,7 +375,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const config = mapConfigFormToSiteConfig(body.config as Record<string, unknown>);
-    app.updateSiteConfig(parseSiteId(params.siteId), config);
+    await app.updateSiteConfig(parseSiteId(params.siteId), config);
     return {
       status: 'ok',
       config,
@@ -367,10 +384,10 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.post('/api/sites/:siteId/config/clone-from/:sourceSiteId', async (request) => {
     const params = request.params as { siteId: string; sourceSiteId: string };
-    app.cloneSiteConfig(parseSiteId(params.sourceSiteId), parseSiteId(params.siteId));
+    await app.cloneSiteConfig(parseSiteId(params.sourceSiteId), parseSiteId(params.siteId));
     return {
       status: 'ok',
-      config: app.getSiteConfig(parseSiteId(params.siteId)),
+      config: await app.getSiteConfig(parseSiteId(params.siteId)),
     };
   });
 
@@ -383,7 +400,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       rulesBeforeStage2Eq?: unknown[];
     };
 
-    const savedConfig = app.getSiteConfig(parseSiteId(params.siteId));
+    const savedConfig = await app.getSiteConfig(parseSiteId(params.siteId));
     const siteConfig = {
       ...savedConfig,
       rulesBeforeBaseEq: (body.rulesBeforeBaseEq ?? savedConfig.rulesBeforeBaseEq) as typeof savedConfig.rulesBeforeBaseEq,
@@ -405,7 +422,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       siteId,
       targetSuccessCount: input.targetSuccessCount,
     }).catch(() => { });
-    const latestRun = runQuery.getLatestRunForSite(siteId, 'seed_run');
+    const latestRun = await waitForLatestRun(runQuery, siteId, 'seed_run');
 
     if (!latestRun) {
       reply.code(500);
@@ -426,7 +443,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       siteId,
       ...input,
     }).catch(() => { });
-    const latestRun = runQuery.getLatestRunForSite(siteId, 'crawl_run');
+    const latestRun = await waitForLatestRun(runQuery, siteId, 'crawl_run');
 
     if (!latestRun) {
       reply.code(500);
@@ -442,7 +459,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/sites/:siteId/runs', async (request) => {
     const params = request.params as { siteId: string };
     return {
-      items: runQuery.listSiteRuns(parseSiteId(params.siteId)),
+      items: await runQuery.listSiteRuns(parseSiteId(params.siteId)),
     };
   });
 
@@ -457,8 +474,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const runId = parseRunId(params.runId);
     const sitePageId = query.sitePageId ? parseSitePageId(query.sitePageId) : undefined;
     return {
-      items: runLogQuery.listRunLogs(runId, sitePageId),
-      errorMessage: runLogQuery.getRunErrorMessage(runId),
+      items: await runLogQuery.listRunLogs(runId, sitePageId),
+      errorMessage: await runLogQuery.getRunErrorMessage(runId),
     };
   });
 
@@ -473,7 +490,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       throw new Error('tail 参数无效。');
     }
 
-    const runtimeLog = runLogQuery.getRuntimeLog(runId, tail);
+    const runtimeLog = await runLogQuery.getRuntimeLog(runId, tail);
 
     if (!runtimeLog) {
       reply.code(404);
@@ -520,7 +537,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.get('/api/sites/:siteId/artifacts/:artifactRunId/file', async (request, reply) => {
     const params = request.params as { siteId: string; artifactRunId: string };
-    const artifact = sitePageDetailQuery.getArtifactFile(
+    const artifact = await sitePageDetailQuery.getArtifactFile(
       parseSiteId(params.siteId),
       parseArtifactRunId(params.artifactRunId),
     );
@@ -532,7 +549,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/sites/:siteId/pending-review', async (request) => {
     const params = request.params as { siteId: string };
     return {
-      items: pendingReviewQuery.getPendingReview(parseSiteId(params.siteId)),
+      items: await pendingReviewQuery.getPendingReview(parseSiteId(params.siteId)),
     };
   });
 
@@ -540,7 +557,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const query = request.query as Record<string, string | undefined>;
     return {
-      items: app.listSampleCaptures(
+      items: await app.listSampleCaptures(
         parseSiteId(params.siteId),
         Number(query.limit ?? '5'),
       ),
@@ -554,9 +571,11 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? '3100');
   const host = process.env.HOST ?? '127.0.0.1';
   const dbPath = process.env.KVAULT_DB_PATH ?? '.local/state.db';
+  const databaseUrl = process.env.KVAULT_DATABASE_URL;
   const adminPassword = process.env.KVAULT_ADMIN_PASSWORD ?? 'kvault-dev';
   const server = await createWebServer({
     dbPath,
+    databaseUrl,
     adminPassword,
     host,
     port,

@@ -1,16 +1,15 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbClient } from '../database.js';
 import type { ArtifactType, BaseCaptureStatus, RuleOutcome } from '../../domain/types.js';
 import type { Clock } from '../../utils/clock.js';
-import { type RowIdResult, toId } from './helpers.js';
 import type { SampleCaptureRow } from './site-page-repository.js';
 
 export class PageRunRepository {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: DbClient,
     private readonly clock: Clock,
   ) {}
 
-  create(input: {
+  async create(input: {
     runId: number;
     sitePageId: number;
     baseCaptureStatus: BaseCaptureStatus;
@@ -24,10 +23,9 @@ export class PageRunRepository {
     decisionReason: string | null;
     pendingReason: string | null;
     requiredArtifacts: ArtifactType[];
-  }): number {
+  }): Promise<number> {
     const now = this.clock.now();
-    const result = this.db
-      .prepare(
+    const result = await this.db.run(
         `INSERT INTO page_runs (
           crawl_run_id,
           site_page_id,
@@ -45,8 +43,7 @@ export class PageRunRepository {
           pending_reason,
           required_artifacts_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         input.runId,
         input.sitePageId,
         now,
@@ -62,30 +59,28 @@ export class PageRunRepository {
         input.decisionReason,
         input.pendingReason,
         JSON.stringify(input.requiredArtifacts),
-      ) as RowIdResult;
+      ],
+    );
 
-    return toId(result);
+    return Number(result.lastInsertId);
   }
 
-  countByRun(runId: number): number {
-    const row = this.db
-      .prepare('SELECT COUNT(*) AS count FROM page_runs WHERE crawl_run_id = ?')
-      .get(runId) as { count: number };
-    return row.count;
+  async countByRun(runId: number): Promise<number> {
+    const row = await this.db.get('SELECT COUNT(*) AS count FROM page_runs WHERE crawl_run_id = ?', [runId]) as { count: number };
+    return Number(row.count);
   }
 
   /**
    * Records a failed base-capture request.  This mirrors `create()` but marks
    * the page as failed and stores the error message rather than page content.
    */
-  createFailed(input: {
+  async createFailed(input: {
     runId: number;
     sitePageId: number;
     errorMessage: string;
-  }): number {
+  }): Promise<number> {
     const now = this.clock.now();
-    const result = this.db
-      .prepare(
+    const result = await this.db.run(
         `INSERT INTO page_runs (
           crawl_run_id,
           site_page_id,
@@ -104,8 +99,7 @@ export class PageRunRepository {
           required_artifacts_json,
           error_message
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         input.runId,
         input.sitePageId,
         now,
@@ -122,23 +116,23 @@ export class PageRunRepository {
         null,
         '[]',
         input.errorMessage,
-      ) as RowIdResult;
+      ],
+    );
 
-    return toId(result);
+    return Number(result.lastInsertId);
   }
 
-  listSampleCaptures(siteId: number, limit: number): SampleCaptureRow[] {
-    return this.db
-      .prepare(
+  async listSampleCaptures(siteId: number, limit: number): Promise<SampleCaptureRow[]> {
+    const rows = await this.db.all(
         `SELECT sp.normalized_url, pr.base_capture_path, pr.title, pr.meta_description, pr.body_text
          FROM page_runs pr
          INNER JOIN site_pages sp ON sp.id = pr.site_page_id
          WHERE sp.site_id = ?
          ORDER BY pr.id DESC
          LIMIT ?`,
-      )
-      .all(siteId, limit)
-      .map((row) => ({
+      [siteId, limit],
+    );
+    return rows.map((row) => ({
         normalizedUrl: String((row as Record<string, unknown>).normalized_url),
         baseCapturePath:
           ((row as Record<string, unknown>).base_capture_path as string | null | undefined) ??
@@ -149,4 +143,3 @@ export class PageRunRepository {
       }));
   }
 }
-
