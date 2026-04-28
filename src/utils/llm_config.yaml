@@ -8,7 +8,7 @@ models:
     api_key: ${OPENAI_API_KEY}
     model_name: gpt-4
     display_name: GPT-4
-    use_proxy: true
+    use_proxy: false
 
   # Gemini
   gemini-3-pro:
@@ -16,14 +16,14 @@ models:
     api_key: ${GEMINI_API_KEY}
     model_name: gemini-3-pro-preview
     display_name: Gemini-3-Pro
-    use_proxy: true
+    use_proxy: false
   
   gemini-3-flash:
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
     api_key: ${GEMINI_API_KEY}
     model_name: gemini-3-flash-preview
     display_name: Gemini-3-Flash
-    use_proxy: true
+    use_proxy: false
 
   # 字节跳动豆包
   doubao-seed-1.6:
@@ -39,7 +39,7 @@ models:
     api_key: ${CLAUDE_API_KEY}
     model_name: claude-sonnet-4-5
     display_name: Claude-Sonnet-4.5
-    use_proxy: true
+    use_proxy: false
 
 # 默认使用的模型配置
 default: gemini-3-flash
