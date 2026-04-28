@@ -152,13 +152,12 @@ export interface LlmChatMessage {
   content: string;
 }
 
-const importMeta = import.meta as ImportMeta & { env?: { BASE_URL?: string } };
-const baseUrl = (importMeta.env?.BASE_URL ?? '/').replace(/\/$/, '');
+const baseUrl = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
 
 async function fetchApi(url: string, options?: RequestInit) {
   const res = await fetch(`${baseUrl}${url}`, options);
   if (res.status === 401) {
-    const loginPath = `${importMeta.env?.BASE_URL ?? '/'}login`;
+    const loginPath = `${import.meta.env.BASE_URL ?? '/'}login`;
     if (window.location.pathname !== loginPath && window.location.pathname !== '/login') {
       window.location.href = loginPath;
     }
@@ -174,7 +173,7 @@ async function fetchApi(url: string, options?: RequestInit) {
 async function fetchBlobApi(url: string, options?: RequestInit) {
   const res = await fetch(`${baseUrl}${url}`, options);
   if (res.status === 401) {
-    const loginPath = `${importMeta.env?.BASE_URL ?? '/'}login`;
+    const loginPath = `${import.meta.env.BASE_URL ?? '/'}login`;
     if (window.location.pathname !== loginPath && window.location.pathname !== '/login') {
       window.location.href = loginPath;
     }
