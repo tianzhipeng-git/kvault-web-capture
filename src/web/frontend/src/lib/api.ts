@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 export type RunType = "seed_run" | "crawl_run";
 
 export interface SiteRunListItem {
