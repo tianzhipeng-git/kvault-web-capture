@@ -4,7 +4,10 @@ export function normalizeUrl(input: string): string {
   url.hostname = url.hostname.toLowerCase();
 
   const keptEntries = [...url.searchParams.entries()]
-    .filter(([key]) => !key.toLowerCase().startsWith('utm_'))
+    .filter(([key]) => {
+      const k = key.toLowerCase();
+      return !k.startsWith('utm_') && !['wbraid', 'gbraid', 'ref'].includes(k);
+    })
     .sort(([left], [right]) => left.localeCompare(right));
 
   url.search = '';
