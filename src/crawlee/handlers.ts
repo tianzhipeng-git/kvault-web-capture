@@ -25,6 +25,7 @@ import { RunPlanner } from '../planner/run-planner.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
+import { logger } from '../utils/runtime-logger.js';
 import type { RunTargetTracker } from './run-target-tracker.js';
 
 type MarkdownRequestUserDataWithState = MarkdownRequestUserData & {
@@ -106,6 +107,18 @@ export function createBaseRequestHandler(deps: {
       classification = await deps.classifier.classify(extracted);
     } catch (error) {
       classificationError = error instanceof Error ? error : new Error(String(error));
+      logger.error('Base page classification failed', {
+        runId: userData.runId,
+        siteId: userData.siteId,
+        sitePageId: userData.sitePageId,
+        requestUrl: request.url,
+        loadedUrl: request.loadedUrl ?? null,
+        normalizedUrl: extracted.normalizedUrl,
+        title: extracted.title || null,
+        errorName: classificationError.name,
+        errorMessage: classificationError.message,
+        stack: classificationError.stack ?? null,
+      });
     }
 
     const decision = buildStage2EnqueueDecision({
