@@ -1,3 +1,4 @@
+import { createServer } from 'node:http';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -111,5 +112,113 @@ describe('seed run', () => {
       },
     ]);
     expect(app.listSampleCaptures(site.id, 5)[0]?.normalizedUrl).toBe(`${server.baseUrl}/product`);
+  });
+
+  it('limits initial seed enqueue count to 1.5x target success count', async () => {
+    const dir = createTempDir('kvault-seed-target-');
+    let port = 0;
+    const server = createServer((request, response) => {
+      const path = new URL(request.url ?? '/', `http://127.0.0.1:${port}`).pathname;
+
+      if (/^\/page-\d+$/.test(path)) {
+        response.writeHead(200, { 'content-type': 'text/html' });
+        response.end(`<!doctype html>
+<html>
+  <head>
+    <title>${path}</title>
+    <meta name="description" content="Generic page" />
+  </head>
+  <body>Generic seed page</body>
+</html>`);
+        return;
+      }
+
+      response.writeHead(404, { 'content-type': 'text/plain' });
+      response.end('not found');
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', () => resolve());
+    });
+
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to start test server');
+    }
+
+    port = address.port;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    servers.push({
+      baseUrl,
+      close: () =>
+        new Promise<void>((resolve, reject) => {
+          server.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        }),
+    });
+
+    const app = new M1App({ dbPath: join(dir, 'state.db') });
+    apps.push(app);
+    const project = app.createProject('Seed Target Project');
+    const site = app.createSite({
+      projectSlug: project.slug,
+      name: 'seed-target-site',
+      baseUrl,
+      storageRoot: join(dir, 'storage'),
+    });
+    const configPath = join(dir, 'site-config.json');
+
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          seedUrls: [1, 2, 3, 4, 5].map((index) => `${baseUrl}/page-${index}`),
+          sitemaps: [],
+          rulesBeforeBaseEq: [],
+          rulesBeforeStage2Eq: [
+            {
+              name: 'allow-generic',
+              matchType: 'label',
+              listType: 'whitelist',
+              when: [
+                {
+                  key: 'content_type',
+                  op: 'any_of',
+                  values: ['generic'],
+                },
+              ],
+              artifacts: ['markdown'],
+            },
+          ],
+          runOptions: {
+            seedMaxDepth: 0,
+            crawlMaxDepth: 0,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    app.importSiteConfig(site.id, configPath);
+    const summary = await app.runSeed({
+      siteId: site.id,
+      targetSuccessCount: 2,
+    });
+
+    expect(summary.pageRuns).toBeLessThanOrEqual(3);
+    expect(app.getInventorySummary(site.id)).toEqual({
+      totalPages: 5,
+      pendingPages: summary.pageRuns,
+      deniedPages: 0,
+      capturedPages: 0,
+    });
   });
 });

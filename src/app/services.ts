@@ -371,6 +371,9 @@ export class M1App {
     let firstNormalizedUrl = '';
     let plannedEnqueueCount = 0;
     let plannedSkipCount = 0;
+    const startupEnqueueLimit = targetTracker.isEnabled()
+      ? Math.ceil(input.targetSuccessCount! * 1.5)
+      : null;
     const planDecisionCounts = new Map<string, number>();
 
     for (const candidate of startupCandidates) {
@@ -385,15 +388,19 @@ export class M1App {
         staleAfterMs: input.staleAfterMs,
       });
 
+      const skippedByStartupLimit =
+        planned.enqueue &&
+        startupEnqueueLimit !== null &&
+        plannedEnqueueCount >= startupEnqueueLimit;
       const planDecisionKey = planned.enqueue
-        ? 'enqueue'
+        ? (skippedByStartupLimit ? 'target_startup_enqueue_limit' : 'enqueue')
         : (planned.planReason ?? 'skip_without_reason');
       planDecisionCounts.set(
         planDecisionKey,
         (planDecisionCounts.get(planDecisionKey) ?? 0) + 1,
       );
 
-      if (planned.enqueue) {
+      if (planned.enqueue && !skippedByStartupLimit) {
         plannedEnqueueCount += 1;
       } else {
         plannedSkipCount += 1;
@@ -409,6 +416,8 @@ export class M1App {
         enqueue: planned.enqueue,
         urlRuleDecision: planned.urlRuleDecision,
         planReason: planned.planReason,
+        startupEnqueueLimit,
+        skippedByStartupLimit,
       });
 
       if (firstSitePageId === 0) {
@@ -416,7 +425,7 @@ export class M1App {
         firstNormalizedUrl = planned.normalizedUrl;
       }
 
-      if (!planned.enqueue) {
+      if (!planned.enqueue || skippedByStartupLimit) {
         continue;
       }
 
