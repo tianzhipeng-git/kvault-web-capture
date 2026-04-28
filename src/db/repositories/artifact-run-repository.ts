@@ -1,15 +1,14 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbClient } from '../database.js';
 import type { ArtifactRunStatus, ArtifactType } from '../../domain/types.js';
 import type { Clock } from '../../utils/clock.js';
-import { type RowIdResult, toId } from './helpers.js';
 
 export class ArtifactRunRepository {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: DbClient,
     private readonly clock: Clock,
   ) {}
 
-  create(input: {
+  async create(input: {
     runId: number;
     pageRunId: number;
     sitePageId: number;
@@ -19,10 +18,9 @@ export class ArtifactRunRepository {
     outputPath: string | null;
     errorMessage: string | null;
     meta: Record<string, unknown> | null;
-  }): number {
+  }): Promise<number> {
     const now = this.clock.now();
-    const result = this.db
-      .prepare(
+    const result = await this.db.run(
         `INSERT INTO artifact_runs (
           crawl_run_id,
           page_run_id,
@@ -36,8 +34,7 @@ export class ArtifactRunRepository {
           error_message,
           meta_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         input.runId,
         input.pageRunId,
         input.sitePageId,
@@ -49,16 +46,14 @@ export class ArtifactRunRepository {
         input.content,
         input.errorMessage,
         input.meta !== null ? JSON.stringify(input.meta) : null,
-      ) as RowIdResult;
+      ],
+    );
 
-    return toId(result);
+    return Number(result.lastInsertId);
   }
 
-  countByRun(runId: number): number {
-    const row = this.db
-      .prepare('SELECT COUNT(*) AS count FROM artifact_runs WHERE crawl_run_id = ?')
-      .get(runId) as { count: number };
-    return row.count;
+  async countByRun(runId: number): Promise<number> {
+    const row = await this.db.get('SELECT COUNT(*) AS count FROM artifact_runs WHERE crawl_run_id = ?', [runId]) as { count: number };
+    return Number(row.count);
   }
 }
-

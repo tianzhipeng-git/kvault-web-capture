@@ -91,11 +91,11 @@ async function readZipEntries(path: string): Promise<Map<string, Buffer>> {
 }
 
 describe('project export', () => {
-  const openHandles: Array<{ close: () => void }> = [];
+  const openHandles: Array<{ close: () => Promise<void> }> = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     for (const handle of openHandles) {
-      handle.close();
+      await handle.close();
     }
     openHandles.length = 0;
   });
@@ -111,9 +111,9 @@ describe('project export', () => {
     writeFileSync(basePath, '# Base\n\nHello base\n', 'utf8');
     writeFileSync(screenshotPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
-    const db = openDatabase(dbPath);
+    const db = await openDatabase(dbPath);
     openHandles.push(db);
-    initializeSchema(db);
+    await initializeSchema(db);
 
     const clock = new SystemClock();
     const projects = new ProjectRepository(db, clock);
@@ -123,15 +123,15 @@ describe('project export', () => {
     const pageRuns = new PageRunRepository(db, clock);
     const artifactRuns = new ArtifactRunRepository(db, clock);
 
-    const project = projects.create('Export Project');
-    const site = sites.create({
+    const project = await projects.create('Export Project');
+    const site = await sites.create({
       projectId: project.id,
       name: 'docs site',
       baseUrl: 'https://www.example.com',
       storageRoot,
       config: createDefaultSiteConfig('https://www.example.com'),
     });
-    const runId = runs.createRun({
+    const runId = await runs.createRun({
       siteId: site.id,
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
@@ -139,7 +139,7 @@ describe('project export', () => {
       configSnapshot: site.config,
     });
     const longUrl = `https://www.example.com/blogs/${'very-long-segment-'.repeat(12)}`;
-    const sitePageId = pages.upsertDiscovery({
+    const sitePageId = await pages.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: longUrl,
       normalizedUrl: longUrl,
@@ -148,7 +148,7 @@ describe('project export', () => {
       inventoryStatus: 'discovered_only',
       urlRuleDecision: 'allow',
     });
-    const pageRunId = pageRuns.create({
+    const pageRunId = await pageRuns.create({
       runId,
       sitePageId,
       baseCaptureStatus: 'succeeded',
@@ -165,7 +165,7 @@ describe('project export', () => {
       pendingReason: null,
       requiredArtifacts: ['markdown', 'screenshot'],
     });
-    pages.recordBaseCapture({
+    await pages.recordBaseCapture({
       sitePageId,
       runId,
       title: 'Long Blog',
@@ -173,7 +173,7 @@ describe('project export', () => {
       requiredArtifacts: ['markdown', 'screenshot'],
       pendingReason: null,
     });
-    artifactRuns.create({
+    await artifactRuns.create({
       runId,
       pageRunId,
       sitePageId,
@@ -184,13 +184,13 @@ describe('project export', () => {
       errorMessage: null,
       meta: null,
     });
-    pages.recordArtifactResult({
+    await pages.recordArtifactResult({
       sitePageId,
       runId,
       artifactType: 'markdown',
       status: 'succeeded',
     });
-    artifactRuns.create({
+    await artifactRuns.create({
       runId,
       pageRunId,
       sitePageId,
@@ -201,14 +201,14 @@ describe('project export', () => {
       errorMessage: null,
       meta: null,
     });
-    pages.recordArtifactResult({
+    await pages.recordArtifactResult({
       sitePageId,
       runId,
       artifactType: 'screenshot',
       status: 'succeeded',
     });
     const deniedUrl = 'https://www.example.com/login';
-    pages.upsertDiscovery({
+    await pages.upsertDiscovery({
       siteId: site.id,
       discoveredUrl: deniedUrl,
       normalizedUrl: deniedUrl,
@@ -218,7 +218,7 @@ describe('project export', () => {
       urlRuleDecision: 'deny',
     });
 
-    const app = new M1App({ dbPath });
+    const app = await M1App.create({ dbPath });
     openHandles.push(app);
     const outputPath = join(dir, 'export.zip');
     const result = await app.exportProject(project.id, outputPath);

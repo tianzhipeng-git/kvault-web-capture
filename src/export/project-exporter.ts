@@ -2,9 +2,9 @@ import { createWriteStream, existsSync, mkdirSync, renameSync, unlinkSync } from
 import { basename, dirname, join } from 'node:path';
 
 import ExcelJS from 'exceljs';
-import type { DatabaseSync } from 'node:sqlite';
 import { ZipFile } from 'yazl';
 
+import type { DbClient } from '../db/database.js';
 import type { Clock } from '../utils/clock.js';
 
 interface ProjectRow {
@@ -335,14 +335,15 @@ async function writeZipFile(
 
 export class ProjectExporter {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: DbClient,
     private readonly clock: Clock,
   ) {}
 
   async exportProject(input: { projectId: number; outputPath?: string }): Promise<ProjectExportResult> {
-    const project = this.db
-      .prepare('SELECT id, name, slug, label_definitions_json, created_at FROM projects WHERE id = ?')
-      .get(input.projectId) as ProjectRow | undefined;
+    const project = await this.db.get<ProjectRow>(
+      'SELECT id, name, slug, label_definitions_json, created_at FROM projects WHERE id = ?',
+      [input.projectId],
+    );
 
     if (!project) {
       throw new Error(`Project ${input.projectId} not found`);
@@ -350,16 +351,15 @@ export class ProjectExporter {
 
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultExportPath(project, exportedAt);
-    const sites = this.db
-      .prepare(
+    const sites = await this.db.all<SiteRow>(
         `SELECT id, project_id, name, base_url, storage_root, config_json, updated_at, created_at
          FROM sites
          WHERE project_id = ?
          ORDER BY id`,
-      )
-      .all(project.id) as unknown as SiteRow[];
+      [project.id],
+    );
 
-    const projectPageCount = this.countProjectPages(project.id);
+    const projectPageCount = await this.countProjectPages(project.id);
     let artifactFileCount = 0;
 
     await writeZipFile(outputPath, async (zip) => {
@@ -376,8 +376,8 @@ export class ProjectExporter {
 
       for (const site of sites) {
         const siteDir = safeDirectoryName(`site-${site.id}`, site.name);
-        const pages = this.listPages(site.id);
-        const artifacts = latestArtifactMap(this.listLatestSuccessfulArtifacts(site.id));
+        const pages = await this.listPages(site.id);
+        const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(site.id));
         const pageDirById = new Map<number, string>();
 
         addJson(zip, `sites/${siteDir}/site_info.json`, {
@@ -486,21 +486,19 @@ export class ProjectExporter {
     };
   }
 
-  private countProjectPages(projectId: number): number {
-    const row = this.db
-      .prepare(
+  private async countProjectPages(projectId: number): Promise<number> {
+    const row = await this.db.get<{ count: number }>(
         `SELECT COUNT(sp.id) AS count
          FROM site_pages sp
          INNER JOIN sites s ON s.id = sp.site_id
          WHERE s.project_id = ?`,
-      )
-      .get(projectId) as { count: number };
-    return row.count;
+      [projectId],
+    );
+    return Number(row?.count ?? 0);
   }
 
-  private listPages(siteId: number): PageExportRow[] {
-    return this.db
-      .prepare(
+  private async listPages(siteId: number): Promise<PageExportRow[]> {
+    return this.db.all<PageExportRow>(
         `SELECT
            sp.id,
            sp.site_id,
@@ -542,13 +540,12 @@ export class ProjectExporter {
          )
          WHERE sp.site_id = ?
          ORDER BY sp.id`,
-      )
-      .all(siteId) as unknown as PageExportRow[];
+      [siteId],
+    );
   }
 
-  private listLatestSuccessfulArtifacts(siteId: number): ArtifactExportRow[] {
-    const rows = this.db
-      .prepare(
+  private async listLatestSuccessfulArtifacts(siteId: number): Promise<ArtifactExportRow[]> {
+    const rows = await this.db.all<ArtifactExportRow>(
         `SELECT
            ar.id,
            ar.crawl_run_id,
@@ -565,8 +562,8 @@ export class ProjectExporter {
          INNER JOIN site_pages sp ON sp.id = ar.site_page_id
          WHERE sp.site_id = ? AND ar.status = 'succeeded'
          ORDER BY ar.site_page_id ASC, ar.artifact_type ASC, ar.id DESC`,
-      )
-      .all(siteId) as unknown as ArtifactExportRow[];
+      [siteId],
+    );
 
     const seen = new Set<string>();
     return rows.filter((row) => {

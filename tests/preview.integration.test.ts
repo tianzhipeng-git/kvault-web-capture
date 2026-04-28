@@ -14,7 +14,7 @@ describe('seed run', () => {
 
   afterEach(async () => {
     while (apps.length > 0) {
-      apps.pop()!.close();
+      await apps.pop()!.close();
     }
 
     while (servers.length > 0) {
@@ -29,11 +29,11 @@ describe('seed run', () => {
 
     const dbPath = join(dir, 'state.db');
     const storageRoot = join(dir, 'storage');
-    const app = new M1App({ dbPath });
+    const app = await M1App.create({ dbPath });
     apps.push(app);
 
-    const project = app.createProject('Seed Project');
-    const site = app.createSite({
+    const project = await app.createProject('Seed Project');
+    const site = await app.createSite({
       projectSlug: project.slug,
       name: 'preview-site',
       baseUrl: server.baseUrl,
@@ -83,21 +83,21 @@ describe('seed run', () => {
       'utf8',
     );
 
-    app.importSiteConfig(site.id, configPath);
+    await app.importSiteConfig(site.id, configPath);
     await app.runSeed(site.id);
 
-    expect(app.getInventorySummary(site.id)).toEqual({
+    expect(await app.getInventorySummary(site.id)).toEqual({
       totalPages: 3,
       pendingPages: 2,
       deniedPages: 1,
       capturedPages: 0,
     });
 
-    expect(app.listDeniedPages(site.id).map((row) => row.normalizedUrl)).toEqual([
+    expect((await app.listDeniedPages(site.id)).map((row) => row.normalizedUrl)).toEqual([
       `${server.baseUrl}/login`,
     ]);
     expect(
-      app.listPendingPages(site.id).map((row) => ({
+      (await app.listPendingPages(site.id)).map((row) => ({
         url: row.normalizedUrl,
         reason: row.pendingReason,
       })),
@@ -111,7 +111,7 @@ describe('seed run', () => {
         reason: 'seed_run',
       },
     ]);
-    expect(app.listSampleCaptures(site.id, 5)[0]?.normalizedUrl).toBe(`${server.baseUrl}/product`);
+    expect((await app.listSampleCaptures(site.id, 5))[0]?.normalizedUrl).toBe(`${server.baseUrl}/product`);
   });
 
   it('limits initial seed enqueue count to 1.5x target success count', async () => {
@@ -163,10 +163,10 @@ describe('seed run', () => {
         }),
     });
 
-    const app = new M1App({ dbPath: join(dir, 'state.db') });
+    const app = await M1App.create({ dbPath: join(dir, 'state.db') });
     apps.push(app);
-    const project = app.createProject('Seed Target Project');
-    const site = app.createSite({
+    const project = await app.createProject('Seed Target Project');
+    const site = await app.createSite({
       projectSlug: project.slug,
       name: 'seed-target-site',
       baseUrl,
@@ -207,14 +207,14 @@ describe('seed run', () => {
       'utf8',
     );
 
-    app.importSiteConfig(site.id, configPath);
+    await app.importSiteConfig(site.id, configPath);
     const summary = await app.runSeed({
       siteId: site.id,
       targetSuccessCount: 2,
     });
 
     expect(summary.pageRuns).toBeLessThanOrEqual(3);
-    expect(app.getInventorySummary(site.id)).toEqual({
+    expect(await app.getInventorySummary(site.id)).toEqual({
       totalPages: 5,
       pendingPages: summary.pageRuns,
       deniedPages: 0,

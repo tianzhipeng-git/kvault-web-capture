@@ -1,6 +1,6 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbClient } from '../database.js';
 import type { Clock } from '../../utils/clock.js';
-import { type RowIdResult, slugify, toId } from './helpers.js';
+import { slugify } from './helpers.js';
 
 export interface ProjectRecord {
   id: number;
@@ -11,17 +11,18 @@ export interface ProjectRecord {
 
 export class ProjectRepository {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: DbClient,
     private readonly clock: Clock,
   ) {}
 
-  create(name: string): ProjectRecord {
+  async create(name: string): Promise<ProjectRecord> {
     let slug = slugify(name);
 
     if (slug) {
-      const existing = this.db
-        .prepare('SELECT id, name, slug, label_definitions_json FROM projects WHERE slug = ?')
-        .get(slug) as
+      const existing = await this.db.get(
+        'SELECT id, name, slug, label_definitions_json FROM projects WHERE slug = ?',
+        [slug],
+      ) as
         | {
             id: number;
             name: string;
@@ -35,26 +36,25 @@ export class ProjectRepository {
       }
     }
 
-    const result = this.db
-      .prepare(
-        'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
-      )
-      .run(name, slug, '[]', this.clock.now()) as RowIdResult;
-
-    const id = toId(result);
+    const result = await this.db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      [name, slug, '[]', this.clock.now()],
+    );
+    const id = Number(result.lastInsertId);
 
     if (!slug) {
       slug = `proj-${id}`;
-      this.db.prepare('UPDATE projects SET slug = ? WHERE id = ?').run(slug, id);
+      await this.db.run('UPDATE projects SET slug = ? WHERE id = ?', [slug, id]);
     }
 
     return { id, name, slug, labelDefinitions: [] };
   }
 
-  getBySlug(slug: string): ProjectRecord | null {
-    const row = this.db
-      .prepare('SELECT id, name, slug, label_definitions_json FROM projects WHERE slug = ?')
-      .get(slug) as
+  async getBySlug(slug: string): Promise<ProjectRecord | null> {
+    const row = await this.db.get(
+      'SELECT id, name, slug, label_definitions_json FROM projects WHERE slug = ?',
+      [slug],
+    ) as
       | {
           id: number;
           name: string;
@@ -66,10 +66,11 @@ export class ProjectRepository {
     return row ? this.toRecord(row) : null;
   }
 
-  getById(id: number): ProjectRecord | null {
-    const row = this.db
-      .prepare('SELECT id, name, slug, label_definitions_json FROM projects WHERE id = ?')
-      .get(id) as
+  async getById(id: number): Promise<ProjectRecord | null> {
+    const row = await this.db.get(
+      'SELECT id, name, slug, label_definitions_json FROM projects WHERE id = ?',
+      [id],
+    ) as
       | {
           id: number;
           name: string;
@@ -81,10 +82,11 @@ export class ProjectRepository {
     return row ? this.toRecord(row) : null;
   }
 
-  updateLabelDefinitions(projectId: number, labelDefinitions: unknown): void {
-    this.db
-      .prepare('UPDATE projects SET label_definitions_json = ? WHERE id = ?')
-      .run(JSON.stringify(labelDefinitions), projectId);
+  async updateLabelDefinitions(projectId: number, labelDefinitions: unknown): Promise<void> {
+    await this.db.run('UPDATE projects SET label_definitions_json = ? WHERE id = ?', [
+      JSON.stringify(labelDefinitions),
+      projectId,
+    ]);
   }
 
   private toRecord(row: {

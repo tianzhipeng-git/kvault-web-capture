@@ -1,4 +1,4 @@
-import type { DatabaseSync } from 'node:sqlite';
+import type { DbClient } from '../database.js';
 import type { Clock } from '../../utils/clock.js';
 import { parseJson } from './helpers.js';
 
@@ -31,11 +31,11 @@ export interface RunLogRecord {
 
 export class RunLogRepository {
   constructor(
-    private readonly db: DatabaseSync,
+    private readonly db: DbClient,
     private readonly clock: Clock,
   ) {}
 
-  log(input: {
+  async log(input: {
     crawlRunId: number;
     level: RunLogLevel;
     event: RunLogEvent;
@@ -44,15 +44,13 @@ export class RunLogRepository {
     pageRunId?: number | null;
     message: string;
     meta?: Record<string, unknown> | null;
-  }): void {
-    this.db
-      .prepare(
+  }): Promise<void> {
+    await this.db.run(
         `INSERT INTO run_logs (
           crawl_run_id, level, event, url, site_page_id, page_run_id,
           message, meta_json, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      [
         input.crawlRunId,
         input.level,
         input.event,
@@ -62,19 +60,20 @@ export class RunLogRepository {
         input.message,
         input.meta !== undefined && input.meta !== null ? JSON.stringify(input.meta) : null,
         this.clock.now(),
-      );
+      ],
+    );
   }
 
-  listByRun(runId: number): RunLogRecord[] {
-    return (this.db
-      .prepare(
+  async listByRun(runId: number): Promise<RunLogRecord[]> {
+    const rows = await this.db.all<Record<string, unknown>>(
         `SELECT id, crawl_run_id, level, event, url, site_page_id, page_run_id,
                 message, meta_json, created_at
          FROM run_logs
          WHERE crawl_run_id = ?
          ORDER BY id`,
-      )
-      .all(runId) as Array<Record<string, unknown>>).map((row) => ({
+      [runId],
+    );
+    return rows.map((row) => ({
       id: Number(row.id),
       crawlRunId: Number(row.crawl_run_id),
       level: row.level as RunLogLevel,
