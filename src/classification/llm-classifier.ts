@@ -48,6 +48,7 @@ function buildPageInfo(page: ExtractedPage): string {
   return [
     `url: ${page.url}`,
     `title: ${page.title}`,
+    `meta[description]: ${page.metaDescription}`,
     `body: ${page.bodyText.slice(0, 2000)}`,
   ].join('\n');
 }
