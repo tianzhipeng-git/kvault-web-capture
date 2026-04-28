@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
+import { fileURLToPath } from 'node:url';
 
 interface ModelConfig {
 	base_url: string;
@@ -27,8 +28,8 @@ let _config: LLMConfig | null = null;
 export function loadLLMConfig(): LLMConfig {
 	if (_config) return _config;
 
-	// 使用 process.cwd() 获取项目根目录来读取配置，保证在 Next.js Server Components 或 API 路由下都可以正确定位
-	const configPath = path.join(process.cwd(), 'src/utils/llm_config.yaml');
+	const __dirname = path.dirname(fileURLToPath(import.meta.url));
+	const configPath = path.join(__dirname, 'llm_config.yaml');
 	try {
 		const fileContents = fs.readFileSync(configPath, 'utf8');
 

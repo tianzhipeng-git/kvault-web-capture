@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp src/utils/llm_config.yaml dist/src/utils/",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "spike": "node --import tsx src/cli.ts spike",
     "web": "node --import tsx src/web/server.ts",
