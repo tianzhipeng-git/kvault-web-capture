@@ -749,7 +749,10 @@ export class M1App {
         content.push([{ tag: 'text', text: `错误: ${input.errorMessage.slice(0, 800)}` }]);
       }
 
-      await bot.sendPost(`kvault run ${statusLabel}: #${input.runId} ${input.site.name}`, content);
+      await bot.sendPost(
+        `kvault-web-capture run ${statusLabel}: #${input.runId} ${input.site.name}`,
+        content,
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn('Feishu run notification failed', {

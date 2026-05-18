@@ -304,7 +304,7 @@ describe('seed run', () => {
     });
 
     expect(sentMessages).toHaveLength(1);
-    expect(sentMessages[0]!.title).toContain('kvault run 成功');
+    expect(sentMessages[0]!.title).toContain('kvault-web-capture run 成功');
     expect(sentMessages[0]!.content.flat().map((item) => item.text)).toEqual(
       expect.arrayContaining([
         '状态: 成功',

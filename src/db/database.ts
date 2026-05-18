@@ -283,11 +283,23 @@ const sqliteSchema = `
   CREATE INDEX IF NOT EXISTS idx_site_pages_site_inventory
     ON site_pages(site_id, inventory_status);
 
+  CREATE INDEX IF NOT EXISTS idx_site_pages_site_latest_handled
+    ON site_pages(site_id, (COALESCE(last_markdown_at, last_screenshot_at, last_base_at)) DESC, id DESC);
+
   CREATE INDEX IF NOT EXISTS idx_page_runs_run
     ON page_runs(crawl_run_id);
 
+  CREATE INDEX IF NOT EXISTS idx_page_runs_site_page_latest
+    ON page_runs(site_page_id, id DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_page_runs_site_page_run
+    ON page_runs(site_page_id, crawl_run_id);
+
   CREATE INDEX IF NOT EXISTS idx_artifact_runs_run
     ON artifact_runs(crawl_run_id);
+
+  CREATE INDEX IF NOT EXISTS idx_artifact_runs_site_page_run
+    ON artifact_runs(site_page_id, crawl_run_id);
 
   CREATE INDEX IF NOT EXISTS idx_run_logs_run
     ON run_logs(crawl_run_id);
