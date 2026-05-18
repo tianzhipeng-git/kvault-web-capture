@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { M1App } from '../src/app/services.js';
+import { openDatabase } from '../src/db/database.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
@@ -220,5 +221,51 @@ describe('seed run', () => {
       deniedPages: 0,
       capturedPages: 0,
     });
+  });
+
+  it('marks runs failed when startup planning fails before the crawler starts', async () => {
+    const dir = createTempDir('kvault-planning-failure-');
+    const dbPath = join(dir, 'state.db');
+    const app = await M1App.create({ dbPath });
+    apps.push(app);
+
+    const project = await app.createProject('Planning Failure Project');
+    const site = await app.createSite({
+      projectSlug: project.slug,
+      name: 'planning-failure-site',
+      baseUrl: 'https://example.com',
+      storageRoot: join(dir, 'storage'),
+    });
+
+    await expect(
+      app.runCrawl({
+        siteId: site.id,
+        updatePolicy: 'force_recrawl_all',
+        targetSuccessCount: null,
+        staleAfterMs: null,
+        initialUrls: ['not-a-url'],
+      }),
+    ).rejects.toThrow();
+
+    const db = await openDatabase({ path: dbPath });
+
+    try {
+      const run = await db.get<{ id: number; status: string; error_message: string | null }>(
+        'SELECT id, status, error_message FROM crawl_runs WHERE site_id = ? ORDER BY id DESC LIMIT 1',
+        [site.id],
+      );
+
+      expect(run?.status).toBe('failed');
+      expect(run?.error_message).toContain('Invalid URL');
+
+      const errorLog = await db.get<{ event: string; message: string }>(
+        'SELECT event, message FROM run_logs WHERE crawl_run_id = ? AND event = ?',
+        [run!.id, 'crawl_error'],
+      );
+
+      expect(errorLog?.message).toContain(`Run ${run!.id} failed`);
+    } finally {
+      await db.close();
+    }
   });
 });

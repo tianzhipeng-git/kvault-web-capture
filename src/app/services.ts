@@ -328,6 +328,32 @@ export class M1App {
         });
         return this.executeRunWithRuntime(input, runId);
       });
+    } catch (error) {
+      const currentRun = await this.runs.getById(runId);
+
+      if (currentRun?.status === 'running') {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await this.runs.refreshCounts(runId);
+        await this.runs.finishRun(runId, 'failed', errorMessage);
+        await this.runLogs.log({
+          crawlRunId: runId,
+          level: 'error',
+          event: 'crawl_error',
+          message: `Run ${runId} failed: ${errorMessage}`,
+          meta: { stack: error instanceof Error ? (error.stack ?? null) : null },
+        });
+        logger.error('Run failed before completion', {
+          runId,
+          siteId: site.id,
+          runType: input.runType,
+          updatePolicy: input.updatePolicy,
+          errorName: error instanceof Error ? error.name : null,
+          errorMessage,
+          stack: error instanceof Error ? (error.stack ?? null) : null,
+        });
+      }
+
+      throw error;
     } finally {
       await runtimeLog.close();
     }
