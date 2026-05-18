@@ -39,6 +39,9 @@ const pendingReasonOptions = [
   { value: "classifier_failed", label: "分类失败" },
 ];
 
+const minPageSize = 1;
+const maxPageSize = 500;
+
 function statusFilterLabel(values: string[]): string {
   if (values.length === 0) return "全部状态";
   if (values.length === 1) {
@@ -477,6 +480,8 @@ export function PageReview({
   const [pages, setPages] = useState<SitePageListRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pageSizeInput, setPageSizeInput] = useState("20");
   const [query, setQuery] = useState("");
   const [statuses, setStatuses] = useState<string[]>([]);
   const [label, setLabel] = useState("");
@@ -489,7 +494,6 @@ export function PageReview({
   const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
   const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const pageSize = 20;
 
   useEffect(() => {
     setIsLoading(true);
@@ -507,7 +511,7 @@ export function PageReview({
         setTotal(data.total || 0);
       })
       .finally(() => setIsLoading(false));
-  }, [crawlRunId, page, pendingReason, query, siteId, statuses, label]);
+  }, [crawlRunId, page, pageSize, pendingReason, query, siteId, statuses, label]);
 
   const openDetail = async (sitePageId: number) => {
     const nextDetail = await api.getSitePageDetail(siteId, sitePageId);
@@ -621,6 +625,19 @@ export function PageReview({
     const clampedPage = Math.min(Math.max(nextPage, 1), totalPages);
     setPage(clampedPage);
     setJumpPage(String(clampedPage));
+  };
+
+  const submitPageSize = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextPageSize = Number.parseInt(pageSizeInput, 10);
+    if (Number.isNaN(nextPageSize)) {
+      setPageSizeInput(String(pageSize));
+      return;
+    }
+    const clampedPageSize = Math.min(Math.max(nextPageSize, minPageSize), maxPageSize);
+    setPageSize(clampedPageSize);
+    setPageSizeInput(String(clampedPageSize));
+    setPage(1);
   };
 
   return (
@@ -751,8 +768,22 @@ export function PageReview({
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-            <div>共 {total} 条，当前第 {page} / {totalPages} 页</div>
+            <div>共 {total} 条，当前第 {page} / {totalPages} 页，每页 {pageSize} 条</div>
             <div className="flex flex-wrap items-center gap-2">
+              <form className="flex items-center gap-2" onSubmit={submitPageSize}>
+                <span className="whitespace-nowrap">每页</span>
+                <Input
+                  className="h-9 w-20 text-center"
+                  type="number"
+                  min={minPageSize}
+                  max={maxPageSize}
+                  value={pageSizeInput}
+                  onChange={(event) => setPageSizeInput(event.target.value)}
+                  aria-label="每页条数"
+                />
+                <span className="whitespace-nowrap">条</span>
+                <Button variant="outline" size="sm" type="submit">应用</Button>
+              </form>
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>上一页</Button>
               <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(current + 1, totalPages))}>下一页</Button>
               <form className="flex items-center gap-2" onSubmit={submitJumpPage}>
