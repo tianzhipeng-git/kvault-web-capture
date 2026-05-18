@@ -51,11 +51,27 @@ import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.
 import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screenshot-adapter.js';
 
 import { SystemClock } from '../utils/clock.js';
+import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
 import { isInvalidUrlError } from '../utils/url.js';
 import { buildPathTree, type PathTreeResult } from '../utils/path-tree.js';
 
+interface RunNotificationBot {
+  sendPost(title: string, content: FeishuPostContent, lang?: string): Promise<unknown>;
+}
 
+interface RunNotificationInput {
+  runId: number;
+  site: {
+    id: number;
+    name: string;
+    baseUrl: string;
+  };
+  runType: RunType;
+  updatePolicy: UpdatePolicy;
+  status: 'succeeded' | 'failed';
+  errorMessage?: string;
+}
 
 export interface M1AppOptions {
   dbPath: string;
@@ -63,6 +79,7 @@ export interface M1AppOptions {
   classifier?: Classifier;
   markdownAdapter?: MarkdownCaptureAdapter;
   screenshotAdapter?: ScreenshotCaptureAdapter;
+  feishuBot?: RunNotificationBot | null;
 }
 
 export class M1App {
@@ -94,6 +111,8 @@ export class M1App {
 
   private readonly screenshotAdapter: ScreenshotCaptureAdapter;
 
+  private runNotificationBot: RunNotificationBot | null | undefined;
+
   private constructor(private readonly options: M1AppOptions) {
     this.clock = new SystemClock();
     this.classifier = options.classifier ?? null;
@@ -101,6 +120,7 @@ export class M1App {
     this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
     this.screenshotAdapter =
       options.screenshotAdapter ?? new PlaywrightScreenshotCaptureAdapter();
+    this.runNotificationBot = options.feishuBot;
   }
 
   static async create(options: M1AppOptions): Promise<M1App> {
@@ -362,6 +382,14 @@ export class M1App {
           errorName: error instanceof Error ? error.name : null,
           errorMessage,
           stack: error instanceof Error ? (error.stack ?? null) : null,
+        });
+        await this.notifyRunFinished({
+          runId,
+          site,
+          runType: input.runType,
+          updatePolicy: input.updatePolicy,
+          status: 'failed',
+          errorMessage,
         });
       }
 
@@ -642,6 +670,13 @@ export class M1App {
         event: 'crawl_finished',
         message: `Run ${runId} finished successfully`,
       });
+      await this.notifyRunFinished({
+        runId,
+        site,
+        runType: input.runType,
+        updatePolicy: input.updatePolicy,
+        status: 'succeeded',
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await this.runs.refreshCounts(runId);
@@ -652,6 +687,14 @@ export class M1App {
         event: 'crawl_error',
         message: `Run ${runId} failed: ${errorMessage}`,
         meta: { stack: error instanceof Error ? (error.stack ?? null) : null },
+      });
+      await this.notifyRunFinished({
+        runId,
+        site,
+        runType: input.runType,
+        updatePolicy: input.updatePolicy,
+        status: 'failed',
+        errorMessage,
       });
       throw error;
     }
@@ -664,5 +707,70 @@ export class M1App {
       pageRuns: await this.pageRuns.countByRun(runId),
       artifactRuns: await this.artifactRuns.countByRun(runId),
     };
+  }
+
+  private getRunNotificationBot(): RunNotificationBot | null {
+    if (this.runNotificationBot !== undefined) {
+      return this.runNotificationBot;
+    }
+
+    if (!process.env.FEISHU_BOT_WEBHOOK_ID) {
+      this.runNotificationBot = null;
+      return null;
+    }
+
+    this.runNotificationBot = new FeishuSimpleBot();
+    return this.runNotificationBot;
+  }
+
+  private async notifyRunFinished(input: RunNotificationInput): Promise<void> {
+    try {
+      const bot = this.getRunNotificationBot();
+
+      if (!bot) {
+        return;
+      }
+
+      const statusLabel = input.status === 'succeeded' ? '成功' : '失败';
+      const pageRuns = await this.pageRuns.countByRun(input.runId);
+      const artifactRuns = await this.artifactRuns.countByRun(input.runId);
+      const content: FeishuPostContent = [
+        [{ tag: 'text', text: `状态: ${statusLabel}` }],
+        [{ tag: 'text', text: `Run ID: ${input.runId}` }],
+        [{ tag: 'text', text: `站点: ${input.site.name} (#${input.site.id})` }],
+        [{ tag: 'text', text: `Base URL: ${input.site.baseUrl}` }],
+        [{ tag: 'text', text: `类型: ${input.runType}` }],
+        [{ tag: 'text', text: `更新策略: ${input.updatePolicy}` }],
+        [{ tag: 'text', text: `页面记录: ${pageRuns}` }],
+        [{ tag: 'text', text: `产物记录: ${artifactRuns}` }],
+      ];
+
+      if (input.errorMessage) {
+        content.push([{ tag: 'text', text: `错误: ${input.errorMessage.slice(0, 800)}` }]);
+      }
+
+      await bot.sendPost(`kvault run ${statusLabel}: #${input.runId} ${input.site.name}`, content);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn('Feishu run notification failed', {
+        runId: input.runId,
+        siteId: input.site.id,
+        status: input.status,
+        errorMessage,
+      });
+      try {
+        await this.runLogs.log({
+          crawlRunId: input.runId,
+          level: 'warn',
+          event: 'feishu_notification_failed',
+          message: `Feishu notification failed for run ${input.runId}: ${errorMessage}`,
+        });
+      } catch (logError) {
+        logger.warn('Failed to record Feishu notification failure', {
+          runId: input.runId,
+          errorMessage: logError instanceof Error ? logError.message : String(logError),
+        });
+      }
+    }
   }
 }

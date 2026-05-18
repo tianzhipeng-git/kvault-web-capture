@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { M1App } from '../src/app/services.js';
 import { openDatabase } from '../src/db/database.js';
+import type { FeishuPostContent } from '../src/utils/feishu-simple-bot.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
@@ -271,5 +272,45 @@ describe('seed run', () => {
     } finally {
       await db.close();
     }
+  });
+
+  it('sends a Feishu notification after a successful run', async () => {
+    const dir = createTempDir('kvault-run-notify-');
+    const server = await startTestSiteServer();
+    servers.push(server);
+
+    const sentMessages: Array<{ title: string; content: FeishuPostContent; lang?: string }> = [];
+    const app = await M1App.create({
+      dbPath: join(dir, 'state.db'),
+      feishuBot: {
+        async sendPost(title, content, lang) {
+          sentMessages.push({ title, content, lang });
+        },
+      },
+    });
+    apps.push(app);
+
+    const project = await app.createProject('Notify Project');
+    const site = await app.createSite({
+      projectSlug: project.slug,
+      name: 'notify-site',
+      baseUrl: server.baseUrl,
+      storageRoot: join(dir, 'storage'),
+    });
+
+    await app.runSeed({
+      siteId: site.id,
+      targetSuccessCount: 1,
+    });
+
+    expect(sentMessages).toHaveLength(1);
+    expect(sentMessages[0]!.title).toContain('kvault run 成功');
+    expect(sentMessages[0]!.content.flat().map((item) => item.text)).toEqual(
+      expect.arrayContaining([
+        '状态: 成功',
+        `站点: notify-site (#${site.id})`,
+        '类型: seed_run',
+      ]),
+    );
   });
 });
