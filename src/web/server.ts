@@ -126,10 +126,14 @@ function parseProjectExportOptions(value: unknown): ProjectExportOptions {
         typeof artifact === 'string' && allowedArtifacts.has(artifact as ProjectExportArtifact)
       ))
     : undefined;
+  const includeDeniedPages = typeof record.includeDeniedPages === 'boolean'
+    ? record.includeDeniedPages
+    : undefined;
 
   return {
     ...(siteIds ? { siteIds } : {}),
     ...(artifacts ? { artifacts } : {}),
+    ...(includeDeniedPages !== undefined ? { includeDeniedPages } : {}),
   };
 }
 

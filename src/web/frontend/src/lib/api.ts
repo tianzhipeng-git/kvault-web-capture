@@ -55,6 +55,7 @@ export type ProjectExportArtifact = "base" | "markdown" | "screenshot";
 export interface ProjectExportOptions {
   siteIds?: number[];
   artifacts?: ProjectExportArtifact[];
+  includeDeniedPages?: boolean;
 }
 
 export interface PreparedProjectExport {

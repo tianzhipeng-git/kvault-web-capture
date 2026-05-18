@@ -288,6 +288,29 @@ describe('project export', () => {
     expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/screenshot.png'))).toBe(false);
     expect([...baseOnlyEntries.keys()].filter((path) => path.endsWith('/page_info.json'))).toHaveLength(1);
 
+    const withoutDeniedOutputPath = join(dir, 'export-without-denied.zip');
+    const withoutDeniedResult = await app.exportProject(project.id, withoutDeniedOutputPath, {
+      siteIds: [site.id],
+      artifacts: [],
+      includeDeniedPages: false,
+    });
+    const withoutDeniedEntries = await readZipEntries(withoutDeniedResult.outputPath);
+    const withoutDeniedProjectInfo = JSON.parse(withoutDeniedEntries.get('project_info.json')!.toString('utf8')) as {
+      pageCount: number;
+      exportOptions: { includeDeniedPages: boolean };
+    };
+    const withoutDeniedPageListPath = [...withoutDeniedEntries.keys()].find((path) => path.endsWith('/page_list.xlsx'));
+    const withoutDeniedWorkbook = new ExcelJS.Workbook();
+    await withoutDeniedWorkbook.xlsx.load(
+      withoutDeniedEntries.get(withoutDeniedPageListPath!)! as unknown as Parameters<typeof workbook.xlsx.load>[0],
+    );
+    const withoutDeniedSheet = withoutDeniedWorkbook.getWorksheet('pages');
+    expect(withoutDeniedResult.pageCount).toBe(1);
+    expect(withoutDeniedProjectInfo.pageCount).toBe(1);
+    expect(withoutDeniedProjectInfo.exportOptions.includeDeniedPages).toBe(false);
+    expect(withoutDeniedSheet?.getRow(2).getCell(4).value).toBe(longUrl);
+    expect(withoutDeniedSheet?.getRow(3).getCell(4).value).toBeNull();
+
     const pageListOutputPath = join(dir, 'site-pages.xlsx');
     const pageListResult = await app.exportSitePageList({
       siteId: site.id,

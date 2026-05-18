@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ReactElement } from "react";
+import type { FormEvent, ReactElement } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ProcessingState, SitePageDetail, SitePageListRow } from "@/lib/api";
@@ -473,6 +473,7 @@ export function PageReview({
   const [status, setStatus] = useState("");
   const [label, setLabel] = useState("");
   const [pendingReason, setPendingReason] = useState("");
+  const [jumpPage, setJumpPage] = useState("1");
   const [isLoading, setIsLoading] = useState(false);
   const [detail, setDetail] = useState<SitePageDetail | null>(null);
   const [selectedPages, setSelectedPages] = useState<Map<number, { url: string; title: string }>>(new Map());
@@ -582,6 +583,28 @@ export function PageReview({
 
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
 
+  useEffect(() => {
+    setJumpPage(String(page));
+  }, [page]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const submitJumpPage = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const nextPage = Number.parseInt(jumpPage, 10);
+    if (Number.isNaN(nextPage)) {
+      setJumpPage(String(page));
+      return;
+    }
+    const clampedPage = Math.min(Math.max(nextPage, 1), totalPages);
+    setPage(clampedPage);
+    setJumpPage(String(clampedPage));
+  };
+
   return (
     <div className="space-y-4">
       <Card>
@@ -686,11 +709,25 @@ export function PageReview({
             </Table>
           </div>
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
             <div>共 {total} 条，当前第 {page} / {totalPages} 页</div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>上一页</Button>
               <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(current + 1, totalPages))}>下一页</Button>
+              <form className="flex items-center gap-2" onSubmit={submitJumpPage}>
+                <span className="whitespace-nowrap">跳至</span>
+                <Input
+                  className="h-9 w-20 text-center"
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpPage}
+                  onChange={(event) => setJumpPage(event.target.value)}
+                  aria-label="跳转页码"
+                />
+                <span className="whitespace-nowrap">页</span>
+                <Button variant="outline" size="sm" type="submit">跳转</Button>
+              </form>
             </div>
           </div>
         </CardContent>

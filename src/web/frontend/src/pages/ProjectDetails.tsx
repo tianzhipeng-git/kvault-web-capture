@@ -28,6 +28,7 @@ export function ProjectDetails() {
   const [selectedExportArtifacts, setSelectedExportArtifacts] = useState<Set<ProjectExportArtifact>>(
     new Set(["base", "markdown", "screenshot"]),
   );
+  const [includeDeniedPages, setIncludeDeniedPages] = useState(true);
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
   const storageRootEdited = useRef(false);
 
@@ -75,6 +76,7 @@ export function ProjectDetails() {
       const prepared = await api.prepareProjectExport(Number(projectId), {
         siteIds: [...selectedExportSiteIds],
         artifacts: [...selectedExportArtifacts],
+        includeDeniedPages,
       });
       const link = document.createElement("a");
       link.href = prepared.downloadUrl;
@@ -199,6 +201,22 @@ export function ProjectDetails() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>页面范围</Label>
+                <label className="flex items-start gap-3 rounded-md border px-3 py-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1 shrink-0"
+                    checked={includeDeniedPages}
+                    onChange={(event) => setIncludeDeniedPages(event.target.checked)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium text-foreground">导出“不采集”页面</span>
+                    <span className="block text-muted-foreground">关闭后，Excel 页面列表和 page 文件夹都会排除状态为“不采集”的页面。</span>
+                  </span>
+                </label>
               </div>
             </div>
             <DialogFooter>
