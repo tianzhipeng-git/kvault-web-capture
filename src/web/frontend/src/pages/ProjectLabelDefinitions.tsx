@@ -215,7 +215,7 @@ export function ProjectLabelDefinitions({ projectId }: { projectId: number }) {
 
             <div className="space-y-4">
               {labels.map((label, labelIndex) => (
-                <div key={`${label.key}-${labelIndex}`} className="rounded-md border bg-background">
+                <div key={labelIndex} className="rounded-md border bg-background">
                   <div className="grid min-h-12 grid-cols-[auto_1fr_auto_auto] items-center gap-3 px-3 py-2">
                     <Button variant="ghost" size="icon" onClick={() => toggleLabel(labelIndex)} title={expandedLabels.has(labelIndex) ? "折叠标签" : "展开标签"}>
                       {expandedLabels.has(labelIndex) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -286,7 +286,7 @@ export function ProjectLabelDefinitions({ projectId }: { projectId: number }) {
                           </Button>
                         </div>
                         {label.values_options.map((option, optionIndex) => (
-                          <div key={`${label.key}-option-${optionIndex}`} className="grid gap-2 md:grid-cols-[220px_1fr_auto]">
+                          <div key={optionIndex} className="grid gap-2 md:grid-cols-[220px_1fr_auto]">
                             <Input placeholder="value" value={option.value} onChange={(event) => updateOption(labelIndex, optionIndex, { value: event.target.value })} />
                             <Input placeholder="description" value={option.description} onChange={(event) => updateOption(labelIndex, optionIndex, { description: event.target.value })} />
                             <Button variant="ghost" size="icon" onClick={() => updateLabel(labelIndex, { values_options: label.values_options.filter((_, itemIndex) => itemIndex !== optionIndex) })} title="删除选项">

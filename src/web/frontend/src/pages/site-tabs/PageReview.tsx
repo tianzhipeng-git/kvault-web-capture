@@ -726,7 +726,7 @@ export function PageReview({
 
       {/* 重跑已选确认对话框 */}
       <Dialog open={confirmRecrawlOpen} onOpenChange={setConfirmRecrawlOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg min-w-0 overflow-hidden">
           <DialogHeader>
             <DialogTitle>确认重跑已选页面</DialogTitle>
           </DialogHeader>
@@ -736,9 +736,9 @@ export function PageReview({
               <li>更新策略：强制重新采集（force_recrawl_all）</li>
               <li>爬取深度：0（仅爬取所选页面，不递归）</li>
             </ul>
-            <div className="max-h-40 overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
+            <div className="max-h-40 min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border bg-muted/30 p-2 space-y-1">
               {[...selectedPages.values()].map((p) => (
-                <div key={p.url} className="text-xs truncate text-muted-foreground">{p.url}</div>
+                <div key={p.url} className="min-w-0 break-all text-xs leading-5 text-muted-foreground">{p.url}</div>
               ))}
             </div>
             <div className="flex justify-end gap-2 pt-2">
