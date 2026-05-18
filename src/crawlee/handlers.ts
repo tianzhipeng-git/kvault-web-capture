@@ -128,7 +128,7 @@ export function createBaseRequestHandler(deps: {
       classification,
       classificationError,
     });
-    const baseCapture = deps.artifactWriter.writeBaseCapture({
+    const baseCapture = await deps.artifactWriter.writeBaseCapture({
       runId: userData.runId,
       sitePageId: userData.sitePageId,
       content: renderBaseCaptureMarkdown({
@@ -344,7 +344,7 @@ async function captureAndRecordMarkdown(input: {
     document: input.document,
     finalUrl: input.finalUrl,
   });
-  const written = input.artifactWriter.writeTextArtifact({
+  const written = await input.artifactWriter.writeTextArtifact({
     artifactType: 'markdown',
     runId: input.userData.runId,
     sitePageId: input.userData.sitePageId,
@@ -502,7 +502,7 @@ export function createScreenshotRequestHandler(deps: {
       page: context.page,
       finalUrl: request.loadedUrl ?? request.url,
     });
-    const written = deps.artifactWriter.writeBinaryArtifact({
+    const written = await deps.artifactWriter.writeBinaryArtifact({
       artifactType: 'screenshot',
       runId: userData.runId,
       sitePageId: userData.sitePageId,

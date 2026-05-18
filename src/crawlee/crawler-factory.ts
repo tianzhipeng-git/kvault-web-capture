@@ -96,10 +96,11 @@ export interface CreateBaseCrawlerOptions {
  * Creates the base (Cheerio) crawler responsible for discovering and
  * classifying pages.
  *
- * Concurrency note: CheerioCrawler is pure HTTP — raising maxConcurrency
- * only adds parallel HTTP connections.  All repository calls use
- * better-sqlite3 (synchronous), so they serialize naturally on the Node.js
- * event loop and are safe under async concurrency.
+ * Concurrency note: CheerioCrawler is HTTP based, so raising maxConcurrency
+ * adds parallel request handlers. Repository calls are exposed as async APIs,
+ * but the default SQLite client uses node:sqlite DatabaseSync underneath; each
+ * DB call therefore runs synchronously on the Node.js event loop and cannot
+ * overlap with another SQLite call in the same process.
  */
 export function createBaseCrawler(options: CreateBaseCrawlerOptions): CheerioCrawler {
   return new CheerioCrawler(

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { access, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 import type { DbClient, DbValue } from '../../db/database.js';
@@ -12,13 +12,13 @@ function parseJson<T>(value: string | null): T | null {
   return JSON.parse(value) as T;
 }
 
-function readTextFile(path: string | null): string | null {
-  if (path === null || !existsSync(path)) {
+async function readTextFile(path: string | null): Promise<string | null> {
+  if (path === null) {
     return null;
   }
 
   try {
-    return readFileSync(path, 'utf8');
+    return await readFile(path, 'utf8');
   } catch {
     return null;
   }
@@ -977,7 +977,7 @@ export class SitePageDetailQuery {
       latestPreviews: {
         base: {
           outputPath: latestPageRun?.base_capture_path ?? null,
-          content: readTextFile(latestPageRun?.base_capture_path ?? null),
+          content: await readTextFile(latestPageRun?.base_capture_path ?? null),
         },
         markdown: {
           artifactRunId: markdownArtifact?.id ?? null,
@@ -1008,7 +1008,13 @@ export class SitePageDetailQuery {
       [siteId, artifactRunId],
     );
 
-    if (!artifact?.output_path || !existsSync(artifact.output_path)) {
+    if (!artifact?.output_path) {
+      throw new Error(`Artifact ${artifactRunId} not found`);
+    }
+
+    try {
+      await access(artifact.output_path);
+    } catch {
       throw new Error(`Artifact ${artifactRunId} not found`);
     }
 
@@ -1342,15 +1348,17 @@ export class RunLogQuery {
       return null;
     }
 
-    if (!existsSync(absolutePath)) {
+    let content: string;
+
+    try {
+      content = await readFile(absolutePath, 'utf8');
+    } catch {
       return {
         relativePath,
         content: '',
         truncated: false,
       };
     }
-
-    const content = readFileSync(absolutePath, 'utf8');
     const lines = content.split(/\r?\n/);
 
     if (tailLines <= 0 || lines.length <= tailLines) {

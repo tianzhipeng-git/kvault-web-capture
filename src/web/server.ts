@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { createReadStream, readFileSync, statSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -25,6 +27,28 @@ import { RunCoordinator } from './services/run-coordinator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const frontendDir = join(__dirname, 'frontend/dist');
+const textAssetCache = new Map<string, Promise<string>>();
+const binaryAssetCache = new Map<string, Promise<Buffer>>();
+const DEFAULT_EVENT_LOOP_DELAY_INTERVAL_MS = 5000;
+const DEFAULT_EVENT_LOOP_DELAY_THRESHOLD_MS = 100;
+
+interface EventLoopDelaySnapshot {
+  intervalMs: number;
+  thresholdMs: number;
+  minMs: number;
+  meanMs: number;
+  maxMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  activeRunCount: number;
+  createdAt: string;
+}
+
+interface EventLoopDelayMonitorHandle {
+  getSnapshot(): EventLoopDelaySnapshot | null;
+  close(): void;
+}
 
 function parseSiteId(value: string): number {
   const siteId = Number(value);
@@ -115,8 +139,85 @@ function artifactContentType(path: string, artifactType: string): string {
   }
 }
 
-function readFrontendAsset(name: string): string {
-  return readFileSync(join(frontendDir, name), 'utf8');
+function readFrontendAsset(name: string): Promise<string> {
+  const cached = textAssetCache.get(name);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = readFile(join(frontendDir, name), 'utf8');
+  textAssetCache.set(name, pending);
+  return pending;
+}
+
+function readFrontendBinaryAsset(name: string): Promise<Buffer> {
+  const cached = binaryAssetCache.get(name);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = readFile(join(frontendDir, 'assets', name));
+  binaryAssetCache.set(name, pending);
+  return pending;
+}
+
+function nanosecondsToMs(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Number((value / 1_000_000).toFixed(2));
+}
+
+function parsePositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function startEventLoopDelayMonitor(input: {
+  intervalMs: number;
+  thresholdMs: number;
+  getActiveRunCount: () => number;
+}): EventLoopDelayMonitorHandle {
+  const histogram = monitorEventLoopDelay({ resolution: 20 });
+  let latestSnapshot: EventLoopDelaySnapshot | null = null;
+
+  histogram.enable();
+
+  const interval = setInterval(() => {
+    const activeRunCount = input.getActiveRunCount();
+    const snapshot: EventLoopDelaySnapshot = {
+      intervalMs: input.intervalMs,
+      thresholdMs: input.thresholdMs,
+      minMs: nanosecondsToMs(histogram.min),
+      meanMs: nanosecondsToMs(histogram.mean),
+      maxMs: nanosecondsToMs(histogram.max),
+      p50Ms: nanosecondsToMs(histogram.percentile(50)),
+      p95Ms: nanosecondsToMs(histogram.percentile(95)),
+      p99Ms: nanosecondsToMs(histogram.percentile(99)),
+      activeRunCount,
+      createdAt: new Date().toISOString(),
+    };
+
+    latestSnapshot = snapshot;
+
+    if (activeRunCount > 0 || snapshot.p99Ms >= input.thresholdMs) {
+      const log = snapshot.p99Ms >= input.thresholdMs ? console.warn : console.info;
+      log('[web] event_loop_delay', snapshot);
+    }
+
+    histogram.reset();
+  }, input.intervalMs);
+
+  interval.unref?.();
+
+  return {
+    getSnapshot: () => latestSnapshot,
+    close: () => {
+      clearInterval(interval);
+      histogram.disable();
+    },
+  };
 }
 
 async function waitForLatestRun(
@@ -143,6 +244,8 @@ export interface WebServerOptions {
   host?: string;
   maxConcurrentRuns?: number;
   sessionTtlMs?: number;
+  eventLoopDelayMonitorIntervalMs?: number;
+  eventLoopDelayWarningThresholdMs?: number;
 }
 
 export async function createWebServer(options: WebServerOptions): Promise<FastifyInstance> {
@@ -160,10 +263,26 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   const runQuery = new RunSummaryQuery(queryDb);
   const runLogQuery = new RunLogQuery(queryDb);
   const pendingReviewQuery = new PendingReviewQuery(queryDb);
+  const eventLoopDelayMonitor = startEventLoopDelayMonitor({
+    intervalMs:
+      options.eventLoopDelayMonitorIntervalMs ??
+      parsePositiveNumber(
+        process.env.KVAULT_EVENT_LOOP_DELAY_INTERVAL_MS,
+        DEFAULT_EVENT_LOOP_DELAY_INTERVAL_MS,
+      ),
+    thresholdMs:
+      options.eventLoopDelayWarningThresholdMs ??
+      parsePositiveNumber(
+        process.env.KVAULT_EVENT_LOOP_DELAY_THRESHOLD_MS,
+        DEFAULT_EVENT_LOOP_DELAY_THRESHOLD_MS,
+      ),
+    getActiveRunCount: () => coordinator.listActiveRuns().length,
+  });
 
   await auth.register(server);
 
   server.addHook('onClose', async () => {
+    eventLoopDelayMonitor.close();
     await app.close();
     await queryDb.close();
   });
@@ -178,32 +297,33 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/health', async () => ({
     status: 'ok',
     activeRuns: coordinator.listActiveRuns(),
+    eventLoopDelay: eventLoopDelayMonitor.getSnapshot(),
   }));
 
-  server.setNotFoundHandler((request, reply) => {
+  server.setNotFoundHandler(async (request, reply) => {
     if (request.method === 'GET' && !request.url.startsWith('/api/')) {
-      reply.type('text/html; charset=utf-8').send(readFrontendAsset('index.html'));
+      reply.type('text/html; charset=utf-8').send(await readFrontendAsset('index.html'));
       return;
     }
     reply.code(404).send({ message: 'Not found' });
   });
 
   server.get('/', async (_request, reply) => {
-    reply.type('text/html; charset=utf-8').send(readFrontendAsset('index.html'));
+    reply.type('text/html; charset=utf-8').send(await readFrontendAsset('index.html'));
   });
 
   server.get('/app.js', async (_request, reply) => {
-    reply.type('application/javascript; charset=utf-8').send(readFrontendAsset('app.js'));
+    reply.type('application/javascript; charset=utf-8').send(await readFrontendAsset('app.js'));
   });
 
   server.get('/styles.css', async (_request, reply) => {
-    reply.type('text/css; charset=utf-8').send(readFrontendAsset('styles.css'));
+    reply.type('text/css; charset=utf-8').send(await readFrontendAsset('styles.css'));
   });
 
   server.get('/assets/:file', async (request, reply) => {
     const params = request.params as { file: string };
     try {
-      reply.send(readFileSync(join(frontendDir, 'assets', params.file)));
+      reply.send(await readFrontendBinaryAsset(params.file));
     } catch {
       reply.code(404).send('Not found');
     }
@@ -311,10 +431,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.post('/api/projects/:projectId/export', async (request, reply) => {
     const params = request.params as { projectId: string };
     const result = await app.exportProject(parseProjectId(params.projectId));
+    const fileStat = await stat(result.outputPath);
     return reply
       .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
-      .header('Content-Length', statSync(result.outputPath).size)
+      .header('Content-Length', fileStat.size)
       .send(createReadStream(result.outputPath));
   });
 
@@ -545,11 +666,12 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       discoverySource: query.discoverySource,
       crawlRunId,
     });
+    const fileStat = await stat(result.outputPath);
 
     return reply
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
-      .header('Content-Length', statSync(result.outputPath).size)
+      .header('Content-Length', fileStat.size)
       .send(createReadStream(result.outputPath));
   });
 
@@ -557,7 +679,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string; sitePageId: string };
     return sitePageDetailQuery.getPageDetail(
       parseSiteId(params.siteId),
-      parseRunId(params.sitePageId),
+      parseSitePageId(params.sitePageId),
     );
   });
 
@@ -569,7 +691,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     );
     reply
       .type(artifactContentType(artifact.outputPath, artifact.artifactType))
-      .send(readFileSync(artifact.outputPath));
+      .send(createReadStream(artifact.outputPath));
   });
 
   server.get('/api/sites/:siteId/pending-review', async (request) => {

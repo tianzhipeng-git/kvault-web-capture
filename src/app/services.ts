@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 
 import { Configuration } from 'crawlee';
 
@@ -289,7 +289,7 @@ export class M1App {
       throw new Error(`Site ${input.siteId} not found`);
     }
 
-    mkdirSync(site.storageRoot, { recursive: true });
+    await mkdir(site.storageRoot, { recursive: true });
 
     const runId = await this.runs.createRun({
       siteId: site.id,
@@ -299,7 +299,7 @@ export class M1App {
       configSnapshot: site.config,
     });
 
-    const runtimeLog = openRuntimeLog({
+    const runtimeLog = await openRuntimeLog({
       storageRoot: site.storageRoot,
       runId,
     });
@@ -324,7 +324,7 @@ export class M1App {
         return this.executeRunWithRuntime(input, runId);
       });
     } finally {
-      runtimeLog.close();
+      await runtimeLog.close();
     }
   }
 

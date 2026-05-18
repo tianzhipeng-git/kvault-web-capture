@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { mkdirSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import pino, { type Logger as PinoLogger } from 'pino';
@@ -7,6 +7,7 @@ import { LoggerJson, log as crawleeLog } from 'crawlee';
 
 interface RuntimeLogDestination {
   write: (line: string) => unknown;
+  flush?: (callback?: () => void) => void;
   flushSync?: () => void;
   end?: () => void;
 }
@@ -16,7 +17,7 @@ export interface RuntimeLogHandle {
   absolutePath: string;
   logger: PinoLogger;
   destination: RuntimeLogDestination;
-  close: () => void;
+  close: () => Promise<void>;
 }
 
 interface RuntimeLogContext {
@@ -52,22 +53,22 @@ function installCrawleeLogBridge(): void {
   crawleeBridgeInstalled = true;
 }
 
-export function openRuntimeLog(input: {
+export async function openRuntimeLog(input: {
   storageRoot: string;
   runId: number;
-}): RuntimeLogHandle {
+}): Promise<RuntimeLogHandle> {
   installCrawleeLogBridge();
 
   const relativePath = ['runs', String(input.runId), 'runtime.log'].join('/');
   const absolutePath = join(input.storageRoot, ...relativePath.split('/'));
 
-  mkdirSync(join(input.storageRoot, 'runs', String(input.runId)), { recursive: true });
+  await mkdir(join(input.storageRoot, 'runs', String(input.runId)), { recursive: true });
 
   const destination = pino.destination({
     dest: absolutePath,
     append: true,
     mkdir: true,
-    sync: true,
+    sync: false,
   });
   const logger = pino(
     {
@@ -85,9 +86,16 @@ export function openRuntimeLog(input: {
     absolutePath,
     logger,
     destination,
-    close: () => {
-      destination.flushSync();
-      destination.end();
+    close: async () => {
+      await new Promise<void>((resolve) => {
+        if (destination.flush) {
+          destination.flush(() => resolve());
+          return;
+        }
+        destination.flushSync?.();
+        resolve();
+      });
+      destination.end?.();
     },
   };
 }
