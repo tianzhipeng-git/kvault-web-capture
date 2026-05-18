@@ -223,7 +223,7 @@ describe('seed run', () => {
     });
   });
 
-  it('marks runs failed when startup planning fails before the crawler starts', async () => {
+  it('skips invalid startup URLs without failing the run', async () => {
     const dir = createTempDir('kvault-planning-failure-');
     const dbPath = join(dir, 'state.db');
     const app = await M1App.create({ dbPath });
@@ -245,7 +245,11 @@ describe('seed run', () => {
         staleAfterMs: null,
         initialUrls: ['not-a-url'],
       }),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject({
+      runId: expect.any(Number),
+      pageRuns: 0,
+      artifactRuns: 0,
+    });
 
     const db = await openDatabase({ path: dbPath });
 
@@ -255,15 +259,15 @@ describe('seed run', () => {
         [site.id],
       );
 
-      expect(run?.status).toBe('failed');
-      expect(run?.error_message).toContain('Invalid URL');
+      expect(run?.status).toBe('succeeded');
+      expect(run?.error_message).toBeNull();
 
-      const errorLog = await db.get<{ event: string; message: string }>(
+      const skipLog = await db.get<{ event: string; message: string }>(
         'SELECT event, message FROM run_logs WHERE crawl_run_id = ? AND event = ?',
-        [run!.id, 'crawl_error'],
+        [run!.id, 'url_plan_skipped'],
       );
 
-      expect(errorLog?.message).toContain(`Run ${run!.id} failed`);
+      expect(skipLog?.message).toContain('[plan] SKIPPED invalid URL not-a-url');
     } finally {
       await db.close();
     }

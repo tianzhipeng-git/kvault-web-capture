@@ -22,3 +22,7 @@ export function normalizeUrl(input: string): string {
 
   return url.toString();
 }
+
+export function isInvalidUrlError(error: unknown): boolean {
+  return error instanceof TypeError && error.message === 'Invalid URL';
+}

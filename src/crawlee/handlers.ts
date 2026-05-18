@@ -26,6 +26,7 @@ import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 import { logger } from '../utils/runtime-logger.js';
+import { isInvalidUrlError } from '../utils/url.js';
 import type { RunTargetTracker } from './run-target-tracker.js';
 
 type MarkdownRequestUserDataWithState = MarkdownRequestUserData & {
@@ -272,7 +273,39 @@ export function createBaseRequestHandler(deps: {
         runType: deps.runType,
         updatePolicy: deps.updatePolicy,
         staleAfterMs: deps.staleAfterMs,
+      }).catch(async (error) => {
+        if (!isInvalidUrlError(error)) {
+          throw error;
+        }
+
+        logger.warn('Skipped invalid discovered URL', {
+          runId: userData.runId,
+          siteId: userData.siteId,
+          discoveredUrl: link,
+          referrerUrl: extracted.normalizedUrl,
+          errorMessage: error.message,
+        });
+        await deps.runLog.log({
+          crawlRunId: userData.runId,
+          level: 'warn',
+          event: 'url_plan_skipped',
+          url: link,
+          sitePageId: userData.sitePageId,
+          pageRunId,
+          message: `[plan] SKIPPED invalid URL ${link}`,
+          meta: {
+            reason: 'invalid_url',
+            discoverySource: 'page_link',
+            discoveryReferrerUrl: extracted.normalizedUrl,
+            errorMessage: error.message,
+          },
+        });
+        return null;
       });
+
+      if (plannedRequest === null) {
+        continue;
+      }
 
       if (!plannedRequest.enqueue) {
         continue;

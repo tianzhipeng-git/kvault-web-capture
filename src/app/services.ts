@@ -52,6 +52,7 @@ import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screensho
 
 import { SystemClock } from '../utils/clock.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
+import { isInvalidUrlError } from '../utils/url.js';
 
 
 
@@ -432,7 +433,41 @@ export class M1App {
         runType: input.runType,
         updatePolicy: input.updatePolicy,
         staleAfterMs: input.staleAfterMs,
+      }).catch(async (error) => {
+        if (!isInvalidUrlError(error)) {
+          throw error;
+        }
+
+        plannedSkipCount += 1;
+        planDecisionCounts.set(
+          'invalid_url',
+          (planDecisionCounts.get('invalid_url') ?? 0) + 1,
+        );
+        logger.warn('Skipped invalid startup URL candidate', {
+          runId,
+          siteId: site.id,
+          discoveredUrl: candidate.url,
+          discoverySource: candidate.discoverySource,
+          errorMessage: error.message,
+        });
+        await this.runLogs.log({
+          crawlRunId: runId,
+          level: 'warn',
+          event: 'url_plan_skipped',
+          url: candidate.url,
+          message: `[plan] SKIPPED invalid URL ${candidate.url}`,
+          meta: {
+            reason: 'invalid_url',
+            discoverySource: candidate.discoverySource,
+            errorMessage: error.message,
+          },
+        });
+        return null;
       });
+
+      if (planned === null) {
+        continue;
+      }
 
       const skippedByStartupLimit =
         planned.enqueue &&
