@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,6 +100,8 @@ export function RuleListEditor({
   allowedListTypes?: ListType[];
   onAssistRule?: (rule: Rule, index: number) => void;
 }) {
+  const hasScopelist = rules.some((rule) => rule.listType === 'scopelist');
+
   const addRule = () => {
     const newRule: UrlRule = {
       name: `rule-${Date.now()}`,
@@ -134,6 +136,11 @@ export function RuleListEditor({
 
   return (
     <div className="space-y-4">
+      {hasScopelist && (
+        <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          多条 Scopelist 规则之间是“且”关系：页面必须同时满足所有 Scopelist；同一条 URL 规则里的多个匹配值是“或”关系。
+        </div>
+      )}
       {rules.map((rule, i) => (
         <RuleEditorItem
           key={i} // Using index is fine here if we manage order carefully, but ideally we'd use rule.name if unique
@@ -344,17 +351,50 @@ function UrlRuleFormFields({ rule, onChange }: { rule: UrlRule; onChange: (r: Ur
       </div>
       <div className="space-y-1 col-span-1 md:col-span-3">
         <Label className="text-xs">匹配值 (每行一个)</Label>
-        <textarea
-          className="min-h-10 w-full rounded-md border border-input bg-background p-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          value={rule.values.join('\n')}
-          onChange={(e) => {
-            const lines = e.target.value.split('\n').map(l => l.trim()).filter(Boolean);
-            onChange({ ...rule, values: lines });
-          }}
+        <p className="text-xs text-muted-foreground">
+          同一条 URL 规则内，任意一行匹配就算命中；前缀匹配会自动忽略 http:// 或 https://。
+        </p>
+        <RuleValuesTextarea
+          values={rule.values}
+          onChange={(values) => onChange({ ...rule, values })}
           placeholder={rule.ruleType === 'prefix' ? 'example.com/docs/' : '^example\\.com/.*'}
         />
       </div>
     </div>
+  );
+}
+
+function parseRuleValues(value: string): string[] {
+  return value.split('\n').map((line) => line.trim()).filter(Boolean);
+}
+
+function RuleValuesTextarea({
+  values,
+  onChange,
+  placeholder,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+}) {
+  const valuesText = values.join('\n');
+  const [draft, setDraft] = useState(valuesText);
+
+  useEffect(() => {
+    setDraft(valuesText);
+  }, [valuesText]);
+
+  return (
+    <textarea
+      className="min-h-10 w-full rounded-md border border-input bg-background p-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      value={draft}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        onChange(parseRuleValues(event.target.value));
+      }}
+      onBlur={() => setDraft(parseRuleValues(draft).join('\n'))}
+      placeholder={placeholder}
+    />
   );
 }
 
