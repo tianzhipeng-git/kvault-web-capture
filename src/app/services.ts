@@ -53,6 +53,7 @@ import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screensho
 import { SystemClock } from '../utils/clock.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
 import { isInvalidUrlError } from '../utils/url.js';
+import { buildPathTree, type PathTreeResult } from '../utils/path-tree.js';
 
 
 
@@ -262,6 +263,16 @@ export class M1App {
 
   async listDeniedPages(siteId: number): Promise<InventoryPageRow[]> {
     return this.sitePages.listByInventoryStatus(siteId, 'url_rule_denied');
+  }
+
+  async getSitePathTree(siteId: number): Promise<PathTreeResult> {
+    const site = await this.sites.getById(siteId);
+
+    if (!site) {
+      throw new Error(`Site ${siteId} not found`);
+    }
+
+    return buildPathTree((await this.sitePages.listKnownUrls(siteId)).map((row) => row.normalizedUrl));
   }
 
   async listSampleCaptures(siteId: number, limit: number): Promise<SampleCaptureRow[]> {

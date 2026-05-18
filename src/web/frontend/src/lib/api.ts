@@ -35,6 +35,21 @@ export interface RuntimeLogResponse {
   truncated: boolean;
 }
 
+export interface PathTreeNode {
+  name: string;
+  kind: "root" | "domain" | "path";
+  pageCount: number;
+  terminalCount: number;
+  children: PathTreeNode[];
+}
+
+export interface PathTreeResponse {
+  totalUrls: number;
+  skippedUrls: string[];
+  root: PathTreeNode;
+  text: string;
+}
+
 export type ProjectExportArtifact = "base" | "markdown" | "screenshot";
 
 export interface ProjectExportOptions {
@@ -267,6 +282,7 @@ export const api = {
   }),
   
   getSiteOverview: (siteId: number) => fetchApi(`/api/sites/${siteId}/overview`),
+  getSitePathTree: (siteId: number): Promise<PathTreeResponse> => fetchApi(`/api/sites/${siteId}/path-tree`),
   getSiteConfig: (siteId: number) => fetchApi(`/api/sites/${siteId}/config`),
   updateSiteConfig: (siteId: number, config: any) => fetchApi(`/api/sites/${siteId}/config`, {
     method: 'PUT',

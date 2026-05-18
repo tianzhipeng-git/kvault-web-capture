@@ -1,12 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, AlertTriangle, CheckCircle2, Compass, Settings2 } from "lucide-react";
+import { SitePathTreePanel } from "./SitePathTreePanel";
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "-";
 }
 
-export function SiteOverview({ site }: { site: any }) {
+export function SiteOverview({ site, siteId }: { site: any; siteId: number }) {
   const cards = [
     { label: "已知页面", value: site.totalPages || 0, tone: "text-foreground" },
     { label: "已完成采集", value: site.pagesCaptured || 0, tone: "text-green-600" },
@@ -28,6 +29,8 @@ export function SiteOverview({ site }: { site: any }) {
           </Card>
         ))}
       </div>
+
+      <SitePathTreePanel siteId={siteId} />
 
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <Card>

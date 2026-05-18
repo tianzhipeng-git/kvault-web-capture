@@ -213,6 +213,24 @@ describe('web server', () => {
     expect(overview.pagesNeedReview).toBeGreaterThan(0);
     expect(overview.workflowSteps.map((step) => step.title)).toContain('确认采集规则');
 
+    const pathTreeResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.id}/path-tree`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const pathTree = pathTreeResponse.json() as {
+      totalUrls: number;
+      root: { children: Array<{ name: string }> };
+      text: string;
+    };
+    const expectedTld = new URL(siteServer.baseUrl).hostname.split('.').at(-1);
+    expect(pathTreeResponse.statusCode).toBe(200);
+    expect(pathTree.totalUrls).toBeGreaterThan(0);
+    expect(pathTree.root.children.map((node) => node.name)).toContain(expectedTld);
+    expect(pathTree.text).toContain(expectedTld);
+
     const runLogsResponse = await webServer.inject({
       method: 'GET',
       url: `/api/runs/${runId}/logs`,

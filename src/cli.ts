@@ -34,6 +34,7 @@ function printUsage(): void {
   node --import tsx src/cli.ts run:seed --site <site-id> [--target-success-count <n>] [--db ./.local/state.db]
   node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:inventory-summary --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:path-tree --site <site-id> [--format text|json] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:denied --site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:sample-captures --site <site-id> [--limit 5] [--db ./.local/state.db]`);
@@ -117,6 +118,22 @@ async function main(): Promise<void> {
           JSON.stringify(await app.getInventorySummary(Number(getRequiredArg('--site'))), null, 2),
         );
         return;
+      }
+      case 'site:path-tree': {
+        const format = getArg('--format', 'text');
+        const result = await app.getSitePathTree(Number(getRequiredArg('--site')));
+
+        if (format === 'json') {
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+
+        if (format === 'text') {
+          console.log(result.text);
+          return;
+        }
+
+        throw new Error('--format must be text or json');
       }
       case 'site:pending': {
         console.log(JSON.stringify(await app.listPendingPages(Number(getRequiredArg('--site'))), null, 2));

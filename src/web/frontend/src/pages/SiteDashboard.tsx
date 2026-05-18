@@ -50,7 +50,7 @@ export function SiteDashboard() {
 
         <div className="mt-4">
           <Routes>
-            <Route path="overview" element={<SiteOverview site={site} />} />
+            <Route path="overview" element={<SiteOverview site={site} siteId={Number(siteId)} />} />
             <Route path="config" element={<SiteConfig siteId={Number(siteId)} />} />
             <Route path="seed" element={<SiteSeed siteId={Number(siteId)} />} />
             <Route path="crawl" element={<SiteCrawl siteId={Number(siteId)} />} />

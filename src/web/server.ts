@@ -719,6 +719,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return siteOverviewQuery.getSiteOverview(parseSiteId(params.siteId));
   });
 
+  server.get('/api/sites/:siteId/path-tree', async (request) => {
+    const params = request.params as { siteId: string };
+    return app.getSitePathTree(parseSiteId(params.siteId));
+  });
+
   server.get('/api/sites/:siteId/pages', async (request) => {
     const params = request.params as { siteId: string };
     const query = request.query as Record<string, string | undefined>;
