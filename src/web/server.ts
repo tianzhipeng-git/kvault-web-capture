@@ -782,8 +782,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       parseSiteId(params.siteId),
       parseArtifactRunId(params.artifactRunId),
     );
-    reply
+    const fileStat = await stat(artifact.outputPath);
+
+    return reply
       .type(artifactContentType(artifact.outputPath, artifact.artifactType))
+      .header('Content-Length', fileStat.size)
       .send(createReadStream(artifact.outputPath));
   });
 

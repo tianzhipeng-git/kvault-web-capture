@@ -1,8 +1,10 @@
-import { join } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createWebServer } from '../src/web/server.js';
+import { openDatabase } from '../src/db/database.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
 
@@ -285,5 +287,127 @@ describe('web server', () => {
     expect(pageDetail.runHistory.some((run) => run.runId === runId && run.pageRuns.length > 0)).toBe(
       true,
     );
+  });
+
+  it('serves screenshot artifact files with their real content length', async () => {
+    const dir = createTempDir('kvault-web-artifact-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 2,
+    });
+    servers.push(webServer);
+    const authCookie = await login(webServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const screenshotPath = join(dir, 'storage', 'artifacts', 'run-1', 'page-1', 'screenshot.png');
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await mkdir(dirname(screenshotPath), { recursive: true });
+    await writeFile(screenshotPath, pngBytes);
+
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Artifact Project', 'artifact-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'artifact-site',
+        'https://example.com',
+        join(dir, 'storage'),
+        JSON.stringify({ seedUrls: [], sitemaps: [], rulesBeforeBaseEq: [], rulesBeforeStage2Eq: [] }),
+        now,
+        now,
+      ],
+    );
+    const run = await db.run(
+      `INSERT INTO crawl_runs (
+        site_id, run_type, update_policy, config_snapshot_json, status, started_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        site.lastInsertId,
+        'crawl_run',
+        'always',
+        JSON.stringify({ seedUrls: [], sitemaps: [], rulesBeforeBaseEq: [], rulesBeforeStage2Eq: [] }),
+        'succeeded',
+        now,
+      ],
+    );
+    const page = await db.run(
+      `INSERT INTO site_pages (
+        site_id, discovered_url, normalized_url, inventory_status, discovery_source,
+        last_stage_decision_json, first_discovered_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        site.lastInsertId,
+        'https://example.com/page',
+        'https://example.com/page',
+        'stage2_captured',
+        'seed',
+        JSON.stringify({ outcome: 'allow', requiredArtifacts: ['screenshot'] }),
+        now,
+        now,
+        now,
+      ],
+    );
+    const pageRun = await db.run(
+      `INSERT INTO page_runs (
+        crawl_run_id, site_page_id, started_at, finished_at, base_capture_status,
+        title, meta_description, body_text, classification_labels_json, rule_outcome,
+        decision_outcome, required_artifacts_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.lastInsertId,
+        page.lastInsertId,
+        now,
+        now,
+        'succeeded',
+        'Artifact page',
+        '',
+        '',
+        '{}',
+        'allow',
+        'allow',
+        '["screenshot"]',
+      ],
+    );
+    const artifact = await db.run(
+      `INSERT INTO artifact_runs (
+        crawl_run_id, page_run_id, site_page_id, artifact_type, status,
+        started_at, finished_at, output_path, content, error_message, meta_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.lastInsertId,
+        pageRun.lastInsertId,
+        page.lastInsertId,
+        'screenshot',
+        'succeeded',
+        now,
+        now,
+        screenshotPath,
+        null,
+        null,
+        '{"tool":"test"}',
+      ],
+    );
+
+    const response = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.lastInsertId}/artifacts/${artifact.lastInsertId}/file`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/png');
+    expect(response.headers['content-length']).toBe(String(pngBytes.length));
+    expect(response.rawPayload).toEqual(pngBytes);
+    await db.close();
   });
 });
