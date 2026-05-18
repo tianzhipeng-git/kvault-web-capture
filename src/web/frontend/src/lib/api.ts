@@ -35,6 +35,13 @@ export interface RuntimeLogResponse {
   truncated: boolean;
 }
 
+export type ProjectExportArtifact = "base" | "markdown" | "screenshot";
+
+export interface ProjectExportOptions {
+  siteIds?: number[];
+  artifacts?: ProjectExportArtifact[];
+}
+
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
@@ -228,8 +235,10 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ labelDefinitions })
   }),
-  exportProject: (projectId: number): Promise<{ blob: Blob; filename: string }> => fetchBlobApi(`/api/projects/${projectId}/export`, {
-    method: 'POST'
+  exportProject: (projectId: number, options?: ProjectExportOptions): Promise<{ blob: Blob; filename: string }> => fetchBlobApi(`/api/projects/${projectId}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options ?? {})
   }),
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),

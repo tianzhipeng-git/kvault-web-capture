@@ -5,6 +5,7 @@ import { Configuration } from 'crawlee';
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import {
   ProjectExporter,
+  type ProjectExportOptions,
   type ProjectExportResult,
   type SitePageListExportInput,
   type SitePageListExportResult,
@@ -266,8 +267,12 @@ export class M1App {
     return this.pageRuns.listSampleCaptures(siteId, limit);
   }
 
-  exportProject(projectId: number, outputPath?: string): Promise<ProjectExportResult> {
-    return this.projectExporter.exportProject({ projectId, outputPath });
+  exportProject(
+    projectId: number,
+    outputPath?: string,
+    options?: ProjectExportOptions,
+  ): Promise<ProjectExportResult> {
+    return this.projectExporter.exportProject({ projectId, outputPath, options });
   }
 
   exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {

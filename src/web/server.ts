@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { M1App } from '../app/services.js';
+import type { ProjectExportArtifact, ProjectExportOptions } from '../export/project-exporter.js';
 import { openDatabase } from '../db/database.js';
 import { chatCompletion, type ChatCompletionMessageParam } from '../utils/llm_chat.js';
 import { fetchAndRenderPrompt } from '../utils/llm_prompts.js';
@@ -98,6 +99,30 @@ function parseArtifactRunId(value: string): number {
   }
 
   return artifactRunId;
+}
+
+function parseProjectExportOptions(value: unknown): ProjectExportOptions {
+  if (typeof value !== 'object' || value === null) {
+    return {};
+  }
+
+  const record = value as Record<string, unknown>;
+  const siteIds = Array.isArray(record.siteIds)
+    ? record.siteIds
+        .map((siteId) => typeof siteId === 'number' ? siteId : Number(siteId))
+        .filter((siteId) => Number.isInteger(siteId) && siteId > 0)
+    : undefined;
+  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot']);
+  const artifacts = Array.isArray(record.artifacts)
+    ? record.artifacts.filter((artifact): artifact is ProjectExportArtifact => (
+        typeof artifact === 'string' && allowedArtifacts.has(artifact as ProjectExportArtifact)
+      ))
+    : undefined;
+
+  return {
+    ...(siteIds ? { siteIds } : {}),
+    ...(artifacts ? { artifacts } : {}),
+  };
 }
 
 function parseLlmHistory(value: unknown): ChatCompletionMessageParam[] {
@@ -430,7 +455,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.post('/api/projects/:projectId/export', async (request, reply) => {
     const params = request.params as { projectId: string };
-    const result = await app.exportProject(parseProjectId(params.projectId));
+    const result = await app.exportProject(
+      parseProjectId(params.projectId),
+      undefined,
+      parseProjectExportOptions(request.body),
+    );
     const fileStat = await stat(result.outputPath);
     return reply
       .type('application/zip')

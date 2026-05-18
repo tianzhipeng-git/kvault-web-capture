@@ -3,12 +3,13 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Globe, ChevronRight, Download, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { ProjectLabelDefinitions } from "./ProjectLabelDefinitions";
+import type { ProjectExportArtifact } from "@/lib/api";
 
 function toPathSegment(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || name.trim();
@@ -20,14 +21,23 @@ export function ProjectDetails() {
   const [projectSlug, setProjectSlug] = useState("");
   const [projectName, setProjectName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [selectedExportSiteIds, setSelectedExportSiteIds] = useState<Set<number>>(new Set());
+  const [selectedExportArtifacts, setSelectedExportArtifacts] = useState<Set<ProjectExportArtifact>>(
+    new Set(["base", "markdown", "screenshot"]),
+  );
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
   const storageRootEdited = useRef(false);
 
   const loadSites = () => {
     if (projectId) {
-      api.getSites(Number(projectId)).then(data => setSites(data.items || []));
+      api.getSites(Number(projectId)).then(data => {
+        const nextSites = data.items || [];
+        setSites(nextSites);
+        setSelectedExportSiteIds(new Set(nextSites.map((site: any) => site.siteId)));
+      });
     }
   };
 
@@ -62,7 +72,10 @@ export function ProjectDetails() {
     setExportError("");
 
     try {
-      const { blob, filename } = await api.exportProject(Number(projectId));
+      const { blob, filename } = await api.exportProject(Number(projectId), {
+        siteIds: [...selectedExportSiteIds],
+        artifacts: [...selectedExportArtifacts],
+      });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -71,11 +84,36 @@ export function ProjectDetails() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      setIsExportDialogOpen(false);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "导出失败");
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const allSitesSelected = sites.length > 0 && sites.every((site) => selectedExportSiteIds.has(site.siteId));
+  const toggleExportSite = (siteId: number, checked: boolean) => {
+    setSelectedExportSiteIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(siteId);
+      } else {
+        next.delete(siteId);
+      }
+      return next;
+    });
+  };
+  const toggleExportArtifact = (artifact: ProjectExportArtifact, checked: boolean) => {
+    setSelectedExportArtifacts((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(artifact);
+      } else {
+        next.delete(artifact);
+      }
+      return next;
+    });
   };
 
   return (
@@ -91,15 +129,89 @@ export function ProjectDetails() {
           <h1 className="text-3xl font-bold tracking-tight">项目详情</h1>
           <p className="text-muted-foreground mt-1">管理该项目下的采集站点和 LLM 标签定义</p>
         </div>
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={handleExport}
-          disabled={isExporting || !projectId}
-        >
-          {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          {isExporting ? "正在打包..." : "导出项目"}
-        </Button>
+        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled={isExporting || !projectId}
+            >
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {isExporting ? "正在打包..." : "导出项目"}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl min-w-0 overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>导出项目</DialogTitle>
+              <DialogDescription>选择要打包的站点和 artifact。artifact 全不选时只导出 Excel 页面列表。</DialogDescription>
+            </DialogHeader>
+            <div className="min-w-0 space-y-5 py-2">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>站点</Label>
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={allSitesSelected}
+                      onChange={(event) => {
+                        setSelectedExportSiteIds(
+                          event.target.checked ? new Set(sites.map((site) => site.siteId)) : new Set(),
+                        );
+                      }}
+                    />
+                    全选
+                  </label>
+                </div>
+                <div className="max-h-56 min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border divide-y">
+                  {sites.map((site) => (
+                    <label key={site.siteId} className="flex min-w-0 items-start gap-3 px-3 py-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1 shrink-0"
+                        checked={selectedExportSiteIds.has(site.siteId)}
+                        onChange={(event) => toggleExportSite(site.siteId, event.target.checked)}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words font-medium text-foreground">{site.siteName}</span>
+                        <span className="block break-all text-muted-foreground" title={site.baseUrl}>{site.baseUrl}</span>
+                      </span>
+                    </label>
+                  ))}
+                  {sites.length === 0 && (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">暂无可导出的站点</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Artifacts</Label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[
+                    ["base", "Base 文本"],
+                    ["markdown", "Markdown"],
+                    ["screenshot", "截图"],
+                  ].map(([artifact, label]) => (
+                    <label key={artifact} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedExportArtifacts.has(artifact as ProjectExportArtifact)}
+                        onChange={(event) => toggleExportArtifact(artifact as ProjectExportArtifact, event.target.checked)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>取消</Button>
+              <Button onClick={handleExport} disabled={isExporting || selectedExportSiteIds.size === 0}>
+                {isExporting ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Download className="mr-2 w-4 h-4" />}
+                开始导出
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {exportError && (

@@ -131,6 +131,13 @@ describe('project export', () => {
       storageRoot,
       config: createDefaultSiteConfig('https://www.example.com'),
     });
+    const skippedSite = await sites.create({
+      projectId: project.id,
+      name: 'second site',
+      baseUrl: 'https://second.example.com',
+      storageRoot: join(dir, 'second-storage'),
+      config: createDefaultSiteConfig('https://second.example.com'),
+    });
     const runId = await runs.createRun({
       siteId: site.id,
       runType: 'crawl_run',
@@ -246,9 +253,40 @@ describe('project export', () => {
       entries.get(pageListPath!)! as unknown as Parameters<typeof workbook.xlsx.load>[0],
     );
     const sheet = workbook.getWorksheet('pages');
-    expect(sheet?.getRow(2).getCell(3).value).toBe(longUrl);
-    expect(sheet?.getRow(3).getCell(3).value).toBe(deniedUrl);
-    expect(sheet?.getRow(3).getCell(25).value).toBe('');
+    expect(sheet?.getRow(2).getCell(3).value).toBe('Example blog');
+    expect(sheet?.getRow(2).getCell(4).value).toBe(longUrl);
+    expect(sheet?.getRow(3).getCell(4).value).toBe(deniedUrl);
+    expect(sheet?.getRow(3).getCell(26).value).toBe('');
+
+    const listOnlyOutputPath = join(dir, 'export-list-only.zip');
+    const listOnlyResult = await app.exportProject(project.id, listOnlyOutputPath, {
+      siteIds: [site.id],
+      artifacts: [],
+    });
+    const listOnlyEntries = await readZipEntries(listOnlyResult.outputPath);
+    const listOnlyProjectInfo = JSON.parse(listOnlyEntries.get('project_info.json')!.toString('utf8')) as {
+      exportOptions: { siteIds: number[]; artifacts: string[] };
+    };
+    expect(listOnlyResult.siteCount).toBe(1);
+    expect(listOnlyResult.artifactFileCount).toBe(0);
+    expect([...listOnlyEntries.keys()].filter((path) => path.endsWith('/site_info.json'))).toHaveLength(1);
+    expect(listOnlyProjectInfo.exportOptions.siteIds).toEqual([site.id]);
+    expect(listOnlyProjectInfo.exportOptions.siteIds).not.toContain(skippedSite.id);
+    expect([...listOnlyEntries.keys()].some((path) => path.includes('/pages/'))).toBe(false);
+    expect([...listOnlyEntries.keys()].some((path) => path.endsWith('/page_info.json'))).toBe(false);
+    expect([...listOnlyEntries.keys()].some((path) => path.endsWith('/page_list.xlsx'))).toBe(true);
+
+    const baseOnlyOutputPath = join(dir, 'export-base-only.zip');
+    const baseOnlyResult = await app.exportProject(project.id, baseOnlyOutputPath, {
+      siteIds: [site.id],
+      artifacts: ['base'],
+    });
+    const baseOnlyEntries = await readZipEntries(baseOnlyResult.outputPath);
+    expect(baseOnlyResult.artifactFileCount).toBe(1);
+    expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/base.md'))).toBe(true);
+    expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/markdown.md'))).toBe(false);
+    expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/screenshot.png'))).toBe(false);
+    expect([...baseOnlyEntries.keys()].filter((path) => path.endsWith('/page_info.json'))).toHaveLength(1);
 
     const pageListOutputPath = join(dir, 'site-pages.xlsx');
     const pageListResult = await app.exportSitePageList({
@@ -260,7 +298,7 @@ describe('project export', () => {
     await pageListWorkbook.xlsx.readFile(pageListResult.outputPath);
     const pageListSheet = pageListWorkbook.getWorksheet('pages');
     expect(pageListResult.pageCount).toBe(1);
-    expect(pageListSheet?.getRow(2).getCell(3).value).toBe(deniedUrl);
-    expect(pageListSheet?.getRow(3).getCell(3).value).toBeNull();
+    expect(pageListSheet?.getRow(2).getCell(4).value).toBe(deniedUrl);
+    expect(pageListSheet?.getRow(3).getCell(4).value).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
-import { createWriteStream, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createWriteStream } from 'node:fs';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 
 import ExcelJS from 'exceljs';
@@ -70,6 +71,13 @@ interface ArtifactExportRow {
   has_content: number | boolean;
   error_message: string | null;
   meta_json: string | null;
+}
+
+export type ProjectExportArtifact = 'base' | 'markdown' | 'screenshot';
+
+export interface ProjectExportOptions {
+  siteIds?: number[];
+  artifacts?: ProjectExportArtifact[];
 }
 
 export interface ProjectExportResult {
@@ -157,12 +165,13 @@ function latestArtifactMap(rows: ArtifactExportRow[]): Map<string, ArtifactExpor
   return map;
 }
 
-function artifactFilePath(artifact: ArtifactExportRow | undefined): string | null {
-  if (!artifact?.output_path || !existsSync(artifact.output_path)) {
-    return null;
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
   }
-
-  return artifact.output_path;
 }
 
 function hasSuccessfulBaseCapture(page: PageExportRow): boolean {
@@ -182,6 +191,10 @@ function flattenLabels(value: string | null): string {
 
 function requiredArtifacts(value: string | null): string {
   return (parseJson<string[]>(value) ?? []).join(', ');
+}
+
+function normalizeExportArtifacts(artifacts: ProjectExportOptions['artifacts']): Set<ProjectExportArtifact> {
+  return new Set(artifacts ?? ['base', 'markdown', 'screenshot']);
 }
 
 function excelColumnLetter(index: number): string {
@@ -276,16 +289,16 @@ function addJson(zip: ZipFile, path: string, value: unknown): void {
   zip.addBuffer(toJsonBuffer(value), path);
 }
 
-function addFileIfPresent(
+async function addFileIfExists(
   zip: ZipFile,
   input: { filePath: string | null; zipPath: string },
-): boolean {
-  if (input.filePath) {
-    zip.addFile(input.filePath, input.zipPath);
-    return true;
+): Promise<boolean> {
+  if (!input.filePath || !(await pathExists(input.filePath))) {
+    return false;
   }
 
-  return false;
+  zip.addFile(input.filePath, input.zipPath);
+  return true;
 }
 
 let tempFileCounter = 0;
@@ -295,20 +308,55 @@ function createTempFilePath(outputPath: string, label: string): string {
   return `${outputPath}.tmp-${process.pid}-${Date.now()}-${tempFileCounter}-${label}`;
 }
 
-function addTempTextFile(
+function addTextBuffer(
   zip: ZipFile,
-  tempFiles: string[],
-  input: { outputPath: string; label: string; content: string | null; zipPath: string },
+  input: { content: string | null; zipPath: string },
 ): boolean {
   if (input.content === null) {
     return false;
   }
 
-  const tempPath = createTempFilePath(input.outputPath, input.label);
-  writeFileSync(tempPath, input.content, 'utf8');
-  tempFiles.push(tempPath);
-  zip.addFile(tempPath, input.zipPath);
+  zip.addBuffer(Buffer.from(input.content, 'utf8'), input.zipPath);
   return true;
+}
+
+async function addFileOrTextBuffer(
+  zip: ZipFile,
+  input: { filePath: string | null; content: () => Promise<string | null>; zipPath: string },
+): Promise<boolean> {
+  if (await addFileIfExists(zip, { filePath: input.filePath, zipPath: input.zipPath })) {
+    return true;
+  }
+
+  return addTextBuffer(zip, {
+    content: await input.content(),
+    zipPath: input.zipPath,
+  });
+}
+
+async function addArtifactFileOrInlineContent(
+  zip: ZipFile,
+  input: {
+    artifact: ArtifactExportRow | undefined;
+    zipPath: string;
+    readContent: (artifactRunId: number) => Promise<string | null>;
+  },
+): Promise<boolean> {
+  if (await addFileIfExists(zip, {
+    filePath: input.artifact?.output_path ?? null,
+    zipPath: input.zipPath,
+  })) {
+    return true;
+  }
+
+  if (!input.artifact || !hasInlineArtifactContent(input.artifact)) {
+    return false;
+  }
+
+  return addTextBuffer(zip, {
+    content: await input.readContent(input.artifact.id),
+    zipPath: input.zipPath,
+  });
 }
 
 async function writePageListWorkbook(
@@ -320,6 +368,7 @@ async function writePageListWorkbook(
   const columns = [
     { header: 'page_id', key: 'pageId', width: 12 },
     { header: 'title', key: 'title', width: 36 },
+    { header: 'meta_description', key: 'metaDescription', width: 44 },
     { header: 'normalized_url', key: 'normalizedUrl', width: 48 },
     { header: 'discovered_url', key: 'discoveredUrl', width: 48 },
     { header: 'inventory_status', key: 'inventoryStatus', width: 20 },
@@ -368,6 +417,7 @@ async function writePageListWorkbook(
     sheet.addRow({
       pageId: page.id,
       title: page.latest_title ?? page.title ?? '',
+      metaDescription: page.meta_description ?? '',
       normalizedUrl: page.normalized_url,
       discoveredUrl: page.discovered_url,
       inventoryStatus: page.inventory_status,
@@ -406,7 +456,7 @@ async function writeZipFile(
   outputPath: string,
   addEntries: (zip: ZipFile) => Promise<void>,
 ): Promise<void> {
-  mkdirSync(dirname(outputPath), { recursive: true });
+  await mkdir(dirname(outputPath), { recursive: true });
   const tempOutputPath = `${outputPath}.tmp-${process.pid}-${Date.now()}`;
   const zip = new ZipFile();
   const output = createWriteStream(tempOutputPath);
@@ -423,14 +473,10 @@ async function writeZipFile(
     await addEntries(zip);
     zip.end();
     await completion;
-    renameSync(tempOutputPath, outputPath);
+    await rename(tempOutputPath, outputPath);
   } catch (error) {
     output.destroy();
-    try {
-      unlinkSync(tempOutputPath);
-    } catch {
-      // Preserve the original export failure.
-    }
+    await rm(tempOutputPath, { force: true });
     throw error;
   }
 }
@@ -441,7 +487,7 @@ export class ProjectExporter {
     private readonly clock: Clock,
   ) {}
 
-  async exportProject(input: { projectId: number; outputPath?: string }): Promise<ProjectExportResult> {
+  async exportProject(input: { projectId: number; outputPath?: string; options?: ProjectExportOptions }): Promise<ProjectExportResult> {
     const project = await this.db.get<ProjectRow>(
       'SELECT id, name, slug, label_definitions_json, created_at FROM projects WHERE id = ?',
       [input.projectId],
@@ -453,15 +499,23 @@ export class ProjectExporter {
 
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultExportPath(project, exportedAt);
+    const selectedArtifacts = normalizeExportArtifacts(input.options?.artifacts);
+    const shouldExportPageArtifacts = selectedArtifacts.size > 0;
+    const siteIds = input.options?.siteIds?.filter((siteId) => Number.isInteger(siteId) && siteId > 0);
+    const siteFilter = siteIds === undefined
+      ? ''
+      : siteIds.length > 0
+        ? ` AND id IN (${siteIds.map(() => '?').join(', ')})`
+        : ' AND 1 = 0';
     const sites = await this.db.all<SiteRow>(
         `SELECT id, project_id, name, base_url, storage_root, config_json, updated_at, created_at
          FROM sites
-         WHERE project_id = ?
+         WHERE project_id = ?${siteFilter}
          ORDER BY id`,
-      [project.id],
+      [project.id, ...(siteIds ?? [])],
     );
 
-    const projectPageCount = await this.countProjectPages(project.id);
+    const projectPageCount = await this.countProjectPages(project.id, siteIds);
     const tempFiles: string[] = [];
     let artifactFileCount = 0;
 
@@ -475,6 +529,10 @@ export class ProjectExporter {
           exportedAt,
           siteCount: sites.length,
           pageCount: projectPageCount,
+          exportOptions: {
+            siteIds: siteIds === undefined ? 'all' : siteIds,
+            artifacts: [...selectedArtifacts],
+          },
           labelDefinitions: parseJson<unknown>(project.label_definitions_json),
         });
 
@@ -498,7 +556,7 @@ export class ProjectExporter {
           });
 
           for (const page of pages) {
-            if (!hasSuccessfulBaseCapture(page)) {
+            if (!shouldExportPageArtifacts || !hasSuccessfulBaseCapture(page)) {
               continue;
             }
 
@@ -536,19 +594,14 @@ export class ProjectExporter {
             });
 
             if (
-              addFileIfPresent(zip, {
+              selectedArtifacts.has('base') &&
+              await addFileOrTextBuffer(zip, {
                 filePath:
                   page.base_capture_status === 'succeeded' &&
-                  page.base_capture_path !== null &&
-                  existsSync(page.base_capture_path)
+                  page.base_capture_path !== null
                     ? page.base_capture_path
                     : null,
-                zipPath: `${pageRoot}/base.md`,
-              }) ||
-              addTempTextFile(zip, tempFiles, {
-                outputPath,
-                label: `base-${page.id}.md`,
-                content: await this.getBaseCaptureFallbackContent(page.id),
+                content: () => this.getBaseCaptureFallbackContent(page.id),
                 zipPath: `${pageRoot}/base.md`,
               })
             ) {
@@ -557,36 +610,24 @@ export class ProjectExporter {
 
             const markdown = artifacts.get(`${page.id}:markdown`);
             if (
-              addFileIfPresent(zip, {
-                filePath: artifactFilePath(markdown),
+              selectedArtifacts.has('markdown') &&
+              await addArtifactFileOrInlineContent(zip, {
+                artifact: markdown,
                 zipPath: `${pageRoot}/markdown.md`,
-              }) ||
-              (markdown &&
-                hasInlineArtifactContent(markdown) &&
-                addTempTextFile(zip, tempFiles, {
-                  outputPath,
-                  label: `artifact-${markdown.id}.md`,
-                  content: await this.getArtifactContent(markdown.id),
-                  zipPath: `${pageRoot}/markdown.md`,
-                }))
+                readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+              })
             ) {
               artifactFileCount += 1;
             }
 
             const screenshot = artifacts.get(`${page.id}:screenshot`);
             if (
-              addFileIfPresent(zip, {
-                filePath: artifactFilePath(screenshot),
+              selectedArtifacts.has('screenshot') &&
+              await addArtifactFileOrInlineContent(zip, {
+                artifact: screenshot,
                 zipPath: `${pageRoot}/screenshot.png`,
-              }) ||
-              (screenshot &&
-                hasInlineArtifactContent(screenshot) &&
-                addTempTextFile(zip, tempFiles, {
-                  outputPath,
-                  label: `artifact-${screenshot.id}.png`,
-                  content: await this.getArtifactContent(screenshot.id),
-                  zipPath: `${pageRoot}/screenshot.png`,
-                }))
+                readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+              })
             ) {
               artifactFileCount += 1;
             }
@@ -600,11 +641,7 @@ export class ProjectExporter {
       });
     } finally {
       for (const tempFile of tempFiles) {
-        try {
-          unlinkSync(tempFile);
-        } catch {
-          // Temporary files may not have been created if export failed early.
-        }
+        await rm(tempFile, { force: true });
       }
     }
 
@@ -632,7 +669,7 @@ export class ProjectExporter {
 
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultSitePageListExportPath(site, exportedAt);
-    mkdirSync(dirname(outputPath), { recursive: true });
+    await mkdir(dirname(outputPath), { recursive: true });
 
     const pages = await this.listPages(input.siteId, input);
     const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(input.siteId));
@@ -646,13 +683,18 @@ export class ProjectExporter {
     };
   }
 
-  private async countProjectPages(projectId: number): Promise<number> {
+  private async countProjectPages(projectId: number, siteIds?: number[]): Promise<number> {
+    const siteFilter = siteIds === undefined
+      ? ''
+      : siteIds.length > 0
+        ? ` AND s.id IN (${siteIds.map(() => '?').join(', ')})`
+        : ' AND 1 = 0';
     const row = await this.db.get<{ count: number }>(
         `SELECT COUNT(sp.id) AS count
          FROM site_pages sp
          INNER JOIN sites s ON s.id = sp.site_id
-         WHERE s.project_id = ?`,
-      [projectId],
+         WHERE s.project_id = ?${siteFilter}`,
+      [projectId, ...(siteIds ?? [])],
     );
     return Number(row?.count ?? 0);
   }
