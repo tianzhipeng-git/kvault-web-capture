@@ -42,6 +42,13 @@ export interface ProjectExportOptions {
   artifacts?: ProjectExportArtifact[];
 }
 
+export interface PreparedProjectExport {
+  token: string;
+  fileName: string;
+  expiresInSeconds: number;
+  downloadUrl: string;
+}
+
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
@@ -240,6 +247,17 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options ?? {})
   }),
+  prepareProjectExport: async (projectId: number, options?: ProjectExportOptions): Promise<PreparedProjectExport> => {
+    const result = await fetchApi(`/api/projects/${projectId}/export/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options ?? {})
+    }) as Omit<PreparedProjectExport, "downloadUrl">;
+    return {
+      ...result,
+      downloadUrl: `${baseUrl}/api/projects/${projectId}/export/download/${encodeURIComponent(result.token)}`,
+    };
+  },
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),
   createSite: (data: any) => fetchApi('/api/sites', {

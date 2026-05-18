@@ -89,6 +89,33 @@ describe('web server', () => {
     expect(exportResponse.headers['content-type']).toContain('application/zip');
     expect(exportResponse.rawPayload.length).toBeGreaterThan(0);
 
+    const preparedExportResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/projects/${projectId}/export/prepare`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: {
+        artifacts: [],
+      },
+    });
+    expect(preparedExportResponse.statusCode).toBe(200);
+    const preparedExport = preparedExportResponse.json() as { token: string; fileName: string };
+    expect(preparedExport.token).toBeTruthy();
+    expect(preparedExport.fileName).toMatch(/\.zip$/);
+
+    const preparedDownloadResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/projects/${projectId}/export/download/${preparedExport.token}`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(preparedDownloadResponse.statusCode).toBe(200);
+    expect(preparedDownloadResponse.headers['content-type']).toContain('application/zip');
+    expect(preparedDownloadResponse.headers['content-disposition']).toContain(preparedExport.fileName);
+    expect(preparedDownloadResponse.rawPayload.length).toBeGreaterThan(0);
+
     const siteResponse = await webServer.inject({
       method: 'POST',
       url: '/api/sites',

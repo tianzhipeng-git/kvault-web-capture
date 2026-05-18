@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { createReadStream } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
@@ -32,6 +33,7 @@ const textAssetCache = new Map<string, Promise<string>>();
 const binaryAssetCache = new Map<string, Promise<Buffer>>();
 const DEFAULT_EVENT_LOOP_DELAY_INTERVAL_MS = 5000;
 const DEFAULT_EVENT_LOOP_DELAY_THRESHOLD_MS = 100;
+const EXPORT_DOWNLOAD_TTL_MS = 1000 * 60 * 60;
 
 interface EventLoopDelaySnapshot {
   intervalMs: number;
@@ -49,6 +51,12 @@ interface EventLoopDelaySnapshot {
 interface EventLoopDelayMonitorHandle {
   getSnapshot(): EventLoopDelaySnapshot | null;
   close(): void;
+}
+
+interface PreparedExport {
+  outputPath: string;
+  fileName: string;
+  expiresAt: number;
 }
 
 function parseSiteId(value: string): number {
@@ -303,6 +311,26 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       ),
     getActiveRunCount: () => coordinator.listActiveRuns().length,
   });
+  const preparedExports = new Map<string, PreparedExport>();
+
+  const rememberPreparedExport = (result: { outputPath: string; fileName: string }): string => {
+    const token = randomUUID();
+    const now = Date.now();
+
+    for (const [key, value] of preparedExports) {
+      if (value.expiresAt <= now) {
+        preparedExports.delete(key);
+      }
+    }
+
+    preparedExports.set(token, {
+      outputPath: result.outputPath,
+      fileName: result.fileName,
+      expiresAt: now + EXPORT_DOWNLOAD_TTL_MS,
+    });
+
+    return token;
+  };
 
   await auth.register(server);
 
@@ -466,6 +494,42 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
       .send(createReadStream(result.outputPath));
+  });
+
+  server.post('/api/projects/:projectId/export/prepare', async (request) => {
+    const params = request.params as { projectId: string };
+    const result = await app.exportProject(
+      parseProjectId(params.projectId),
+      undefined,
+      parseProjectExportOptions(request.body),
+    );
+    const token = rememberPreparedExport(result);
+
+    return {
+      token,
+      fileName: result.fileName,
+      expiresInSeconds: Math.floor(EXPORT_DOWNLOAD_TTL_MS / 1000),
+    };
+  });
+
+  server.get('/api/projects/:projectId/export/download/:token', async (request, reply) => {
+    const params = request.params as { projectId: string; token: string };
+    parseProjectId(params.projectId);
+
+    const prepared = preparedExports.get(params.token);
+    if (!prepared || prepared.expiresAt <= Date.now()) {
+      preparedExports.delete(params.token);
+      reply.code(404);
+      throw new Error('导出文件已过期，请重新导出。');
+    }
+
+    const fileStat = await stat(prepared.outputPath);
+    return reply
+      .type('application/zip')
+      .header('Content-Disposition', `attachment; filename="${prepared.fileName}"`)
+      .header('Content-Length', fileStat.size)
+      .header('Cache-Control', 'no-store')
+      .send(createReadStream(prepared.outputPath));
   });
 
   server.post('/api/sites', async (request, reply) => {

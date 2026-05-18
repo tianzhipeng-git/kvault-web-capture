@@ -72,18 +72,16 @@ export function ProjectDetails() {
     setExportError("");
 
     try {
-      const { blob, filename } = await api.exportProject(Number(projectId), {
+      const prepared = await api.prepareProjectExport(Number(projectId), {
         siteIds: [...selectedExportSiteIds],
         artifacts: [...selectedExportArtifacts],
       });
-      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
+      link.href = prepared.downloadUrl;
+      link.download = prepared.fileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
       setIsExportDialogOpen(false);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "导出失败");
