@@ -93,7 +93,7 @@ export interface ProjectExportResult {
 export interface SitePageListExportInput {
   siteId: number;
   outputPath?: string;
-  status?: string;
+  status?: string | string[];
   query?: string;
   label?: string;
   pendingReason?: string;
@@ -228,9 +228,15 @@ function buildPageFilters(input: SitePageListExportInput): { whereClause: string
   const filters: string[] = ['sp.site_id = ?'];
   const args: DbValue[] = [input.siteId];
 
-  if (input.status) {
-    filters.push('sp.inventory_status = ?');
-    args.push(input.status);
+  const statuses = Array.isArray(input.status)
+    ? input.status.filter(Boolean)
+    : input.status
+      ? [input.status]
+      : [];
+
+  if (statuses.length > 0) {
+    filters.push(`sp.inventory_status IN (${statuses.map(() => '?').join(', ')})`);
+    args.push(...statuses);
   }
 
   if (input.includeDeniedPages === false) {

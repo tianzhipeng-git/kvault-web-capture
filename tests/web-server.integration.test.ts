@@ -272,6 +272,20 @@ describe('web server', () => {
     };
     expect(pageList.rows[0]?.businessStatus).toBe('待确认');
 
+    const multiStatusPageResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.id}/pages?page=1&pageSize=10&status=stage2_pending&status=url_rule_denied`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const multiStatusPageList = multiStatusPageResponse.json() as {
+      rows: Array<{ businessStatus: string }>;
+      total: number;
+    };
+    expect(multiStatusPageList.total).toBeGreaterThan(0);
+    expect(multiStatusPageList.rows.some((row) => row.businessStatus === '待确认')).toBe(true);
+
     const runScopedPageResponse = await webServer.inject({
       method: 'GET',
       url: `/api/sites/${site.id}/pages?page=1&pageSize=10&crawlRunId=${runId}`,

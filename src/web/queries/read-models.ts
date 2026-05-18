@@ -62,6 +62,8 @@ export function toInventoryStatusLabel(status: string): string {
       return '无需深入采集';
     case 'base_captured':
       return '已完成基础信息';
+    case 'discovered_only':
+      return '仅发现';
     default:
       return '未知';
   }
@@ -332,7 +334,7 @@ export interface SitePageListInput {
   siteId: number;
   page: number;
   pageSize: number;
-  status?: string;
+  status?: string | string[];
   query?: string;
   label?: string;
   pendingReason?: string;
@@ -364,9 +366,15 @@ export class SitePageListQuery {
     const filters: string[] = ['sp.site_id = ?'];
     const args: DbValue[] = [input.siteId];
 
-    if (input.status) {
-      filters.push('sp.inventory_status = ?');
-      args.push(input.status);
+    const statuses = Array.isArray(input.status)
+      ? input.status.filter(Boolean)
+      : input.status
+        ? [input.status]
+        : [];
+
+    if (statuses.length > 0) {
+      filters.push(`sp.inventory_status IN (${statuses.map(() => '?').join(', ')})`);
+      args.push(...statuses);
     }
 
     if (input.query) {

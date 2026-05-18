@@ -69,6 +69,15 @@ function parseSiteId(value: string): number {
   return siteId;
 }
 
+function parseStatusFilter(value: string | string[] | undefined): string[] | undefined {
+  const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  const statuses = values
+    .flatMap((item) => item.split(','))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return statuses.length > 0 ? statuses : undefined;
+}
+
 function parseProjectId(value: string): number {
   const projectId = Number(value);
 
@@ -730,8 +739,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.get('/api/sites/:siteId/pages', async (request) => {
     const params = request.params as { siteId: string };
-    const query = request.query as Record<string, string | undefined>;
-    const crawlRunId = query.crawlRunId === undefined ? undefined : Number(query.crawlRunId);
+    const query = request.query as Record<string, string | string[] | undefined>;
+    const crawlRunId = typeof query.crawlRunId === 'string' ? Number(query.crawlRunId) : undefined;
 
     if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
       throw new Error('crawlRunId 无效。');
@@ -741,19 +750,19 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       siteId: parseSiteId(params.siteId),
       page: Number(query.page ?? '1'),
       pageSize: Number(query.pageSize ?? '20'),
-      status: query.status,
-      query: query.query,
-      label: query.label,
-      pendingReason: query.pendingReason,
-      discoverySource: query.discoverySource,
+      status: parseStatusFilter(query.status),
+      query: typeof query.query === 'string' ? query.query : undefined,
+      label: typeof query.label === 'string' ? query.label : undefined,
+      pendingReason: typeof query.pendingReason === 'string' ? query.pendingReason : undefined,
+      discoverySource: typeof query.discoverySource === 'string' ? query.discoverySource : undefined,
       crawlRunId,
     });
   });
 
   server.get('/api/sites/:siteId/pages/export', async (request, reply) => {
     const params = request.params as { siteId: string };
-    const query = request.query as Record<string, string | undefined>;
-    const crawlRunId = query.crawlRunId === undefined ? undefined : Number(query.crawlRunId);
+    const query = request.query as Record<string, string | string[] | undefined>;
+    const crawlRunId = typeof query.crawlRunId === 'string' ? Number(query.crawlRunId) : undefined;
 
     if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
       throw new Error('crawlRunId 无效。');
@@ -761,11 +770,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
     const result = await app.exportSitePageList({
       siteId: parseSiteId(params.siteId),
-      status: query.status,
-      query: query.query,
-      label: query.label,
-      pendingReason: query.pendingReason,
-      discoverySource: query.discoverySource,
+      status: parseStatusFilter(query.status),
+      query: typeof query.query === 'string' ? query.query : undefined,
+      label: typeof query.label === 'string' ? query.label : undefined,
+      pendingReason: typeof query.pendingReason === 'string' ? query.pendingReason : undefined,
+      discoverySource: typeof query.discoverySource === 'string' ? query.discoverySource : undefined,
       crawlRunId,
     });
     const fileStat = await stat(result.outputPath);

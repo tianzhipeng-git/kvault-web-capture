@@ -1,6 +1,21 @@
 /// <reference types="vite/client" />
 export type RunType = "seed_run" | "crawl_run";
 
+function buildQueryString(params: object): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === "") continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== "") q.append(key, String(item));
+      }
+      continue;
+    }
+    q.set(key, String(value));
+  }
+  return q.toString();
+}
+
 export interface SiteRunListItem {
   runId: number;
   runType: RunType;
@@ -68,7 +83,7 @@ export interface PreparedProjectExport {
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
-  status?: string;
+  status?: string | string[];
   query?: string;
   label?: string;
   pendingReason?: string;
@@ -309,21 +324,11 @@ export const api = {
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
   
   getSitePages: (siteId: number, params: SitePageListParams) => {
-    const q = new URLSearchParams(
-      Object.entries(params).reduce<Record<string, string>>((acc, [key, value]) => {
-        if (value !== undefined && value !== "") acc[key] = String(value);
-        return acc;
-      }, {})
-    ).toString();
+    const q = buildQueryString(params);
     return fetchApi(`/api/sites/${siteId}/pages?${q}`);
   },
   exportSitePages: (siteId: number, params: Omit<SitePageListParams, "page" | "pageSize">): Promise<{ blob: Blob; filename: string }> => {
-    const q = new URLSearchParams(
-      Object.entries(params).reduce<Record<string, string>>((acc, [key, value]) => {
-        if (value !== undefined && value !== "") acc[key] = String(value);
-        return acc;
-      }, {})
-    ).toString();
+    const q = buildQueryString(params);
     return fetchBlobApi(`/api/sites/${siteId}/pages/export?${q}`);
   },
   getSitePageDetail: (siteId: number, sitePageId: number) => fetchApi(`/api/sites/${siteId}/pages/${sitePageId}`),

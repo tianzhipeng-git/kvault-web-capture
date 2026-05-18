@@ -19,7 +19,7 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
-import { CheckCircle2, CircleDashed, Download, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
@@ -38,6 +38,14 @@ const pendingReasonOptions = [
   { value: "rule_unmatched", label: "规则未匹配" },
   { value: "classifier_failed", label: "分类失败" },
 ];
+
+function statusFilterLabel(values: string[]): string {
+  if (values.length === 0) return "全部状态";
+  if (values.length === 1) {
+    return statusOptions.find((option) => option.value === values[0])?.label ?? "已选 1 个状态";
+  }
+  return `已选 ${values.length} 个状态`;
+}
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "-";
@@ -470,7 +478,7 @@ export function PageReview({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("");
+  const [statuses, setStatuses] = useState<string[]>([]);
   const [label, setLabel] = useState("");
   const [pendingReason, setPendingReason] = useState("");
   const [jumpPage, setJumpPage] = useState("1");
@@ -489,7 +497,7 @@ export function PageReview({
       page,
       pageSize,
       query,
-      status,
+      status: statuses,
       label,
       pendingReason,
       crawlRunId,
@@ -499,7 +507,7 @@ export function PageReview({
         setTotal(data.total || 0);
       })
       .finally(() => setIsLoading(false));
-  }, [crawlRunId, page, pendingReason, query, siteId, status, label]);
+  }, [crawlRunId, page, pendingReason, query, siteId, statuses, label]);
 
   const openDetail = async (sitePageId: number) => {
     const nextDetail = await api.getSitePageDetail(siteId, sitePageId);
@@ -560,7 +568,7 @@ export function PageReview({
     try {
       const { blob, filename } = await api.exportSitePages(siteId, {
         query,
-        status,
+        status: statuses,
         label,
         pendingReason,
         crawlRunId,
@@ -582,6 +590,16 @@ export function PageReview({
   };
 
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+  const selectedStatusLabel = statusFilterLabel(statuses);
+
+  const toggleStatus = (value: string) => {
+    setPage(1);
+    setStatuses((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value],
+    );
+  };
 
   useEffect(() => {
     setJumpPage(String(page));
@@ -640,14 +658,37 @@ export function PageReview({
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="搜索 URL 或标题" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} />
             </div>
-            <select className="h-10 rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }}>
-              {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+            <details className="relative">
+              <summary className="flex h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm">
+                <span className="truncate">{selectedStatusLabel}</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </summary>
+              <div className="absolute z-20 mt-2 w-56 rounded-md border bg-background p-2 text-sm shadow-md">
+                <button
+                  type="button"
+                  className="mb-1 w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                  onClick={() => { setPage(1); setStatuses([]); }}
+                >
+                  全部状态
+                </button>
+                {statusOptions.filter((option) => option.value).map((option) => (
+                  <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={statuses.includes(option.value)}
+                      onChange={() => toggleStatus(option.value)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
             <select className="h-10 rounded-md border bg-background px-3 text-sm" value={pendingReason} onChange={(event) => { setPage(1); setPendingReason(event.target.value); }}>
               {pendingReasonOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <Input placeholder="Label 过滤" value={label} onChange={(event) => { setPage(1); setLabel(event.target.value); }} />
-            <Button variant="outline" className="gap-2" onClick={() => { setPage(1); setQuery(""); setStatus(""); setLabel(""); setPendingReason(""); }}>
+            <Button variant="outline" className="gap-2" onClick={() => { setPage(1); setQuery(""); setStatuses([]); setLabel(""); setPendingReason(""); }}>
               <Filter className="w-4 h-4" />
               重置
             </Button>
