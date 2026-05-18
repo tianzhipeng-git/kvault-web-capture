@@ -4,6 +4,10 @@ export interface StartupUrlCandidate {
 }
 
 type FetchLike = typeof fetch;
+type SitemapErrorHandler = (input: {
+  sitemapUrl: string;
+  error: Error;
+}) => void | Promise<void>;
 
 function extractSitemapLocs(xml: string): string[] {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map((match) => match[1].trim());
@@ -18,6 +22,7 @@ async function resolveSitemapUrlsWithVisited(
   sitemapUrl: string,
   fetchImpl: FetchLike,
   visited: Set<string>,
+  onSitemapError?: SitemapErrorHandler,
 ): Promise<string[]> {
   if (visited.has(sitemapUrl)) {
     return [];
@@ -38,9 +43,23 @@ async function resolveSitemapUrlsWithVisited(
     const nestedUrls = await Promise.all(
       locs
         .filter(looksLikeSitemap)
-        .map((nestedSitemapUrl) =>
-          resolveSitemapUrlsWithVisited(nestedSitemapUrl, fetchImpl, visited),
-        ),
+        .map(async (nestedSitemapUrl) => {
+          try {
+            return await resolveSitemapUrlsWithVisited(
+              nestedSitemapUrl,
+              fetchImpl,
+              visited,
+              onSitemapError,
+            );
+          } catch (error) {
+            const normalizedError = error instanceof Error ? error : new Error(String(error));
+            await onSitemapError?.({
+              sitemapUrl: nestedSitemapUrl,
+              error: normalizedError,
+            });
+            return [];
+          }
+        }),
     );
 
     return nestedUrls.flat();
@@ -61,10 +80,29 @@ export async function expandStartupUrlCandidates(input: {
   sitemapUrls: string[];
   knownUrls: string[];
   fetchImpl?: FetchLike;
+  onSitemapError?: SitemapErrorHandler;
 }): Promise<StartupUrlCandidate[]> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const sitemapPageUrls = (
-    await Promise.all(input.sitemapUrls.map((sitemapUrl) => resolveSitemapPageUrls(sitemapUrl, fetchImpl)))
+    await Promise.all(
+      input.sitemapUrls.map(async (sitemapUrl) => {
+        try {
+          return await resolveSitemapUrlsWithVisited(
+            sitemapUrl,
+            fetchImpl,
+            new Set<string>(),
+            input.onSitemapError,
+          );
+        } catch (error) {
+          const normalizedError = error instanceof Error ? error : new Error(String(error));
+          await input.onSitemapError?.({
+            sitemapUrl,
+            error: normalizedError,
+          });
+          return [];
+        }
+      }),
+    )
   ).flat();
 
   const orderedCandidates: StartupUrlCandidate[] = [

@@ -9,6 +9,7 @@ export type RunLogEvent =
   | 'crawl_finished'
   | 'crawl_error'
   | 'runtime_log_ready'
+  | 'sitemap_skipped'
   | 'url_plan_skipped'
   | 'base_page_done'
   | 'base_page_failed'

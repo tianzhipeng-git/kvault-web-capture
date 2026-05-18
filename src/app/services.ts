@@ -405,6 +405,29 @@ export class M1App {
         seedUrls: site.config.seedUrls,
         sitemapUrls: site.config.sitemaps,
         knownUrls,
+        onSitemapError: async ({ sitemapUrl, error }) => {
+          logger.warn('Skipped sitemap during startup expansion', {
+            runId,
+            siteId: site.id,
+            sitemapUrl,
+            errorName: error.name,
+            errorMessage: error.message,
+            stack: error.stack ?? null,
+          });
+          await this.runLogs.log({
+            crawlRunId: runId,
+            level: 'warn',
+            event: 'sitemap_skipped',
+            url: sitemapUrl,
+            message: `[startup] SKIPPED sitemap ${sitemapUrl}: ${error.message}`,
+            meta: {
+              reason: 'sitemap_fetch_failed',
+              errorName: error.name,
+              errorMessage: error.message,
+              stack: error.stack ?? null,
+            },
+          });
+        },
       });
     }
 

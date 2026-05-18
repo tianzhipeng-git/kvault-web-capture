@@ -74,4 +74,106 @@ describe('startup url expander', () => {
       },
     ]);
   });
+
+  it('skips failed top-level sitemaps while keeping seeds, other sitemaps, and inventory', async () => {
+    const errors: Array<{ sitemapUrl: string; error: Error }> = [];
+    const fetchImpl = vi.fn<(typeof fetch)>().mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://example.com/broken-sitemap.xml') {
+        return new Response('server error', { status: 500 });
+      }
+
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/from-working-page</loc></url>
+</urlset>`,
+        { status: 200 },
+      );
+    });
+
+    await expect(
+      expandStartupUrlCandidates({
+        seedUrls: ['https://example.com/seed'],
+        sitemapUrls: [
+          'https://example.com/broken-sitemap.xml',
+          'https://example.com/working-sitemap.xml',
+        ],
+        knownUrls: ['https://example.com/known'],
+        fetchImpl,
+        onSitemapError(error) {
+          errors.push(error);
+        },
+      }),
+    ).resolves.toEqual([
+      {
+        url: 'https://example.com/seed',
+        discoverySource: 'seed_url',
+      },
+      {
+        url: 'https://example.com/from-working-page',
+        discoverySource: 'sitemap',
+      },
+      {
+        url: 'https://example.com/known',
+        discoverySource: 'inventory',
+      },
+    ]);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].sitemapUrl).toBe('https://example.com/broken-sitemap.xml');
+    expect(errors[0].error.message).toContain('500');
+  });
+
+  it('skips failed nested sitemaps while keeping sibling sitemap pages', async () => {
+    const errors: Array<{ sitemapUrl: string; error: Error }> = [];
+    const fetchImpl = vi.fn<(typeof fetch)>().mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://example.com/sitemap.xml') {
+        return new Response(
+          `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://example.com/broken-products-sitemap.xml</loc></sitemap>
+  <sitemap><loc>https://example.com/content-sitemap.xml</loc></sitemap>
+</sitemapindex>`,
+          { status: 200 },
+        );
+      }
+
+      if (url === 'https://example.com/broken-products-sitemap.xml') {
+        return new Response('server error', { status: 500 });
+      }
+
+      return new Response(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/docs</loc></url>
+</urlset>`,
+        { status: 200 },
+      );
+    });
+
+    await expect(
+      expandStartupUrlCandidates({
+        seedUrls: [],
+        sitemapUrls: ['https://example.com/sitemap.xml'],
+        knownUrls: [],
+        fetchImpl,
+        onSitemapError(error) {
+          errors.push(error);
+        },
+      }),
+    ).resolves.toEqual([
+      {
+        url: 'https://example.com/docs',
+        discoverySource: 'sitemap',
+      },
+    ]);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].sitemapUrl).toBe('https://example.com/broken-products-sitemap.xml');
+    expect(errors[0].error.message).toContain('500');
+  });
 });
