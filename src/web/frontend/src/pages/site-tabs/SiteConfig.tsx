@@ -161,6 +161,14 @@ function ruleSummary(rule: Rule): string {
   return `${matchType} / ${rule.listType}`;
 }
 
+function normalizeBaseRule(rule: Rule): Rule {
+  return rule.listType === "whitelist" ? { ...rule, listType: "scopelist" } : rule;
+}
+
+function normalizeBaseRules(rules: Rule[]): Rule[] {
+  return rules.map(normalizeBaseRule);
+}
+
 export function SiteConfig({ siteId }: { siteId: number }) {
   const [config, setConfig] = useState<SiteConfigShape | null>(null);
   const [jsonDraft, setJsonDraft] = useState("");
@@ -184,7 +192,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     setJsonDraft(pretty(nextConfig));
     setSeedUrlsText(arrayToLines(nextConfig.seedUrls));
     setSitemapsText(arrayToLines(nextConfig.sitemaps));
-    setRulesBeforeBaseEq((nextConfig.rulesBeforeBaseEq || []) as Rule[]);
+    setRulesBeforeBaseEq(normalizeBaseRules((nextConfig.rulesBeforeBaseEq || []) as Rule[]));
     setRulesBeforeStage2Eq((nextConfig.rulesBeforeStage2Eq || []) as Rule[]);
     setSeedMaxDepth(String(nextConfig.runOptions.seedMaxDepth));
     setCrawlMaxDepth(String(nextConfig.runOptions.crawlMaxDepth));
@@ -210,7 +218,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const buildFormConfig = (): SiteConfigShape => ({
     seedUrls: linesToArray(seedUrlsText),
     sitemaps: linesToArray(sitemapsText),
-    rulesBeforeBaseEq: rulesBeforeBaseEq,
+    rulesBeforeBaseEq: normalizeBaseRules(rulesBeforeBaseEq),
     rulesBeforeStage2Eq: rulesBeforeStage2Eq,
     runOptions: {
       seedMaxDepth: Number(seedMaxDepth),
@@ -293,7 +301,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
       const nextRule = parseAssistantJson<Rule>(content);
       if (assistantTarget.point === "rulesBeforeBaseEq") {
         const next = [...rulesBeforeBaseEq];
-        next[assistantTarget.index] = nextRule;
+        next[assistantTarget.index] = normalizeBaseRule(nextRule);
         setRulesBeforeBaseEq(next);
       } else {
         const next = [...rulesBeforeStage2Eq];
@@ -310,7 +318,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
       rulesBeforeStage2Eq,
       suggestions,
     });
-    setRulesBeforeBaseEq(result.rulesBeforeBaseEq);
+    setRulesBeforeBaseEq(normalizeBaseRules(result.rulesBeforeBaseEq));
     setRulesBeforeStage2Eq(result.rulesBeforeStage2Eq);
     toast.success(`已应用 ${result.appliedCount} 条建议，保存表单配置后生效。`);
   };
@@ -401,12 +409,12 @@ export function SiteConfig({ siteId }: { siteId: number }) {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div className="flex items-baseline gap-2">
                 <CardTitle>基础入队规则</CardTitle>
-                <CardDescription>用于过滤不符合条件的 URL，支持黑白名单和范围限定。仅支持 URL 匹配。</CardDescription>
+                <CardDescription>用于过滤不符合条件的 URL，支持黑名单和范围限定。仅支持 URL 匹配。</CardDescription>
               </div>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setRulesBeforeBaseEq([...rulesBeforeBaseEq, createDefaultRule()])}
+                onClick={() => setRulesBeforeBaseEq([...rulesBeforeBaseEq, createDefaultRule("scopelist")])}
                 className="gap-1"
               >
                 <Plus className="w-4 h-4" /> 添加规则
@@ -418,6 +426,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
                 onChange={setRulesBeforeBaseEq}
                 allowLabelMatch={false}
                 showArtifacts={false}
+                allowedListTypes={["scopelist", "blacklist"]}
                 hideAddButton
                 onAssistRule={(rule, index) => openSingleRuleAssistant("rulesBeforeBaseEq", rule, index)}
               />

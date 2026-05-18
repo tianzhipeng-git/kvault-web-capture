@@ -5,10 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, WandSparkles } from "lucide-react";
 
-export const createDefaultRule = (): UrlRule => ({
+type ListType = 'blacklist' | 'scopelist' | 'whitelist';
+
+export const createDefaultRule = (listType: ListType = 'whitelist'): UrlRule => ({
   name: `rule-${Date.now()}`,
   matchType: 'url',
-  listType: 'whitelist',
+  listType,
   ruleType: 'prefix',
   values: [],
 });
@@ -16,7 +18,7 @@ export const createDefaultRule = (): UrlRule => ({
 export type UrlRule = {
   name: string;
   matchType?: 'url';
-  listType: 'blacklist' | 'scopelist' | 'whitelist';
+  listType: ListType;
   ruleType: 'prefix' | 'regex';
   values: string[];
   artifacts?: Array<'markdown' | 'screenshot'>;
@@ -31,7 +33,7 @@ export type LabelRuleCondition = {
 export type LabelRule = {
   name: string;
   matchType: 'label';
-  listType: 'blacklist' | 'scopelist' | 'whitelist';
+  listType: ListType;
   when: LabelRuleCondition[];
   artifacts?: Array<'markdown' | 'screenshot'>;
 };
@@ -87,6 +89,7 @@ export function RuleListEditor({
   allowLabelMatch = false,
   showArtifacts = true,
   hideAddButton = false,
+  allowedListTypes = ['scopelist', 'whitelist', 'blacklist'],
   onAssistRule,
 }: {
   rules: Rule[];
@@ -94,13 +97,14 @@ export function RuleListEditor({
   allowLabelMatch?: boolean;
   showArtifacts?: boolean;
   hideAddButton?: boolean;
+  allowedListTypes?: ListType[];
   onAssistRule?: (rule: Rule, index: number) => void;
 }) {
   const addRule = () => {
     const newRule: UrlRule = {
       name: `rule-${Date.now()}`,
       matchType: 'url',
-      listType: 'whitelist',
+      listType: allowedListTypes[0] ?? 'scopelist',
       ruleType: 'prefix',
       values: [],
     };
@@ -136,6 +140,7 @@ export function RuleListEditor({
           rule={rule}
           allowLabelMatch={allowLabelMatch}
           showArtifacts={showArtifacts}
+          allowedListTypes={allowedListTypes}
           onChange={(r) => updateRule(i, r)}
           onRemove={() => removeRule(i)}
           onMoveUp={() => moveRule(i, 'up')}
@@ -159,6 +164,7 @@ function RuleEditorItem({
   rule,
   allowLabelMatch,
   showArtifacts,
+  allowedListTypes,
   onChange,
   onRemove,
   onMoveUp,
@@ -170,6 +176,7 @@ function RuleEditorItem({
   rule: Rule;
   allowLabelMatch: boolean;
   showArtifacts: boolean;
+  allowedListTypes: ListType[];
   onChange: (rule: Rule) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -180,6 +187,7 @@ function RuleEditorItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const matchType = rule.matchType || 'url';
+  const selectedListType = allowedListTypes.includes(rule.listType) ? rule.listType : (allowedListTypes[0] ?? 'scopelist');
 
   const handleArtifactChange = (artifact: 'markdown' | 'screenshot', checked: boolean) => {
     const current = rule.artifacts || ['markdown']; // default
@@ -249,7 +257,7 @@ function RuleEditorItem({
                       onChange({
                         name: rule.name,
                         matchType: 'url',
-                        listType: rule.listType,
+                        listType: selectedListType,
                         ruleType: 'prefix',
                         values: [],
                         artifacts: rule.artifacts,
@@ -258,7 +266,7 @@ function RuleEditorItem({
                       onChange({
                         name: rule.name,
                         matchType: 'label',
-                        listType: rule.listType,
+                        listType: selectedListType,
                         when: [],
                         artifacts: rule.artifacts,
                       } as LabelRule);
@@ -275,12 +283,12 @@ function RuleEditorItem({
               <Label className="text-xs">规则类型 (List Type)</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={rule.listType}
-                onChange={(e) => onChange({ ...rule, listType: e.target.value as 'blacklist' | 'scopelist' | 'whitelist' })}
+                value={selectedListType}
+                onChange={(e) => onChange({ ...rule, listType: e.target.value as ListType })}
               >
-                <option value="scopelist">Scopelist (仅范围)</option>
-                <option value="whitelist">Whitelist (强制允许)</option>
-                <option value="blacklist">Blacklist (拒绝)</option>
+                {allowedListTypes.includes('scopelist') && <option value="scopelist">Scopelist (仅范围)</option>}
+                {allowedListTypes.includes('whitelist') && <option value="whitelist">Whitelist (强制允许)</option>}
+                {allowedListTypes.includes('blacklist') && <option value="blacklist">Blacklist (拒绝)</option>}
               </select>
             </div>
 
