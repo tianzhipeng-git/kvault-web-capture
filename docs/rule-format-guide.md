@@ -4,7 +4,7 @@
 
 系统目前有两个规则执行点：`rulesBeforeBaseEq` 和 `rulesBeforeStage2Eq`。
 
-### 1.1 `rulesBeforeBaseEq`
+### 1.1 基础入队规则`rulesBeforeBaseEq`
 
 `rulesBeforeBaseEq` 在页面进入 base 抓取队列之前执行。
 
@@ -38,7 +38,7 @@
 }
 ```
 
-### 1.2 `rulesBeforeStage2Eq`
+### 1.2 深度爬取规则`rulesBeforeStage2Eq`
 
 `rulesBeforeStage2Eq` 在 base 抓取和页面分类完成之后执行，用来决定页面是否需要进入第二阶段 artifact 抓取。
 
