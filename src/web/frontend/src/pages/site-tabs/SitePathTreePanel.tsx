@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { api, type PathTreeNode, type PathTreeResponse } from "@/lib/api";
 import { ChevronDown, ChevronRight, Download, Folder, FolderTree, Globe2 } from "lucide-react";
 
@@ -26,6 +27,95 @@ function collectExpandableNodeIds(nodes: PathTreeNode[], parentId = ""): string[
 
     return [nodeId, ...collectExpandableNodeIds(node.children, nodeId)];
   });
+}
+
+function renderTextTree(children: PathTreeNode[], prefix = ""): string[] {
+  return children.flatMap((node, index) => {
+    const isLast = index === children.length - 1;
+    const connector = isLast ? "└──" : "├──";
+    const childPrefix = `${prefix}${isLast ? "    " : "│   "}`;
+
+    return [
+      `${prefix}${connector} ${node.name}`,
+      ...renderTextTree(node.children, childPrefix),
+    ];
+  });
+}
+
+function normalizeDomainFilter(input: string): string {
+  const value = input.trim().toLowerCase().replace(/^\.+/, "");
+
+  if (!value) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return url.hostname.replace(/^\.+/, "");
+  } catch {
+    return value.split("/")[0]?.split(":")[0]?.replace(/\.+$/, "") ?? value;
+  }
+}
+
+function cloneNode(node: PathTreeNode): PathTreeNode {
+  return {
+    ...node,
+    children: node.children.map(cloneNode),
+  };
+}
+
+function filterPathTreeByDomain(pathTree: PathTreeResponse, domain: string): PathTreeResponse {
+  const normalizedDomain = normalizeDomainFilter(domain);
+
+  if (!normalizedDomain) {
+    return pathTree;
+  }
+
+  const domainParts = normalizedDomain.split(".").filter(Boolean).reverse();
+  let current: PathTreeNode | undefined = pathTree.root;
+  const ancestors: PathTreeNode[] = [];
+
+  for (const part of domainParts) {
+    current = current?.children.find((node) => node.kind === "domain" && node.name.toLowerCase() === part);
+
+    if (!current) {
+      const emptyRoot = { ...pathTree.root, pageCount: 0, terminalCount: 0, children: [] };
+
+      return {
+        ...pathTree,
+        totalUrls: 0,
+        root: emptyRoot,
+        text: "",
+      };
+    }
+
+    ancestors.push(current);
+  }
+
+  let child = cloneNode(ancestors[ancestors.length - 1]);
+
+  for (let index = ancestors.length - 2; index >= 0; index -= 1) {
+    child = {
+      ...ancestors[index],
+      pageCount: child.pageCount,
+      terminalCount: 0,
+      children: [child],
+    };
+  }
+
+  const filteredRoot = {
+    ...pathTree.root,
+    pageCount: child.pageCount,
+    terminalCount: 0,
+    children: [child],
+  };
+
+  return {
+    ...pathTree,
+    totalUrls: child.pageCount,
+    root: filteredRoot,
+    text: renderTextTree(filteredRoot.children).join("\n"),
+  };
 }
 
 function PathTreeKindIcon({ kind }: { kind: PathTreeNode["kind"] }) {
@@ -97,6 +187,7 @@ function PathTreeBranch({
 export function SitePathTreePanel({ siteId }: { siteId: number }) {
   const [isOpen, setIsOpen] = useState(false);
   const [pathTree, setPathTree] = useState<PathTreeResponse | null>(null);
+  const [domainFilter, setDomainFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -118,13 +209,17 @@ export function SitePathTreePanel({ siteId }: { siteId: number }) {
     }
   };
 
+  const visiblePathTree = useMemo(
+    () => pathTree ? filterPathTreeByDomain(pathTree, domainFilter) : null,
+    [domainFilter, pathTree],
+  );
   const jsonContent = useMemo(
-    () => pathTree ? JSON.stringify(pathTree, null, 2) : "",
-    [pathTree],
+    () => visiblePathTree ? JSON.stringify(visiblePathTree, null, 2) : "",
+    [visiblePathTree],
   );
   const expandableNodeIds = useMemo(
-    () => pathTree ? collectExpandableNodeIds(pathTree.root.children) : [],
-    [pathTree],
+    () => visiblePathTree ? collectExpandableNodeIds(visiblePathTree.root.children) : [],
+    [visiblePathTree],
   );
 
   const toggleNode = (nodeId: string) => {
@@ -177,7 +272,7 @@ export function SitePathTreePanel({ siteId }: { siteId: number }) {
               size="sm"
               className="gap-1.5"
               disabled={!pathTree}
-              onClick={() => downloadText(`site-${siteId}-path-tree.txt`, pathTree?.text ?? "", "text/plain;charset=utf-8")}
+              onClick={() => downloadText(`site-${siteId}-path-tree.txt`, visiblePathTree?.text ?? "", "text/plain;charset=utf-8")}
             >
               <Download className="h-4 w-4" /> Text
             </Button>
@@ -191,8 +286,20 @@ export function SitePathTreePanel({ siteId }: { siteId: number }) {
           )}
           {pathTree && (
             <div className="space-y-3">
+              <div className="max-w-md space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor={`path-tree-domain-${siteId}`}>
+                  域名筛选
+                </label>
+                <Input
+                  id={`path-tree-domain-${siteId}`}
+                  value={domainFilter}
+                  onChange={(event) => setDomainFilter(event.target.value)}
+                  placeholder="example.com"
+                />
+              </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline">URL {pathTree.totalUrls}</Badge>
+                <Badge variant="outline">显示 URL {visiblePathTree?.totalUrls ?? 0}</Badge>
+                {domainFilter.trim() && <Badge variant="outline">全部 URL {pathTree.totalUrls}</Badge>}
                 {pathTree.skippedUrls.length > 0 && <Badge variant="outline">跳过 {pathTree.skippedUrls.length}</Badge>}
                 <div className="ml-auto flex gap-2">
                   <Button
@@ -213,12 +320,14 @@ export function SitePathTreePanel({ siteId }: { siteId: number }) {
                   </Button>
                 </div>
               </div>
-              {pathTree.root.children.length > 0 ? (
+              {(visiblePathTree?.root.children.length ?? 0) > 0 ? (
                 <div className="max-h-[460px] overflow-auto rounded-md border bg-muted/20 p-3">
-                  <PathTreeBranch nodes={pathTree.root.children} expandedIds={expandedIds} onToggle={toggleNode} />
+                  <PathTreeBranch nodes={visiblePathTree?.root.children ?? []} expandedIds={expandedIds} onToggle={toggleNode} />
                 </div>
               ) : (
-                <div className="rounded-md border p-4 text-sm text-muted-foreground">暂无已知页面。</div>
+                <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                  {domainFilter.trim() ? "这个域名下暂无已知页面。" : "暂无已知页面。"}
+                </div>
               )}
             </div>
           )}
