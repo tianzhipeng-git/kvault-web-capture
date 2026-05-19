@@ -47,6 +47,13 @@ const exportArtifactOptions: Array<{ value: ProjectExportArtifact; label: string
   { value: "markdown", label: "Markdown" },
   { value: "screenshot", label: "截图" },
 ];
+type UpdatePolicy = "skip_existing" | "force_recrawl_all" | "stale_after_duration";
+
+const updatePolicyOptions: Array<{ value: UpdatePolicy; label: string }> = [
+  { value: "skip_existing", label: "跳过已有成功结果" },
+  { value: "force_recrawl_all", label: "强制重新采集" },
+  { value: "stale_after_duration", label: "超过时间后更新" },
+];
 
 function statusFilterLabel(values: string[]): string {
   if (values.length === 0) return "全部状态";
@@ -83,6 +90,19 @@ function parsePageIdInput(value: string): number[] {
   }
 
   return [...new Set(pageIds)];
+}
+
+function parseUrlInput(value: string): string[] {
+  const urls = value
+    .split(/\r?\n/)
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  if (urls.length === 0) {
+    throw new Error("请先输入要重跑的 URL。");
+  }
+
+  return [...new Set(urls)];
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -527,6 +547,9 @@ export function PageReview({
   const [selectedPages, setSelectedPages] = useState<Map<number, { url: string; title: string }>>(new Map());
   const [viewSelectedOpen, setViewSelectedOpen] = useState(false);
   const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
+  const [recrawlUpdatePolicy, setRecrawlUpdatePolicy] = useState<UpdatePolicy>("force_recrawl_all");
+  const [recrawlStaleAfterDays, setRecrawlStaleAfterDays] = useState("");
+  const [recrawlUrlsInput, setRecrawlUrlsInput] = useState("");
   const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [pageIdExportOpen, setPageIdExportOpen] = useState(false);
@@ -585,16 +608,41 @@ export function PageReview({
     });
   };
 
+  const openRecrawlDialog = () => {
+    setRecrawlUrlsInput([...selectedPages.values()].map((p) => p.url).join("\n"));
+    setConfirmRecrawlOpen(true);
+  };
+
   const submitRecrawl = async () => {
-    if (selectedPages.size === 0) return;
-    const count = selectedPages.size;
+    let initialUrls: string[];
+    try {
+      initialUrls = parseUrlInput(recrawlUrlsInput);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "URL 列表无效。");
+      return;
+    }
+
+    const staleAfterDays = recrawlStaleAfterDays ? Number(recrawlStaleAfterDays) : null;
+    const staleAfterMs = recrawlUpdatePolicy === "stale_after_duration" && staleAfterDays !== null
+      ? staleAfterDays * 24 * 60 * 60 * 1000
+      : null;
+
+    if (
+      recrawlUpdatePolicy === "stale_after_duration"
+      && (staleAfterDays === null || Number.isNaN(staleAfterDays) || staleAfterDays <= 0)
+    ) {
+      toast.error("请选择过期策略时需要填写有效的过期天数。");
+      return;
+    }
+
+    const count = initialUrls.length;
     setIsSubmittingRecrawl(true);
     try {
       await api.startCrawlRun(siteId, {
-        updatePolicy: 'force_recrawl_all',
+        updatePolicy: recrawlUpdatePolicy,
         targetSuccessCount: null,
-        staleAfterMs: null,
-        initialUrls: [...selectedPages.values()].map((p) => p.url),
+        staleAfterMs,
+        initialUrls,
         crawlMaxDepthOverride: 0,
       });
       setConfirmRecrawlOpen(false);
@@ -739,12 +787,23 @@ export function PageReview({
                 </Button>
               </>
             )}
-            {onRecrawlStarted && selectedPages.size > 0 && (
+            {onRecrawlStarted && (
               <>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setViewSelectedOpen(true)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setViewSelectedOpen(true)}
+                  disabled={selectedPages.size === 0}
+                >
                   查看已选 ({selectedPages.size})
                 </Button>
-                <Button size="sm" className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => setConfirmRecrawlOpen(true)}>
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={openRecrawlDialog}
+                  disabled={selectedPages.size === 0}
+                >
                   <RotateCcw className="w-3.5 h-3.5" />
                   重跑已选 ({selectedPages.size})
                 </Button>
@@ -967,15 +1026,40 @@ export function PageReview({
             <DialogTitle>确认重跑已选页面</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 text-sm">
-            <p>即将对 <span className="font-semibold">{selectedPages.size}</span> 个页面提交重新爬取任务，参数如下：</p>
-            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-              <li>更新策略：强制重新采集（force_recrawl_all）</li>
-              <li>爬取深度：0（仅爬取所选页面，不递归）</li>
-            </ul>
-            <div className="max-h-40 min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border bg-muted/30 p-2 space-y-1">
-              {[...selectedPages.values()].map((p) => (
-                <div key={p.url} className="min-w-0 break-all text-xs leading-5 text-muted-foreground">{p.url}</div>
-              ))}
+            <p>即将提交重新爬取任务，爬取深度固定为 0（仅爬取下方 URL，不递归）。</p>
+            <div className="space-y-2">
+              <Label htmlFor="recrawl-update-policy">更新策略</Label>
+              <select
+                id="recrawl-update-policy"
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                value={recrawlUpdatePolicy}
+                onChange={(event) => setRecrawlUpdatePolicy(event.target.value as UpdatePolicy)}
+              >
+                {updatePolicyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recrawl-stale-days">过期天数</Label>
+              <Input
+                id="recrawl-stale-days"
+                type="number"
+                min="1"
+                placeholder="仅更新策略为过期时使用"
+                value={recrawlStaleAfterDays}
+                onChange={(event) => setRecrawlStaleAfterDays(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recrawl-urls">URL 列表</Label>
+              <textarea
+                id="recrawl-urls"
+                className="min-h-40 w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-5 outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder={"每行一个 URL"}
+                value={recrawlUrlsInput}
+                onChange={(event) => setRecrawlUrlsInput(event.target.value)}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setConfirmRecrawlOpen(false)} disabled={isSubmittingRecrawl}>取消</Button>
