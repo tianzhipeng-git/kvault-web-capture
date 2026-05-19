@@ -7,6 +7,8 @@ import {
   ProjectExporter,
   type ProjectExportOptions,
   type ProjectExportResult,
+  type SitePageIdExportInput,
+  type SitePageIdExportResult,
   type SitePageListExportInput,
   type SitePageListExportResult,
 } from '../export/project-exporter.js';
@@ -309,6 +311,10 @@ export class M1App {
 
   exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {
     return this.projectExporter.exportSitePageList(input);
+  }
+
+  exportSitePagesByIds(input: SitePageIdExportInput): Promise<SitePageIdExportResult> {
+    return this.projectExporter.exportSitePagesByIds(input);
   }
 
   private async executeRun(input: {

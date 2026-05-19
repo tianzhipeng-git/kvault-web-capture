@@ -73,6 +73,11 @@ export interface ProjectExportOptions {
   includeDeniedPages?: boolean;
 }
 
+export interface SitePageIdExportOptions {
+  pageIds: number[];
+  artifacts?: ProjectExportArtifact[];
+}
+
 export interface PreparedProjectExport {
   token: string;
   fileName: string;
@@ -331,6 +336,12 @@ export const api = {
     const q = buildQueryString(params);
     return fetchBlobApi(`/api/sites/${siteId}/pages/export?${q}`);
   },
+  exportSitePagesByIds: (siteId: number, options: SitePageIdExportOptions): Promise<{ blob: Blob; filename: string }> =>
+    fetchBlobApi(`/api/sites/${siteId}/pages/export-by-ids`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options),
+    }),
   getSitePageDetail: (siteId: number, sitePageId: number) => fetchApi(`/api/sites/${siteId}/pages/${sitePageId}`),
   getPendingReview: (siteId: number) => fetchApi(`/api/sites/${siteId}/pending-review`),
   getRunLogs: (runId: number, params?: { sitePageId?: number }): Promise<{ items: RunLogItem[]; errorMessage: string | null }> => {

@@ -146,6 +146,32 @@ function parseProjectExportOptions(value: unknown): ProjectExportOptions {
   };
 }
 
+function parseExportArtifacts(value: unknown): ProjectExportArtifact[] | undefined {
+  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot']);
+  return Array.isArray(value)
+    ? value.filter((artifact): artifact is ProjectExportArtifact => (
+        typeof artifact === 'string' && allowedArtifacts.has(artifact as ProjectExportArtifact)
+      ))
+    : undefined;
+}
+
+function parsePageIdList(value: unknown): number[] {
+  const rawValues = Array.isArray(value) ? value : [];
+  const pageIds = rawValues.map((pageId) => (
+    typeof pageId === 'number' ? pageId : Number(pageId)
+  ));
+
+  if (pageIds.length === 0) {
+    throw new Error('pageIds 不能为空。');
+  }
+
+  if (pageIds.some((pageId) => !Number.isInteger(pageId) || pageId <= 0)) {
+    throw new Error('pageIds 中包含无效 ID。');
+  }
+
+  return pageIds;
+}
+
 function parseLlmHistory(value: unknown): ChatCompletionMessageParam[] {
   if (!Array.isArray(value)) {
     return [];
@@ -781,6 +807,23 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
     return reply
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
+      .header('Content-Length', fileStat.size)
+      .send(createReadStream(result.outputPath));
+  });
+
+  server.post('/api/sites/:siteId/pages/export-by-ids', async (request, reply) => {
+    const params = request.params as { siteId: string };
+    const body = (request.body ?? {}) as { pageIds?: unknown; artifacts?: unknown };
+    const result = await app.exportSitePagesByIds({
+      siteId: parseSiteId(params.siteId),
+      pageIds: parsePageIdList(body.pageIds),
+      artifacts: parseExportArtifacts(body.artifacts),
+    });
+    const fileStat = await stat(result.outputPath);
+
+    return reply
+      .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
       .send(createReadStream(result.outputPath));

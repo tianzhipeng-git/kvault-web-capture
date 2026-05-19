@@ -109,6 +109,23 @@ export interface SitePageListExportResult {
   pageCount: number;
 }
 
+export interface SitePageIdExportInput {
+  siteId: number;
+  pageIds: number[];
+  outputPath?: string;
+  artifacts?: ProjectExportArtifact[];
+}
+
+export interface SitePageIdExportResult {
+  outputPath: string;
+  fileName: string;
+  siteId: number;
+  requestedPageCount: number;
+  pageCount: number;
+  missingPageIds: number[];
+  artifactFileCount: number;
+}
+
 function parseJson<T>(value: string | null): T | null {
   if (value === null) {
     return null;
@@ -221,6 +238,15 @@ function defaultSitePageListExportPath(site: SiteRow, exportedAt: string): strin
     '.local',
     'exports',
     `${sanitizeSegment(site.name, `site-${site.id}`)}-pages-${timestamp}.xlsx`,
+  );
+}
+
+function defaultSitePageIdExportPath(site: SiteRow, exportedAt: string): string {
+  const timestamp = exportedAt.replace(/[:.]/g, '-');
+  return join(
+    '.local',
+    'exports',
+    `${sanitizeSegment(site.name, `site-${site.id}`)}-page-ids-${timestamp}.zip`,
   );
 }
 
@@ -499,6 +525,140 @@ export class ProjectExporter {
     private readonly clock: Clock,
   ) {}
 
+  private async getSite(siteId: number): Promise<SiteRow> {
+    const site = await this.db.get<SiteRow>(
+        `SELECT id, project_id, name, base_url, storage_root, config_json, updated_at, created_at
+         FROM sites
+         WHERE id = ?`,
+      [siteId],
+    );
+
+    if (!site) {
+      throw new Error(`Site ${siteId} not found`);
+    }
+
+    return site;
+  }
+
+  private async addSiteExportEntries(input: {
+    zip: ZipFile;
+    site: SiteRow;
+    rootDir: string;
+    pages: PageExportRow[];
+    artifacts: Map<string, ArtifactExportRow>;
+    selectedArtifacts: Set<ProjectExportArtifact>;
+    exportedAt: string;
+    tempFiles: string[];
+    outputPath: string;
+    includeSiteInfo: boolean;
+  }): Promise<number> {
+    const rootPrefix = input.rootDir ? `${input.rootDir}/` : '';
+    let artifactFileCount = 0;
+
+    if (input.includeSiteInfo) {
+      addJson(input.zip, `${rootPrefix}site_info.json`, {
+        id: input.site.id,
+        projectId: input.site.project_id,
+        name: input.site.name,
+        baseUrl: input.site.base_url,
+        storageRoot: input.site.storage_root,
+        createdAt: input.site.created_at,
+        updatedAt: input.site.updated_at,
+        exportedAt: input.exportedAt,
+        pageCount: input.pages.length,
+        config: parseJson<unknown>(input.site.config_json),
+      });
+    }
+
+    const shouldExportPageArtifacts = input.selectedArtifacts.size > 0;
+    const pageDirById = new Map<number, string>();
+
+    for (const page of input.pages) {
+      if (!shouldExportPageArtifacts || !hasSuccessfulBaseCapture(page)) {
+        continue;
+      }
+
+      const pageDir = safeDirectoryName(String(page.id), urlDirectoryLabel(page.normalized_url));
+      const pageRoot = `${rootPrefix}pages/${pageDir}`;
+      pageDirById.set(page.id, pageRoot);
+
+      addJson(input.zip, `${pageRoot}/page_info.json`, {
+        sitePageId: page.id,
+        siteId: page.site_id,
+        discoveredUrl: page.discovered_url,
+        normalizedUrl: page.normalized_url,
+        title: page.latest_title ?? page.title,
+        inventoryStatus: page.inventory_status,
+        discoverySource: page.discovery_source,
+        discoveryReferrerUrl: page.discovery_referrer_url,
+        firstDiscoveredAt: page.first_discovered_at,
+        updatedAt: page.updated_at,
+        latestPageRun: page.latest_page_run_id
+          ? {
+              pageRunId: page.latest_page_run_id,
+              crawlRunId: page.latest_crawl_run_id,
+              title: page.title,
+              metaDescription: page.meta_description,
+              decisionOutcome: page.decision_outcome,
+              decisionReason: page.decision_reason,
+              pendingReason: page.pending_reason,
+              requiredArtifacts: parseJson<unknown>(page.required_artifacts_json),
+              classificationLabels: parseJson<unknown>(page.classification_labels_json),
+              baseCaptureStatus: page.base_capture_status,
+              baseCapturePath: page.base_capture_path,
+              finishedAt: page.base_finished_at,
+            }
+          : null,
+      });
+
+      if (
+        input.selectedArtifacts.has('base') &&
+        await addFileOrTextBuffer(input.zip, {
+          filePath:
+            page.base_capture_status === 'succeeded' &&
+            page.base_capture_path !== null
+              ? page.base_capture_path
+              : null,
+          content: () => this.getBaseCaptureFallbackContent(page.id),
+          zipPath: `${pageRoot}/base.md`,
+        })
+      ) {
+        artifactFileCount += 1;
+      }
+
+      const markdown = input.artifacts.get(`${page.id}:markdown`);
+      if (
+        input.selectedArtifacts.has('markdown') &&
+        await addArtifactFileOrInlineContent(input.zip, {
+          artifact: markdown,
+          zipPath: `${pageRoot}/markdown.md`,
+          readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+        })
+      ) {
+        artifactFileCount += 1;
+      }
+
+      const screenshot = input.artifacts.get(`${page.id}:screenshot`);
+      if (
+        input.selectedArtifacts.has('screenshot') &&
+        await addArtifactFileOrInlineContent(input.zip, {
+          artifact: screenshot,
+          zipPath: `${pageRoot}/screenshot.png`,
+          readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+        })
+      ) {
+        artifactFileCount += 1;
+      }
+    }
+
+    const pageListPath = createTempFilePath(input.outputPath, `site-${input.site.id}-page-list.xlsx`);
+    input.tempFiles.push(pageListPath);
+    await writePageListWorkbook(pageListPath, input.pages, input.artifacts, pageDirById);
+    input.zip.addFile(pageListPath, `${rootPrefix}page_list.xlsx`);
+
+    return artifactFileCount;
+  }
+
   async exportProject(input: { projectId: number; outputPath?: string; options?: ProjectExportOptions }): Promise<ProjectExportResult> {
     const project = await this.db.get<ProjectRow>(
       'SELECT id, name, slug, label_definitions_json, created_at FROM projects WHERE id = ?',
@@ -512,7 +672,6 @@ export class ProjectExporter {
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultExportPath(project, exportedAt);
     const selectedArtifacts = normalizeExportArtifacts(input.options?.artifacts);
-    const shouldExportPageArtifacts = selectedArtifacts.size > 0;
     const includeDeniedPages = input.options?.includeDeniedPages ?? true;
     const siteIds = input.options?.siteIds?.filter((siteId) => Number.isInteger(siteId) && siteId > 0);
     const siteFilter = siteIds === undefined
@@ -554,103 +713,18 @@ export class ProjectExporter {
           const siteDir = safeDirectoryName(`site-${site.id}`, site.name);
           const pages = await this.listPages(site.id, { includeDeniedPages });
           const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(site.id));
-          const pageDirById = new Map<number, string>();
-
-          addJson(zip, `sites/${siteDir}/site_info.json`, {
-            id: site.id,
-            projectId: site.project_id,
-            name: site.name,
-            baseUrl: site.base_url,
-            storageRoot: site.storage_root,
-            createdAt: site.created_at,
-            updatedAt: site.updated_at,
+          artifactFileCount += await this.addSiteExportEntries({
+            zip,
+            site,
+            rootDir: `sites/${siteDir}`,
+            pages,
+            artifacts,
+            selectedArtifacts,
             exportedAt,
-            pageCount: pages.length,
-            config: parseJson<unknown>(site.config_json),
+            tempFiles,
+            outputPath,
+            includeSiteInfo: true,
           });
-
-          for (const page of pages) {
-            if (!shouldExportPageArtifacts || !hasSuccessfulBaseCapture(page)) {
-              continue;
-            }
-
-            const pageDir = safeDirectoryName(String(page.id), urlDirectoryLabel(page.normalized_url));
-            const pageRoot = `sites/${siteDir}/pages/${pageDir}`;
-            pageDirById.set(page.id, pageRoot);
-
-            addJson(zip, `${pageRoot}/page_info.json`, {
-              sitePageId: page.id,
-              siteId: page.site_id,
-              discoveredUrl: page.discovered_url,
-              normalizedUrl: page.normalized_url,
-              title: page.latest_title ?? page.title,
-              inventoryStatus: page.inventory_status,
-              discoverySource: page.discovery_source,
-              discoveryReferrerUrl: page.discovery_referrer_url,
-              firstDiscoveredAt: page.first_discovered_at,
-              updatedAt: page.updated_at,
-              latestPageRun: page.latest_page_run_id
-                ? {
-                    pageRunId: page.latest_page_run_id,
-                    crawlRunId: page.latest_crawl_run_id,
-                    title: page.title,
-                    metaDescription: page.meta_description,
-                    decisionOutcome: page.decision_outcome,
-                    decisionReason: page.decision_reason,
-                    pendingReason: page.pending_reason,
-                    requiredArtifacts: parseJson<unknown>(page.required_artifacts_json),
-                    classificationLabels: parseJson<unknown>(page.classification_labels_json),
-                    baseCaptureStatus: page.base_capture_status,
-                    baseCapturePath: page.base_capture_path,
-                    finishedAt: page.base_finished_at,
-                  }
-                : null,
-            });
-
-            if (
-              selectedArtifacts.has('base') &&
-              await addFileOrTextBuffer(zip, {
-                filePath:
-                  page.base_capture_status === 'succeeded' &&
-                  page.base_capture_path !== null
-                    ? page.base_capture_path
-                    : null,
-                content: () => this.getBaseCaptureFallbackContent(page.id),
-                zipPath: `${pageRoot}/base.md`,
-              })
-            ) {
-              artifactFileCount += 1;
-            }
-
-            const markdown = artifacts.get(`${page.id}:markdown`);
-            if (
-              selectedArtifacts.has('markdown') &&
-              await addArtifactFileOrInlineContent(zip, {
-                artifact: markdown,
-                zipPath: `${pageRoot}/markdown.md`,
-                readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
-              })
-            ) {
-              artifactFileCount += 1;
-            }
-
-            const screenshot = artifacts.get(`${page.id}:screenshot`);
-            if (
-              selectedArtifacts.has('screenshot') &&
-              await addArtifactFileOrInlineContent(zip, {
-                artifact: screenshot,
-                zipPath: `${pageRoot}/screenshot.png`,
-                readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
-              })
-            ) {
-              artifactFileCount += 1;
-            }
-          }
-
-          const pageListPath = createTempFilePath(outputPath, `site-${site.id}-page-list.xlsx`);
-          tempFiles.push(pageListPath);
-          await writePageListWorkbook(pageListPath, pages, artifacts, pageDirById);
-          zip.addFile(pageListPath, `sites/${siteDir}/page_list.xlsx`);
         }
       });
     } finally {
@@ -670,16 +744,7 @@ export class ProjectExporter {
   }
 
   async exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {
-    const site = await this.db.get<SiteRow>(
-        `SELECT id, project_id, name, base_url, storage_root, config_json, updated_at, created_at
-         FROM sites
-         WHERE id = ?`,
-      [input.siteId],
-    );
-
-    if (!site) {
-      throw new Error(`Site ${input.siteId} not found`);
-    }
+    const site = await this.getSite(input.siteId);
 
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultSitePageListExportPath(site, exportedAt);
@@ -694,6 +759,56 @@ export class ProjectExporter {
       fileName: basename(outputPath),
       siteId: site.id,
       pageCount: pages.length,
+    };
+  }
+
+  async exportSitePagesByIds(input: SitePageIdExportInput): Promise<SitePageIdExportResult> {
+    const pageIds = [...new Set(input.pageIds.filter((pageId) => Number.isInteger(pageId) && pageId > 0))];
+
+    if (pageIds.length === 0) {
+      throw new Error('pageIds 不能为空');
+    }
+
+    const site = await this.getSite(input.siteId);
+    const exportedAt = this.clock.now();
+    const outputPath = input.outputPath ?? defaultSitePageIdExportPath(site, exportedAt);
+    const selectedArtifacts = normalizeExportArtifacts(input.artifacts);
+    const pages = await this.listPagesByIds(input.siteId, pageIds);
+    const foundPageIds = new Set(pages.map((page) => page.id));
+    const missingPageIds = pageIds.filter((pageId) => !foundPageIds.has(pageId));
+    const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(input.siteId));
+    const tempFiles: string[] = [];
+    let artifactFileCount = 0;
+
+    try {
+      await writeZipFile(outputPath, async (zip) => {
+        artifactFileCount += await this.addSiteExportEntries({
+          zip,
+          site,
+          rootDir: '',
+          pages,
+          artifacts,
+          selectedArtifacts,
+          exportedAt,
+          tempFiles,
+          outputPath,
+          includeSiteInfo: true,
+        });
+      });
+    } finally {
+      for (const tempFile of tempFiles) {
+        await rm(tempFile, { force: true });
+      }
+    }
+
+    return {
+      outputPath,
+      fileName: basename(outputPath),
+      siteId: site.id,
+      requestedPageCount: pageIds.length,
+      pageCount: pages.length,
+      missingPageIds,
+      artifactFileCount,
     };
   }
 
@@ -765,6 +880,57 @@ export class ProjectExporter {
          WHERE ${whereClause}
          ORDER BY sp.id`,
       args,
+    );
+  }
+
+  private async listPagesByIds(siteId: number, pageIds: number[]): Promise<PageExportRow[]> {
+    if (pageIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = pageIds.map(() => '?').join(', ');
+    return this.db.all<PageExportRow>(
+        `SELECT
+           sp.id,
+           sp.site_id,
+           sp.discovered_url,
+           sp.normalized_url,
+           sp.inventory_status,
+           sp.discovery_source,
+           sp.discovery_referrer_url,
+           sp.last_pending_reason,
+           sp.latest_title,
+           sp.last_base_status,
+           sp.last_base_at,
+           sp.last_markdown_status,
+           sp.last_markdown_at,
+           sp.last_screenshot_status,
+           sp.last_screenshot_at,
+           sp.first_discovered_at,
+           sp.updated_at,
+           pr.id AS latest_page_run_id,
+           pr.crawl_run_id AS latest_crawl_run_id,
+           pr.title,
+           pr.meta_description,
+           pr.classification_labels_json,
+           pr.decision_outcome,
+           pr.decision_reason,
+           pr.pending_reason,
+           pr.required_artifacts_json,
+           pr.base_capture_status,
+           pr.base_capture_path,
+           pr.finished_at AS base_finished_at
+         FROM site_pages sp
+         LEFT JOIN page_runs pr ON pr.id = (
+           SELECT pr2.id
+           FROM page_runs pr2
+           WHERE pr2.site_page_id = sp.id
+           ORDER BY pr2.id DESC
+           LIMIT 1
+         )
+         WHERE sp.site_id = ? AND sp.id IN (${placeholders})
+         ORDER BY sp.id`,
+      [siteId, ...pageIds],
     );
   }
 

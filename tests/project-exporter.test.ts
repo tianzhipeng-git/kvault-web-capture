@@ -323,5 +323,27 @@ describe('project export', () => {
     expect(pageListResult.pageCount).toBe(1);
     expect(pageListSheet?.getRow(2).getCell(4).value).toBe(deniedUrl);
     expect(pageListSheet?.getRow(3).getCell(4).value).toBeNull();
+
+    const pageIdOutputPath = join(dir, 'page-id-export.zip');
+    const pageIdResult = await app.exportSitePagesByIds({
+      siteId: site.id,
+      pageIds: [sitePageId, 999999, sitePageId],
+      outputPath: pageIdOutputPath,
+      artifacts: ['base', 'markdown'],
+    });
+    const pageIdEntries = await readZipEntries(pageIdResult.outputPath);
+    const pageIdPageListPath = [...pageIdEntries.keys()].find((path) => path.endsWith('page_list.xlsx'));
+
+    expect(pageIdResult.requestedPageCount).toBe(2);
+    expect(pageIdResult.pageCount).toBe(1);
+    expect(pageIdResult.missingPageIds).toEqual([999999]);
+    expect(pageIdEntries.get('site_info.json')?.toString('utf8')).toContain('docs site');
+    expect(pageIdPageListPath).toBe('page_list.xlsx');
+    expect(pageIdEntries.has('export_info.json')).toBe(false);
+    expect([...pageIdEntries.keys()].some((path) => path.startsWith('sites/'))).toBe(false);
+    expect([...pageIdEntries.keys()].filter((path) => path.endsWith('/page_info.json'))).toHaveLength(1);
+    expect([...pageIdEntries.keys()].some((path) => path.endsWith('/base.md'))).toBe(true);
+    expect([...pageIdEntries.keys()].some((path) => path.endsWith('/markdown.md'))).toBe(true);
+    expect([...pageIdEntries.keys()].some((path) => path.endsWith('/screenshot.png'))).toBe(false);
   });
 });

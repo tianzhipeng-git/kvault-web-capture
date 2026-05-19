@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { ProcessingState, SitePageDetail, SitePageListRow } from "@/lib/api";
+import type { ProcessingState, ProjectExportArtifact, SitePageDetail, SitePageListRow } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RunLogs } from "@/components/RunLogs";
 import { LLMChatPanel } from "@/components/LLMChatPanel";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { LlmChatMessage } from "@/lib/api";
 import {
@@ -19,7 +20,7 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
-import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const statusOptions = [
@@ -41,6 +42,11 @@ const pendingReasonOptions = [
 
 const minPageSize = 1;
 const maxPageSize = 500;
+const exportArtifactOptions: Array<{ value: ProjectExportArtifact; label: string }> = [
+  { value: "base", label: "Base 文本" },
+  { value: "markdown", label: "Markdown" },
+  { value: "screenshot", label: "截图" },
+];
 
 function statusFilterLabel(values: string[]): string {
   if (values.length === 0) return "全部状态";
@@ -59,6 +65,35 @@ function statusVariant(page: SitePageListRow): "default" | "secondary" | "destru
   if (page.needsReview) return "secondary";
   if (page.businessStatus === "已完成采集") return "default";
   return "outline";
+}
+
+function parsePageIdInput(value: string): number[] {
+  const tokens = value
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const pageIds = tokens.map((token) => Number(token));
+
+  if (pageIds.length === 0) {
+    throw new Error("请先输入 page ID。");
+  }
+
+  if (pageIds.some((pageId) => !Number.isInteger(pageId) || pageId <= 0)) {
+    throw new Error("page ID 列表中包含无效 ID。");
+  }
+
+  return [...new Set(pageIds)];
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 type PreviewKind = "base" | "markdown" | "screenshot";
@@ -494,6 +529,12 @@ export function PageReview({
   const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
   const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [pageIdExportOpen, setPageIdExportOpen] = useState(false);
+  const [pageIdExportInput, setPageIdExportInput] = useState("");
+  const [isExportingPageIds, setIsExportingPageIds] = useState(false);
+  const [selectedPageIdExportArtifacts, setSelectedPageIdExportArtifacts] = useState<Set<ProjectExportArtifact>>(
+    new Set(["base", "markdown", "screenshot"]),
+  );
 
   useEffect(() => {
     setIsLoading(true);
@@ -577,19 +618,49 @@ export function PageReview({
         pendingReason,
         crawlRunId,
       });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       toast.success('页面清单已导出。');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出失败。');
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const togglePageIdExportArtifact = (artifact: ProjectExportArtifact, checked: boolean) => {
+    setSelectedPageIdExportArtifacts((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(artifact);
+      } else {
+        next.delete(artifact);
+      }
+      return next;
+    });
+  };
+
+  const exportPagesByIds = async () => {
+    let pageIds: number[];
+    try {
+      pageIds = parsePageIdInput(pageIdExportInput);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "page ID 列表无效。");
+      return;
+    }
+
+    setIsExportingPageIds(true);
+    try {
+      const { blob, filename } = await api.exportSitePagesByIds(siteId, {
+        pageIds,
+        artifacts: [...selectedPageIdExportArtifacts],
+      });
+      downloadBlob(blob, filename);
+      setPageIdExportOpen(false);
+      toast.success(`已导出 ${pageIds.length} 个 page ID 对应的页面。`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导出失败。");
+    } finally {
+      setIsExportingPageIds(false);
     }
   };
 
@@ -651,10 +722,22 @@ export function PageReview({
           <div className="flex items-center gap-2 shrink-0">
             {crawlRunId && <Badge variant="secondary">Run #{crawlRunId}</Badge>}
             {enableExport && (
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPages} disabled={isExporting}>
-                <Download className="w-3.5 h-3.5" />
-                {isExporting ? "导出中..." : "导出 XLSX"}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setPageIdExportOpen(true)}
+                  disabled={isExportingPageIds}
+                >
+                  {isExportingPageIds ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  按page_id导出页面
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPages} disabled={isExporting}>
+                  <Download className="w-3.5 h-3.5" />
+                  {isExporting ? "导出中..." : "导出 XLSX"}
+                </Button>
+              </>
             )}
             {onRecrawlStarted && selectedPages.size > 0 && (
               <>
@@ -806,6 +889,50 @@ export function PageReview({
       </Card>
 
       <PageDetailDialog detail={detail} onClose={() => setDetail(null)} />
+
+      <Dialog open={pageIdExportOpen} onOpenChange={setPageIdExportOpen}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-xl min-w-0 overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>按page_id导出页面</DialogTitle>
+            <DialogDescription>输入 page ID 列表，支持逗号、空格或换行分隔。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="page-id-export-input">page ID 列表</Label>
+              <textarea
+                id="page-id-export-input"
+                className="min-h-36 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                placeholder={"例如：\n101, 102 103\n104"}
+                value={pageIdExportInput}
+                onChange={(event) => setPageIdExportInput(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <Label>Artifacts</Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {exportArtifactOptions.map((option) => (
+                  <label key={option.value} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedPageIdExportArtifacts.has(option.value)}
+                      onChange={(event) => togglePageIdExportArtifact(option.value, event.target.checked)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPageIdExportOpen(false)} disabled={isExportingPageIds}>取消</Button>
+            <Button onClick={exportPagesByIds} disabled={isExportingPageIds}>
+              {isExportingPageIds ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              开始导出
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 查看已选对话框 */}
       <Dialog open={viewSelectedOpen} onOpenChange={setViewSelectedOpen}>
