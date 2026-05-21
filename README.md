@@ -63,7 +63,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 
 规则分两层执行。
 
-### Base 前规则
+### 基础入队规则
 
 `rulesBeforeBaseEq` 只看 URL，用于避免无意义页面进入 base 队列。例如登录页、下载页、跨站链接等。
 
@@ -77,7 +77,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 
 默认结果是 allow。
 
-### Stage 2 前规则
+### 深度爬取规则
 
 `rulesBeforeStage2Eq` 在 base capture 和分类之后执行。它可以看 URL，也可以看分类 label。这个阶段决定页面最终是：
 

@@ -22,12 +22,12 @@ import {
   SitePageRepository,
 } from '../db/repositories/index.js';
 import { RunPlanner } from '../planner/run-planner.js';
+import type { RunTargetTracker } from '../planner/run-target-tracker.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
 import { logger } from '../utils/runtime-logger.js';
 import { isInvalidUrlError } from '../utils/url.js';
-import type { RunTargetTracker } from './run-target-tracker.js';
 
 type MarkdownRequestUserDataWithState = MarkdownRequestUserData & {
   markdownRequestHandlerStarted?: boolean;

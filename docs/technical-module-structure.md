@@ -276,7 +276,11 @@ markdown / screenshot handlers 负责：
 
 失败处理器会在 Crawlee retries 耗尽后写入 failed 结果和日志。
 
-### 4.3 页面提取
+### 4.3 分类
+
+分类接口是 `Classifier.classify(page)`。当前默认 `FakeClassifier` 基于 title/meta 的关键词返回 `content_type`，并对部分 Apple iPhone URL 做特殊分类。
+
+### 4.4 页面提取与采集适配器
 
 `src/extract/extract-page.ts` 从 HTML 中提取：
 
@@ -290,10 +294,6 @@ markdown / screenshot handlers 负责：
 - fragment-only href
 - 非 http / https 协议
 - 带非 HTML 扩展名的资源文件
-
-### 4.4 分类与采集适配器
-
-分类接口是 `Classifier.classify(page)`。当前默认 `FakeClassifier` 基于 title/meta 的关键词返回 `content_type`，并对部分 Apple iPhone URL 做特殊分类。
 
 Markdown 默认使用 fallback 策略：
 

@@ -30,7 +30,7 @@ import {
   createScreenshotRequestHandler,
 } from './handlers.js';
 import type { RunLogRepository } from '../db/repositories/index.js';
-import type { RunTargetTracker } from './run-target-tracker.js';
+import type { RunTargetTracker } from '../planner/run-target-tracker.js';
 
 /**
  * Shared session pool configuration applied to all HTTP-based crawlers.

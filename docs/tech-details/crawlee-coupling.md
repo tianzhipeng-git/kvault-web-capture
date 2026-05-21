@@ -43,11 +43,10 @@ flowchart LR
 | `src/crawlee/crawler-factory.ts` | 创建 `CheerioCrawler`、`PlaywrightCrawler`、`BasicCrawler` |
 | `src/crawlee/handlers.ts` | `RequestQueue`、`CheerioCrawlingContext`、三阶段 request handler |
 | `src/crawlee/queue-factory.ts` | 按 run 打开命名 `RequestQueue` |
-| `src/crawlee/run-target-tracker.ts` | 与 Crawlee 同目录的运行目标计数（无 Crawlee import） |
 | `src/app/services.ts` | `Configuration`；创建队列与 crawler 并调用 `run()` |
 | `src/utils/runtime-logger.ts` | `LoggerJson` 桥接，将 Crawlee 日志写入当前 run 的 `runtime.log` |
 
-**无 Crawlee 依赖的模块**（举例）：`planner/`、`db/`、`domain/`、`rules/`、`export/`、`web/`、`classification/`、`markdown/`、`screenshot/`、`config/`、`extract/`。
+**无 Crawlee 依赖的模块**（举例）：`planner/`（包含 `RunTargetTracker` 运行目标计数）、`db/`、`domain/`、`rules/`、`export/`、`web/`、`classification/`、`markdown/`、`screenshot/`、`config/`、`extract/`。
 
 ### 体量（约数）
 

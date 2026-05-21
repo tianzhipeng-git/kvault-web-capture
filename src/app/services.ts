@@ -41,7 +41,7 @@ import type {
 import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
 import { createDefaultMarkdownAdapter } from '../markdown/real-markdown-adapter.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
-import { RunTargetTracker } from '../crawlee/run-target-tracker.js';
+import { RunTargetTracker } from '../planner/run-target-tracker.js';
 import {
   createBaseCrawler,
   createMarkdownCrawler,
