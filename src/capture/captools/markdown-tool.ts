@@ -3,13 +3,22 @@ import { promisify } from 'node:util';
 
 import { Defuddle } from 'defuddle/node';
 
-import type { MarkdownCaptureAdapter, MarkdownCaptureContext, MarkdownCaptureResult } from './markdown-adapter.js';
+import { parseHtmlDocument } from '../html.js';
+import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
+import { responseBody, responseFinalUrl, responseStatusCode } from './http-base-tool.js';
 
 const execFile = promisify(execFileCallback);
 
+export interface MarkdownStrategyContext {
+  document?: Document;
+  finalUrl?: string;
+  html?: string;
+}
+
 export interface MarkdownCaptureStrategy {
   readonly name: string;
-  capture(url: string, context?: MarkdownCaptureContext): Promise<string>;
+  readonly needsDocument?: boolean;
+  capture(url: string, context?: MarkdownStrategyContext): Promise<string>;
 }
 
 function requireNonEmptyMarkdown(content: string, strategyName: string): string {
@@ -24,10 +33,11 @@ function requireNonEmptyMarkdown(content: string, strategyName: string): string 
 
 export class DefuddleMarkdownStrategy implements MarkdownCaptureStrategy {
   readonly name = 'defuddle';
+  readonly needsDocument = true;
 
-  async capture(url: string, context?: MarkdownCaptureContext): Promise<string> {
+  async capture(url: string, context?: MarkdownStrategyContext): Promise<string> {
     if (!context?.document) {
-      throw new Error('Defuddle requires a DOM document from LinkeDOMCrawler');
+      throw new Error('Defuddle requires a DOM document');
     }
 
     const result = await Defuddle(context.document, context.finalUrl ?? url, {
@@ -91,32 +101,53 @@ export class JinaMarkdownStrategy implements MarkdownCaptureStrategy {
   }
 }
 
-export class FallbackMarkdownCaptureAdapter implements MarkdownCaptureAdapter {
-  readonly crawlerType = 'linkedom' as const;
+export class MarkdownTool implements CaptureTool {
+  readonly name = 'markdown';
+  readonly capabilities = ['markdown'] as const;
 
-  constructor(private readonly strategies: MarkdownCaptureStrategy[]) {}
+  constructor(private readonly strategies: MarkdownCaptureStrategy[] = createDefaultMarkdownStrategies()) {}
 
-  async capture(url: string, context?: MarkdownCaptureContext): Promise<MarkdownCaptureResult> {
+  async capture(input: CaptureInput): Promise<CaptureToolResult> {
     const errors: string[] = [];
+    let context: MarkdownStrategyContext | undefined;
+    let statusCode: number | undefined;
 
     for (const strategy of this.strategies) {
       try {
-        const content = await strategy.capture(url, context);
-        return { content, strategyName: strategy.name };
+        if (strategy.needsDocument && !context?.document) {
+          const response = await input.runtime.sendRequest(input.url);
+          const html = responseBody(response);
+          context = {
+            document: parseHtmlDocument(html),
+            finalUrl: responseFinalUrl(response, input.url),
+            html,
+          };
+          statusCode = responseStatusCode(response);
+        }
+
+        const markdown = await strategy.capture(input.url, context);
+        return {
+          toolName: this.name,
+          finalUrl: context?.finalUrl ?? input.url,
+          statusCode,
+          html: context?.html,
+          markdown,
+          markdownStrategyName: strategy.name,
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`${strategy.name}: ${message}`);
       }
     }
 
-    throw new Error(`Markdown capture failed for ${url}. ${errors.join(' | ')}`);
+    throw new Error(`Markdown capture failed for ${input.url}. ${errors.join(' | ')}`);
   }
 }
 
-export function createDefaultMarkdownAdapter(): MarkdownCaptureAdapter {
-  return new FallbackMarkdownCaptureAdapter([
+export function createDefaultMarkdownStrategies(): MarkdownCaptureStrategy[] {
+  return [
     new DefuddleMarkdownStrategy(),
     new LightpandaMarkdownStrategy(),
     new JinaMarkdownStrategy(process.env.JINA_API_TOKEN ?? null),
-  ]);
+  ];
 }

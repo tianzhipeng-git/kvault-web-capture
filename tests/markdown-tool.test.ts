@@ -3,16 +3,24 @@ import { parseHTML } from 'linkedom';
 
 import {
   DefuddleMarkdownStrategy,
-  FallbackMarkdownCaptureAdapter,
   JinaMarkdownStrategy,
   LightpandaMarkdownStrategy,
+  MarkdownTool,
   type MarkdownCaptureStrategy,
-} from '../src/markdown/real-markdown-adapter.js';
+} from '../src/capture/captools/index.js';
+import type { RuntimeContext } from '../src/capture/types.js';
 
-describe('FallbackMarkdownCaptureAdapter', () => {
+const runtime: RuntimeContext = {
+  requestId: 'test-request',
+  async sendRequest() {
+    throw new Error('not used');
+  },
+};
+
+describe('MarkdownTool', () => {
   it('stops at the first successful strategy', async () => {
     const calls: string[] = [];
-    const adapter = new FallbackMarkdownCaptureAdapter([
+    const tool = new MarkdownTool([
       {
         name: 'first',
         async capture() {
@@ -36,15 +44,27 @@ describe('FallbackMarkdownCaptureAdapter', () => {
       },
     ] satisfies MarkdownCaptureStrategy[]);
 
-    await expect(adapter.capture('https://example.com')).resolves.toEqual({
-      content: '# ok\n',
-      strategyName: 'second',
+    await expect(tool.capture({
+      url: 'https://example.com',
+      normalizedUrl: 'https://example.com',
+      needs: ['markdown'],
+      siteConfig: {
+        seedUrls: [],
+        sitemaps: [],
+        rulesBeforeBaseEq: [],
+        rulesBeforeStage2Eq: [],
+        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+      },
+      runtime,
+    })).resolves.toMatchObject({
+      markdown: '# ok\n',
+      markdownStrategyName: 'second',
     });
     expect(calls).toEqual(['first', 'second']);
   });
 
   it('reports all fallback failures', async () => {
-    const adapter = new FallbackMarkdownCaptureAdapter([
+    const tool = new MarkdownTool([
       {
         name: 'first',
         async capture() {
@@ -59,7 +79,19 @@ describe('FallbackMarkdownCaptureAdapter', () => {
       },
     ] satisfies MarkdownCaptureStrategy[]);
 
-    await expect(adapter.capture('https://example.com')).rejects.toThrow(
+    await expect(tool.capture({
+      url: 'https://example.com',
+      normalizedUrl: 'https://example.com',
+      needs: ['markdown'],
+      siteConfig: {
+        seedUrls: [],
+        sitemaps: [],
+        rulesBeforeBaseEq: [],
+        rulesBeforeStage2Eq: [],
+        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+      },
+      runtime,
+    })).rejects.toThrow(
       'Markdown capture failed for https://example.com. first: one | second: two',
     );
   });

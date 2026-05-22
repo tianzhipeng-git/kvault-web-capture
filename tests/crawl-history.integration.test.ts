@@ -4,14 +4,38 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { M1App } from '../src/app/services.js';
+import { HttpBaseTool } from '../src/capture/captools/index.js';
+import type { CaptureInput, CaptureTool, CaptureToolResult } from '../src/capture/types.js';
 import { openDatabase } from '../src/db/database.js';
 import type { ArtifactType } from '../src/domain/types.js';
-import { FakeMarkdownCaptureAdapter } from '../src/markdown/fake-markdown-adapter.js';
-import type { MarkdownCaptureAdapter } from '../src/markdown/markdown-adapter.js';
-import { FakeScreenshotCaptureAdapter } from '../src/screenshot/fake-screenshot-adapter.js';
-import type { ScreenshotCaptureAdapter, ScreenshotCaptureResult } from '../src/screenshot/screenshot-adapter.js';
 import { createTempDir } from './helpers/tmp.js';
 import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.js';
+
+class FakeMarkdownTool implements CaptureTool {
+  readonly name = 'fake-markdown';
+  readonly capabilities = ['markdown'] as const;
+
+  async capture(input: CaptureInput): Promise<CaptureToolResult> {
+    return {
+      toolName: this.name,
+      markdown: `# Fake markdown capture\n\nSource: ${input.url}\n`,
+      markdownStrategyName: this.name,
+    };
+  }
+}
+
+class FakeScreenshotTool implements CaptureTool {
+  readonly name = 'fake-screenshot';
+  readonly capabilities = ['screenshot'] as const;
+
+  async capture(): Promise<CaptureToolResult> {
+    return {
+      toolName: this.name,
+      screenshot: Buffer.from('fake png data'),
+      screenshotExtension: 'png',
+    };
+  }
+}
 
 function writeSiteConfig(input: {
   configPath: string;
@@ -91,8 +115,7 @@ function writeSiteConfig(input: {
 async function createConfiguredApp(input: {
   dir: string;
   server: TestSiteServer;
-  markdownAdapter?: MarkdownCaptureAdapter;
-  screenshotAdapter?: ScreenshotCaptureAdapter;
+  captureTools?: CaptureTool[];
   docsArtifacts?: ArtifactType[];
   productArtifacts?: ArtifactType[];
 }): Promise<{ app: M1App; siteId: number; dbPath: string; configPath: string }> {
@@ -100,8 +123,11 @@ async function createConfiguredApp(input: {
   const storageRoot = join(input.dir, 'storage');
   const app = await M1App.create({
     dbPath,
-    markdownAdapter: input.markdownAdapter ?? new FakeMarkdownCaptureAdapter(),
-    screenshotAdapter: input.screenshotAdapter ?? new FakeScreenshotCaptureAdapter(),
+    captureTools: input.captureTools ?? [
+      new HttpBaseTool(),
+      new FakeMarkdownTool(),
+      new FakeScreenshotTool(),
+    ],
   });
   const project = await app.createProject('Crawl Project');
   const site = await app.createSite({
@@ -258,6 +284,38 @@ describe('crawl history planning', () => {
     } finally {
       await db.close();
     }
+  });
+
+  it('replans pending pages for skip_existing so crawl can continue discovery', async () => {
+    const dir = createTempDir('kvault-skip-existing-pending-');
+    const server = await startTestSiteServer();
+    servers.push(server);
+    const { app, siteId, configPath } = await createConfiguredApp({
+      dir,
+      server,
+      docsArtifacts: [],
+      productArtifacts: [],
+    });
+    apps.push(app);
+
+    writeSiteConfig({
+      configPath,
+      baseUrl: server.baseUrl,
+      docsArtifacts: [],
+      productArtifacts: ['markdown'],
+    });
+    await app.importSiteConfig(siteId, configPath);
+
+    await app.runSeed(siteId);
+    const crawlRun = await app.runCrawl({
+      siteId,
+      updatePolicy: 'skip_existing',
+      targetSuccessCount: null,
+      staleAfterMs: null,
+    });
+
+    expect(crawlRun.pageRuns).toBe(2);
+    expect(crawlRun.artifactRuns).toBe(1);
   });
 
   it('always replans known inventory for force_recrawl_all', async () => {

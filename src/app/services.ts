@@ -32,25 +32,24 @@ import {
   type SampleCaptureRow,
 } from '../db/repositories/index.js';
 import type {
-  BaseRequestUserData,
+  PageCaptureTask,
   RunType,
   RunSummary,
   SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
-import type { MarkdownCaptureAdapter } from '../markdown/markdown-adapter.js';
-import { createDefaultMarkdownAdapter } from '../markdown/real-markdown-adapter.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
+import { PageCaptureExecutor } from '../capture/executor.js';
+import type { CaptureTool } from '../capture/types.js';
+import { HttpBaseTool, MarkdownTool, PlaywrightScreenshotTool } from '../capture/captools/index.js';
 import { RunTargetTracker } from '../planner/run-target-tracker.js';
+import { CrawleeCaptureRuntime } from '../crawlee/capture-runtime.js';
 import {
-  createBaseCrawler,
-  createMarkdownCrawler,
-  createScreenshotCrawler,
-} from '../crawlee/crawler-factory.js';
+  createPageCaptureFailedRequestHandler,
+  createPageCaptureRequestHandler,
+} from '../crawlee/handlers.js';
 import { RunPlanner } from '../planner/run-planner.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
-import type { ScreenshotCaptureAdapter } from '../screenshot/screenshot-adapter.js';
-import { PlaywrightScreenshotCaptureAdapter } from '../screenshot/real-screenshot-adapter.js';
 
 import { SystemClock } from '../utils/clock.js';
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
@@ -79,8 +78,7 @@ export interface M1AppOptions {
   dbPath: string;
   databaseUrl?: string;
   classifier?: Classifier;
-  markdownAdapter?: MarkdownCaptureAdapter;
-  screenshotAdapter?: ScreenshotCaptureAdapter;
+  captureTools?: CaptureTool[];
   feishuBot?: RunNotificationBot | null;
 }
 
@@ -109,19 +107,18 @@ export class M1App {
 
   private readonly classifier: Classifier | null;
 
-  private readonly markdownAdapter: MarkdownCaptureAdapter;
-
-  private readonly screenshotAdapter: ScreenshotCaptureAdapter;
+  private readonly captureTools: CaptureTool[];
 
   private runNotificationBot: RunNotificationBot | null | undefined;
 
   private constructor(private readonly options: M1AppOptions) {
     this.clock = new SystemClock();
     this.classifier = options.classifier ?? null;
-
-    this.markdownAdapter = options.markdownAdapter ?? createDefaultMarkdownAdapter();
-    this.screenshotAdapter =
-      options.screenshotAdapter ?? new PlaywrightScreenshotCaptureAdapter();
+    this.captureTools = options.captureTools ?? [
+      new HttpBaseTool(),
+      new MarkdownTool(),
+      new PlaywrightScreenshotTool(),
+    ];
     this.runNotificationBot = options.feishuBot;
   }
 
@@ -429,9 +426,7 @@ export class M1App {
     });
 
     const artifactWriter = new FileArtifactWriter(site.storageRoot);
-    const baseQueue = await openRunQueue(runId, 'base', configuration);
-    const markdownQueue = await openRunQueue(runId, 'markdown', configuration);
-    const screenshotQueue = await openRunQueue(runId, 'screenshot', configuration);
+    const pageCaptureQueue = await openRunQueue(runId, 'page-capture', configuration);
     const targetTracker = new RunTargetTracker(input.targetSuccessCount);
 
     const effectiveConfig = input.crawlMaxDepthOverride !== null && input.crawlMaxDepthOverride !== undefined
@@ -578,18 +573,20 @@ export class M1App {
         continue;
       }
 
-      await baseQueue.addRequest({
+      await pageCaptureQueue.addRequest({
         url: candidate.url,
         uniqueKey: `base:${runId}:${planned.sitePageId}`,
         userData: {
-          stage: 'base',
+          stage: 'page_capture',
           runId,
           siteId: site.id,
           sitePageId: planned.sitePageId,
           normalizedUrl: planned.normalizedUrl,
+          url: candidate.url,
           depth: 0,
-          runType: input.runType,
-        } satisfies BaseRequestUserData,
+          needs: ['base'],
+          purpose: 'discovery',
+        } satisfies PageCaptureTask,
       });
     }
 
@@ -608,43 +605,33 @@ export class M1App {
         ? new LLMClassifier(labelDefinitions)
         : new FakeClassifier());
 
-    const baseCrawler = createBaseCrawler({
-      requestQueue: baseQueue,
-      configuration,
-      classifier,
-      siteConfig: effectiveConfig,
-      runType: input.runType,
-      updatePolicy: input.updatePolicy,
-      staleAfterMs: input.staleAfterMs,
-      baseQueue,
-      markdownQueue,
-      screenshotQueue,
-      artifactWriter,
-      pageRunRepository: this.pageRuns,
-      sitePageRepository: this.sitePages,
-      runPlanner: this.planner,
-      runLog: this.runLogs,
-      targetTracker,
-    });
+    const executor = new PageCaptureExecutor(this.captureTools);
 
-    const markdownCrawler = createMarkdownCrawler({
-      requestQueue: markdownQueue,
+    const runtime = new CrawleeCaptureRuntime({
+      requestQueue: pageCaptureQueue,
       configuration,
-      markdownAdapter: this.markdownAdapter,
-      artifactRunRepository: this.artifactRuns,
-      sitePageRepository: this.sitePages,
-      artifactWriter,
-      runLog: this.runLogs,
-    });
-
-    const screenshotCrawler = createScreenshotCrawler({
-      requestQueue: screenshotQueue,
-      configuration,
-      screenshotAdapter: this.screenshotAdapter,
-      artifactRunRepository: this.artifactRuns,
-      sitePageRepository: this.sitePages,
-      artifactWriter,
-      runLog: this.runLogs,
+      requestHandler: createPageCaptureRequestHandler({
+        executor,
+        classifier,
+        siteConfig: effectiveConfig,
+        runType: input.runType,
+        updatePolicy: input.updatePolicy,
+        staleAfterMs: input.staleAfterMs,
+        pageCaptureQueue,
+        artifactWriter,
+        artifactRunRepository: this.artifactRuns,
+        pageRunRepository: this.pageRuns,
+        sitePageRepository: this.sitePages,
+        runPlanner: this.planner,
+        runLog: this.runLogs,
+        targetTracker,
+      }),
+      failedRequestHandler: createPageCaptureFailedRequestHandler({
+        artifactRunRepository: this.artifactRuns,
+        pageRunRepository: this.pageRuns,
+        sitePageRepository: this.sitePages,
+        runLog: this.runLogs,
+      }),
     });
 
     await this.runLogs.log({
@@ -661,12 +648,7 @@ export class M1App {
     });
 
     try {
-      await baseCrawler.run();
-
-      if (input.runType === 'crawl_run') {
-        await markdownCrawler.run();
-        await screenshotCrawler.run();
-      }
+      await runtime.run();
 
       await this.runs.refreshCounts(runId);
       await this.runs.finishRun(runId, 'succeeded');

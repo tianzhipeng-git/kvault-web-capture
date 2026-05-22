@@ -126,6 +126,13 @@ export function shouldEnqueueByUpdatePolicy(input: {
         };
       }
 
+      if (history.lastStageDecision?.outcome !== 'allow') {
+        return {
+          enqueue: true,
+          reason: 'pending or denied stage decision requires reevaluation',
+        };
+      }
+
       if (hasMissingOrFailedRequiredArtifact(history)) {
         return {
           enqueue: true,

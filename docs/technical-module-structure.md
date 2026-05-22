@@ -16,10 +16,10 @@ Kvault Web Capture 是一个本地运行的可交互网页采集系统。核心�
 ### 1.2 技术栈
 
 - Runtime：Node.js + TypeScript ESM
-- 爬虫框架：Crawlee
-- 基础页面抓取：`CheerioCrawler`
-- Markdown 抓取：`LinkeDOMCrawler` + `Defuddle`
-- 截图抓取：`PlaywrightCrawler`
+- 爬虫运行时：Crawlee `BasicCrawler` + run-scoped `RequestQueue`
+- 基础页面抓取：`HttpBaseTool`
+- Markdown 抓取：`MarkdownTool` + `Defuddle` / Lightpanda / Jina fallback
+- 截图抓取：`PlaywrightScreenshotTool`
 - 数据库：`node:sqlite` 的 `DatabaseSync`
 - Web 后端：Fastify
 - Web 鉴权：内存 Session + HTTP-only Cookie
@@ -36,11 +36,9 @@ src/
   config/              站点配置解析、校验、默认配置
   planner/             启动 URL 展开、入队规划、更新策略
   rules/               URL / label 规则判定
-  crawlee/             Crawlee 队列、crawler factory、request handlers
-  extract/             base 页面信息和链接提取
+  capture/             PageCaptureExecutor、CaptureTool、captools 与 HTML 解析工具
+  crawlee/             Crawlee runtime、单队列工厂、page task handler
   classification/      页面分类接口
-  markdown/            Markdown capture adapter 与真实 fallback 实现
-  screenshot/          截图 adapter 与 Playwright 实现
   export/              artifact 文件写入
   db/                  SQLite schema 与 repository
   web/                 Web API、读模型、运行协调器、前端说明
@@ -138,7 +136,7 @@ Pending 原因：
 
 ## 3. 运行时架构
 
-运行时的主链路由 `M1App` 编排，Crawlee 负责队列和请求执行，SQLite 负责业务状态，文件系统负责保存实际 artifact。
+运行时的主链路由 `M1App` 编排，Crawlee 负责单队列调度和底层 HTTP 能力，`PageCaptureExecutor` 负责调用具体 `CaptureTool`，SQLite 负责业务状态，文件系统负责保存实际 artifact。
 
 ### 3.1 主链路图
 
@@ -148,17 +146,18 @@ flowchart TD
   APP --> RUN["创建 crawl_runs"]
   APP --> EXPAND["展开 seed / sitemap / inventory"]
   EXPAND --> PLAN["RunPlanner.planRequest"]
-  PLAN --> BQ["base queue"]
-  BQ --> BASE["CheerioCrawler base handler"]
-  BASE --> EXTRACT["extractPageContent"]
-  EXTRACT --> CLASSIFY["Classifier"]
+  PLAN --> PQ["pageCaptureQueue"]
+  PQ --> BASIC["BasicCrawler runtime"]
+  BASIC --> HANDLER["Page task handler"]
+  HANDLER --> EXECUTOR["PageCaptureExecutor"]
+  EXECUTOR --> TOOLS["CaptureTool chain"]
+  TOOLS --> HANDLER
+  HANDLER --> CLASSIFY["Classifier"]
   CLASSIFY --> RULE2["rulesBeforeStage2Eq"]
-  RULE2 --> PR["写入 page_runs 和 site_pages"]
+  RULE2 --> PR["写入 page_runs / site_pages / artifact_runs"]
   PR --> DISCOVER["发现链接并回到 RunPlanner"]
-  PR --> MQ["markdown queue"]
-  PR --> SQ["screenshot queue"]
-  MQ --> MD["Markdown adapter + artifact_runs"]
-  SQ --> SS["Screenshot adapter + artifact_runs"]
+  PR --> ARTIFACT["需要时入队 artifact-only task"]
+  ARTIFACT --> PQ
 ```
 
 ### 3.2 应用服务编排
@@ -170,17 +169,16 @@ flowchart TD
 - 创建项目和站点
 - 读取、更新、导入、克隆站点配置
 - 创建运行批次
-- 打开 Crawlee run-scoped queues
+- 打开 Crawlee run-scoped `pageCaptureQueue`
 - 展开启动 URL
-- 创建 base / markdown / screenshot crawlers
-- 顺序执行 crawler
+- 创建 `CrawleeCaptureRuntime`、`PageCaptureExecutor` 和内置 tools
+- 执行单个 `BasicCrawler` runtime
 - 刷新运行统计并结束运行
 
 默认依赖：
 
 - 分类器：`FakeClassifier`
-- Markdown：`createDefaultMarkdownAdapter()`
-- 截图：`PlaywrightScreenshotCaptureAdapter`
+- Capture tools：`HttpBaseTool`、`MarkdownTool`、`PlaywrightScreenshotTool`
 
 ### 3.3 URL 发现与入队规划
 
@@ -229,33 +227,31 @@ URL 归一化由 `normalizeUrl` 提供，主要处理：
 - `skip_existing`：已有完整成功结果时跳过；配置变化、pending、失败、缺少 artifact 时重新抓。
 - `stale_after_duration`：base 或所需 artifact 超过 `staleAfterMs` 时重新抓。
 
-`targetSuccessCount` 是软上限。达到目标后，base crawler 会停止继续扩展新链接，并跳过后续多余 base 请求；已并发开始或已入队的 artifact 请求仍会完成，所以最终成功数可能略高于目标。成功数以 `RunRepository.refreshCounts` 的完整 artifact 口径为准。
+`targetSuccessCount` 是软上限。达到目标后，page task handler 会停止继续扩展新链接，并跳过后续多余 base task；已并发开始或已入队的 artifact task 仍会完成，所以最终成功数可能略高于目标。成功数以 `RunRepository.refreshCounts` 的完整 artifact 口径为准。
 
 ## 4. 执行子系统
 
 这一章按“运行时实际做事的模块”组织。修改采集行为时，通常先看这里。
 
-### 4.1 Crawlee 队列与 crawler
+### 4.1 Crawlee runtime 与 page capture 队列
 
-`src/crawlee/queue-factory.ts` 为每次 run 创建三类队列：
+`src/crawlee/queue-factory.ts` 为每次 run 创建单一队列：
 
-- `run-{runId}-base`
-- `run-{runId}-markdown`
-- `run-{runId}-screenshot`
+- `run-{runId}-page-capture`
 
-`src/crawlee/crawler-factory.ts` 创建 crawler：
+队列中的业务载荷是 `PageCaptureTask`。task 通过 `needs` 声明本次需要的能力：
 
-- base：`CheerioCrawler`，`maxConcurrency = 5`
-- markdown：adapter 要求 `linkedom` 时使用 `LinkeDOMCrawler`，否则 `BasicCrawler`
-- screenshot：adapter 要求 `playwright` 时使用 `PlaywrightCrawler`，否则 `BasicCrawler`
+- `['base']`：基础抓取、链接发现、分类和 stage2 规则。
+- `['markdown']` / `['screenshot']`：为已存在 `pageRunId` 补抓 artifact。
+- `['base', 'markdown', 'screenshot']`：允许 executor 一次性抓取多种能力，但 handler 仍会先执行 base 决策，再决定是否接受 artifact。
 
-请求业务信息通过 Crawlee `request.userData` 传递，类型包括 `BaseRequestUserData`、`MarkdownRequestUserData` 和 `ScreenshotRequestUserData`。
+`src/crawlee/capture-runtime.ts` 用 `BasicCrawler` 调度该队列，并把 Crawlee 的 `sendRequest`、session、proxyInfo 包装成项目内的 `RuntimeContext`。
 
 ### 4.2 Request handlers
 
-`src/crawlee/handlers.ts` 是 Crawlee 侧最重要的业务入口。
+`src/crawlee/handlers.ts` 是 Crawlee 侧最重要的业务入口。它不直接决定用 HTTP、Defuddle、Lightpanda、Jina 还是 Playwright 抓取，而是调用 `PageCaptureExecutor`。
 
-base handler 负责：
+`needs` 包含 `base` 的 task 负责：
 
 - 提取页面基础信息
 - 调用分类器
@@ -263,12 +259,12 @@ base handler 负责：
 - 写入 base capture 文件
 - 创建 `page_runs`
 - 更新 `site_pages`
-- 为 `crawl_run` 规划 markdown / screenshot 请求
+- 为 `crawl_run` 规划 artifact-only task
 - 发现页面链接并重新交给 `RunPlanner`
 
-markdown / screenshot handlers 负责：
+artifact-only task 负责：
 
-- 调用对应 adapter
+- 调用 executor 抓取 markdown / screenshot
 - 写入 artifact 文件
 - 创建 `artifact_runs`
 - 更新 `site_pages` 聚合状态
@@ -276,13 +272,23 @@ markdown / screenshot handlers 负责：
 
 失败处理器会在 Crawlee retries 耗尽后写入 failed 结果和日志。
 
-### 4.3 分类
+### 4.3 Capture executor 与内置 tools
+
+`src/capture/executor.ts` 中的 `PageCaptureExecutor` 按 task `needs` 选择可覆盖剩余能力的 tool，保留部分成功结果，并在能力未满足时返回清晰错误。
+
+阶段一内置 tools 在 `src/capture/captools/`：
+
+- `HttpBaseTool`：通过 `RuntimeContext.sendRequest` 获取 HTML，并解析 title、meta、body text 和 links。
+- `MarkdownTool`：按 `DefuddleMarkdownStrategy`、`LightpandaMarkdownStrategy`、`JinaMarkdownStrategy` 顺序 fallback。
+- `PlaywrightScreenshotTool`：自己创建 page、导航和截图。
+
+### 4.4 分类
 
 分类接口是 `Classifier.classify(page)`。当前默认 `FakeClassifier` 基于 title/meta 的关键词返回 `content_type`，并对部分 Apple iPhone URL 做特殊分类。
 
-### 4.4 页面提取与采集适配器
+### 4.5 页面提取与内置工具
 
-`src/extract/extract-page.ts` 从 HTML 中提取：
+`src/capture/html.ts` 从 HTML 中提取：
 
 - title
 - meta description
@@ -295,15 +301,15 @@ markdown / screenshot handlers 负责：
 - 非 http / https 协议
 - 带非 HTML 扩展名的资源文件
 
-Markdown 默认使用 fallback 策略：
+`src/capture/captools/markdown-tool.ts` 默认使用 fallback 策略：
 
 1. `DefuddleMarkdownStrategy`：需要 LinkeDOM document
 2. `LightpandaMarkdownStrategy`：调用 `lightpanda fetch --dump markdown`
 3. `JinaMarkdownStrategy`：需要 `JINA_API_TOKEN`
 
-截图默认使用 Playwright 全页 PNG。
+`src/capture/captools/playwright-screenshot-tool.ts` 默认使用 Playwright 全页 PNG。
 
-### 4.5 Artifact 文件存储
+### 4.6 Artifact 文件存储
 
 `src/export/file-artifact-writer.ts` 将输出写到站点 `storageRoot` 下：
 

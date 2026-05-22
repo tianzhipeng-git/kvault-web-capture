@@ -1,5 +1,7 @@
 export type ArtifactType = 'markdown' | 'screenshot';
 
+export type CaptureCapability = 'base' | ArtifactType | 'structured';
+
 export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
 export type UrlRuleDecision = 'allow' | 'deny';
@@ -94,38 +96,20 @@ export interface StageDecision {
   matchedRuleNames: string[];
 }
 
-export interface BaseRequestUserData {
-  stage: 'base';
+export interface PageCaptureTask {
+  stage: 'page_capture';
   runId: number;
   siteId: number;
   sitePageId: number;
   normalizedUrl: string;
+  url: string;
   depth: number;
-  runType: RunType;
+  needs: CaptureCapability[];
+  pageRunId?: number;
+  purpose?: 'discovery' | 'artifact' | 'refresh';
 }
 
-export interface MarkdownRequestUserData {
-  stage: 'markdown';
-  runId: number;
-  siteId: number;
-  sitePageId: number;
-  pageRunId: number;
-  normalizedUrl: string;
-}
-
-export interface ScreenshotRequestUserData {
-  stage: 'screenshot';
-  runId: number;
-  siteId: number;
-  sitePageId: number;
-  pageRunId: number;
-  normalizedUrl: string;
-}
-
-export type CrawlRequestUserData =
-  | BaseRequestUserData
-  | MarkdownRequestUserData
-  | ScreenshotRequestUserData;
+export type CrawlRequestUserData = PageCaptureTask;
 
 export interface StageDecisionSnapshot {
   outcome: RuleOutcome;
