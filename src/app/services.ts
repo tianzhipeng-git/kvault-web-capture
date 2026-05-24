@@ -41,7 +41,15 @@ import type {
 import { openRunQueue } from '../crawlee/queue-factory.js';
 import { PageCaptureExecutor } from '../capture/executor.js';
 import type { CaptureTool } from '../capture/types.js';
-import { HttpBaseTool, MarkdownTool, PlaywrightScreenshotTool } from '../capture/captools/index.js';
+import {
+  Crawl4AITool,
+  HttpBaseTool,
+  MarkdownTool,
+  PlaywrightScreenshotTool,
+  ScraplingTool,
+} from '../capture/captools/index.js';
+import { CaptureProfileResolver } from '../capture/profile-resolver.js';
+import { CaptureToolRegistry } from '../capture/tool-registry.js';
 import { RunTargetTracker } from '../planner/run-target-tracker.js';
 import { CrawleeCaptureRuntime } from '../crawlee/capture-runtime.js';
 import {
@@ -109,6 +117,8 @@ export class M1App {
 
   private readonly captureTools: CaptureTool[];
 
+  private readonly defaultCaptureToolChain: string[];
+
   private runNotificationBot: RunNotificationBot | null | undefined;
 
   private constructor(private readonly options: M1AppOptions) {
@@ -118,7 +128,12 @@ export class M1App {
       new HttpBaseTool(),
       new MarkdownTool(),
       new PlaywrightScreenshotTool(),
+      new Crawl4AITool(),
+      new ScraplingTool(),
     ];
+    this.defaultCaptureToolChain = options.captureTools
+      ? options.captureTools.map((tool) => tool.name)
+      : ['http-base', 'markdown', 'playwright-screenshot'];
     this.runNotificationBot = options.feishuBot;
   }
 
@@ -605,7 +620,10 @@ export class M1App {
         ? new LLMClassifier(labelDefinitions)
         : new FakeClassifier());
 
-    const executor = new PageCaptureExecutor(this.captureTools);
+    const toolRegistry = new CaptureToolRegistry(this.captureTools);
+    const executor = new PageCaptureExecutor(toolRegistry, {
+      profileResolver: new CaptureProfileResolver(toolRegistry, this.defaultCaptureToolChain),
+    });
 
     const runtime = new CrawleeCaptureRuntime({
       requestQueue: pageCaptureQueue,

@@ -72,12 +72,34 @@ export interface SiteRunOptions {
   crawlMaxDepth: number;
 }
 
+export interface CaptureValidationRule {
+  minLength?: number;
+  minBytes?: number;
+  rejectRegex?: string[];
+  requireRegex?: string[];
+}
+
+export interface CaptureValidationConfig {
+  base?: CaptureValidationRule;
+  markdown?: CaptureValidationRule;
+  screenshot?: CaptureValidationRule;
+  structured?: CaptureValidationRule;
+}
+
+export interface CaptureProfileConfig {
+  tools: string[];
+  validation?: CaptureValidationConfig;
+}
+
 export interface SiteConfig {
   seedUrls: string[];
   sitemaps: string[];
   rulesBeforeBaseEq: UrlRule[];
   rulesBeforeStage2Eq: Array<UrlRule | LabelRule>;
   runOptions: SiteRunOptions;
+  captureProfiles?: Record<string, CaptureProfileConfig>;
+  defaultCaptureProfile?: string;
+  validation?: CaptureValidationConfig;
 }
 
 export interface RuleEvaluation {

@@ -9,3 +9,4 @@ export {
   type MarkdownStrategyContext,
 } from './markdown-tool.js';
 export { PlaywrightScreenshotTool, captureFullPagePng } from './playwright-screenshot-tool.js';
+export { Crawl4AITool, ScraplingTool } from './python-tools.js';

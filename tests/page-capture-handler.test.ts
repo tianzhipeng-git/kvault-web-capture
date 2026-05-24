@@ -411,7 +411,7 @@ describe('createPageCaptureFailedRequestHandler – base task failure', () => {
   it('writes failed page_run, marks site_page failed, and logs error', async () => {
     const pageRunCalls: unknown[] = [];
     const pageRunRepository = makePageRunRepository({
-      createFailed: async (args: unknown) => { pageRunCalls.push(args); },
+      createFailed: async (args: unknown) => { pageRunCalls.push(args); return 1; },
     });
 
     const sitePageCalls: unknown[] = [];

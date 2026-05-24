@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 
 import type {
   ArtifactType,
+  CaptureProfileConfig,
+  CaptureValidationConfig,
+  CaptureValidationRule,
   LabelRule,
   SiteConfig,
   SiteRunOptions,
@@ -163,10 +166,107 @@ function parseRunOptions(value: unknown): SiteRunOptions {
   };
 }
 
+function parseOptionalRegexList(value: unknown, fieldName: string): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const values = asStringArray(value, fieldName);
+  for (const item of values) {
+    assert(item.length > 0, `${fieldName} must not contain empty patterns`);
+    try {
+      new RegExp(item);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${fieldName} contains invalid regex ${JSON.stringify(item)}: ${message}`);
+    }
+  }
+  return values;
+}
+
+function parseValidationRule(value: unknown, fieldName: string): CaptureValidationRule {
+  assert(isRecord(value), `${fieldName} must be an object`);
+
+  const minLength = value.minLength;
+  const minBytes = value.minBytes;
+
+  assert(
+    minLength === undefined || (typeof minLength === 'number' && minLength >= 0),
+    `${fieldName}.minLength must be a non-negative number`,
+  );
+  assert(
+    minBytes === undefined || (typeof minBytes === 'number' && minBytes >= 0),
+    `${fieldName}.minBytes must be a non-negative number`,
+  );
+
+  return {
+    minLength,
+    minBytes,
+    rejectRegex: parseOptionalRegexList(value.rejectRegex, `${fieldName}.rejectRegex`),
+    requireRegex: parseOptionalRegexList(value.requireRegex, `${fieldName}.requireRegex`),
+  };
+}
+
+function parseValidationConfig(value: unknown, fieldName: string): CaptureValidationConfig {
+  assert(isRecord(value), `${fieldName} must be an object`);
+
+  return {
+    base: value.base === undefined
+      ? undefined
+      : parseValidationRule(value.base, `${fieldName}.base`),
+    markdown: value.markdown === undefined
+      ? undefined
+      : parseValidationRule(value.markdown, `${fieldName}.markdown`),
+    screenshot: value.screenshot === undefined
+      ? undefined
+      : parseValidationRule(value.screenshot, `${fieldName}.screenshot`),
+    structured: value.structured === undefined
+      ? undefined
+      : parseValidationRule(value.structured, `${fieldName}.structured`),
+  };
+}
+
+function parseCaptureProfile(value: unknown, fieldName: string): CaptureProfileConfig {
+  assert(isRecord(value), `${fieldName} must be an object`);
+  return {
+    tools: asStringArray(value.tools, `${fieldName}.tools`),
+    validation: value.validation === undefined
+      ? undefined
+      : parseValidationConfig(value.validation, `${fieldName}.validation`),
+  };
+}
+
+function parseCaptureProfiles(value: unknown): Record<string, CaptureProfileConfig> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  assert(isRecord(value), 'captureProfiles must be an object');
+  const entries = Object.entries(value).map(([name, profile]) => {
+    assert(name.length > 0, 'captureProfiles must not contain an empty profile name');
+    return [name, parseCaptureProfile(profile, `captureProfiles.${name}`)] as const;
+  });
+  return Object.fromEntries(entries);
+}
+
 export function parseSiteConfig(input: unknown): SiteConfig {
   assert(isRecord(input), 'site config must be an object');
 
-  return {
+  const captureProfiles = parseCaptureProfiles(input.captureProfiles);
+  const defaultCaptureProfile = input.defaultCaptureProfile;
+  assert(
+    defaultCaptureProfile === undefined || typeof defaultCaptureProfile === 'string',
+    'defaultCaptureProfile must be a string',
+  );
+  if (defaultCaptureProfile !== undefined) {
+    assert(captureProfiles !== undefined, 'defaultCaptureProfile requires captureProfiles');
+    assert(
+      captureProfiles[defaultCaptureProfile] !== undefined,
+      `defaultCaptureProfile ${defaultCaptureProfile} does not exist in captureProfiles`,
+    );
+  }
+
+  const config: SiteConfig = {
     seedUrls: asStringArray(input.seedUrls, 'seedUrls'),
     sitemaps: asStringArray(input.sitemaps ?? [], 'sitemaps'),
     rulesBeforeBaseEq: parseRulesBeforeBaseEq(
@@ -177,6 +277,18 @@ export function parseSiteConfig(input: unknown): SiteConfig {
     ),
     runOptions: parseRunOptions(input.runOptions ?? {}),
   };
+
+  if (captureProfiles !== undefined) {
+    config.captureProfiles = captureProfiles;
+  }
+  if (defaultCaptureProfile !== undefined) {
+    config.defaultCaptureProfile = defaultCaptureProfile;
+  }
+  if (input.validation !== undefined) {
+    config.validation = parseValidationConfig(input.validation, 'validation');
+  }
+
+  return config;
 }
 
 export function loadSiteConfig(configPath: string): SiteConfig {

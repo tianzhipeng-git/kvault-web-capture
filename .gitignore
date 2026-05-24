@@ -60,3 +60,8 @@ screenshots/
 downloads/
 data/
 deploy_yunxiao.sh
+
+# python 
+.venv/
+.venv-pytools/
+__pycache__/
