@@ -32,7 +32,9 @@ function getMaxDepth(runType: RunType, siteConfig: SiteConfig): number {
 }
 
 function artifactNeeds(needs: PageCaptureTask['needs']): ArtifactType[] {
-  return needs.filter((need): need is ArtifactType => need === 'markdown' || need === 'screenshot');
+  return needs.filter((need): need is ArtifactType => (
+    need === 'markdown' || need === 'screenshot' || need === 'structured'
+  ));
 }
 
 function renderBaseCaptureMarkdown(input: {
@@ -127,7 +129,7 @@ async function recordArtifactResult(input: {
       message: `[markdown] done ${input.task.normalizedUrl}`,
       meta: { strategy: input.result.markdown.strategyName, outputPath: written.outputPath },
     });
-  } else {
+  } else if (input.artifactType === 'screenshot') {
     if (!input.result.screenshot) {
       throw new Error(`Screenshot result missing for ${input.task.normalizedUrl}`);
     }
@@ -161,6 +163,42 @@ async function recordArtifactResult(input: {
       pageRunId: input.pageRunId,
       message: `[screenshot] done ${input.task.normalizedUrl}`,
       meta: { tool: input.result.screenshot.toolName, outputPath: written.outputPath },
+    });
+  } else {
+    if (input.result.structured === undefined) {
+      throw new Error(`Structured result missing for ${input.task.normalizedUrl}`);
+    }
+
+    const content = `${JSON.stringify(input.result.structured, null, 2)}\n`;
+    const written = await input.artifactWriter.writeTextArtifact({
+      artifactType: 'structured',
+      runId: input.task.runId,
+      sitePageId: input.task.sitePageId,
+      content,
+      extension: 'json',
+    });
+
+    await input.artifactRunRepository.create({
+      runId: input.task.runId,
+      pageRunId: input.pageRunId,
+      sitePageId: input.task.sitePageId,
+      artifactType: 'structured',
+      status: 'succeeded',
+      content: written.content,
+      outputPath: written.outputPath,
+      errorMessage: null,
+      meta: { outputPath: written.outputPath },
+    });
+
+    await input.runLog.log({
+      crawlRunId: input.task.runId,
+      level: 'info',
+      event: 'artifact_done',
+      url: input.task.normalizedUrl,
+      sitePageId: input.task.sitePageId,
+      pageRunId: input.pageRunId,
+      message: `[structured] done ${input.task.normalizedUrl}`,
+      meta: { outputPath: written.outputPath },
     });
   }
 
@@ -392,7 +430,11 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
 
     for (const artifactType of decision.requiredArtifacts) {
       const alreadyCaptured =
-        artifactType === 'markdown' ? result.markdown !== undefined : result.screenshot !== undefined;
+        artifactType === 'markdown'
+          ? result.markdown !== undefined
+          : artifactType === 'screenshot'
+            ? result.screenshot !== undefined
+            : result.structured !== undefined;
 
       if (!alreadyCaptured) {
         continue;

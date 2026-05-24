@@ -65,7 +65,7 @@ export interface PathTreeResponse {
   text: string;
 }
 
-export type ProjectExportArtifact = "base" | "markdown" | "screenshot";
+export type ProjectExportArtifact = "base" | "markdown" | "screenshot" | "structured";
 
 export interface ProjectExportOptions {
   siteIds?: number[];
@@ -111,7 +111,7 @@ export interface SitePageListRow {
 }
 
 export interface ProcessingState {
-  kind: "base" | "markdown" | "screenshot";
+  kind: "base" | "markdown" | "screenshot" | "structured";
   label: string;
   shouldRun: boolean;
   succeeded: boolean;
@@ -141,6 +141,7 @@ export interface SitePageDetail {
   latestBase: ProcessingState;
   latestMarkdown: ProcessingState;
   latestScreenshot: ProcessingState;
+  latestStructured: ProcessingState;
   latestPageRun: null | {
     pageRunId: number;
     crawlRunId: number;
@@ -165,6 +166,11 @@ export interface SitePageDetail {
     screenshot: {
       artifactRunId: number | null;
       outputPath: string | null;
+    };
+    structured: {
+      artifactRunId: number | null;
+      outputPath: string | null;
+      content: string | null;
     };
   };
   runHistory: Array<{

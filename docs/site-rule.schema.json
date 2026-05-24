@@ -16,7 +16,8 @@
       "type": "string",
       "enum": [
         "markdown",
-        "screenshot"
+        "screenshot",
+        "structured"
       ]
     },
     "artifactList": {

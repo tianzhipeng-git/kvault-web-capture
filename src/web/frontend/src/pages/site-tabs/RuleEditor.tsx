@@ -6,6 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, WandSparkles } from "lucide-react";
 
 type ListType = 'blacklist' | 'scopelist' | 'whitelist';
+type ArtifactType = 'markdown' | 'screenshot' | 'structured';
+
+function artifactLabel(artifact: ArtifactType): string {
+  if (artifact === 'markdown') return 'Markdown';
+  if (artifact === 'screenshot') return '截图';
+  return '结构化';
+}
 
 export const createDefaultRule = (listType: ListType = 'whitelist'): UrlRule => ({
   name: `rule-${Date.now()}`,
@@ -21,7 +28,7 @@ export type UrlRule = {
   listType: ListType;
   ruleType: 'prefix' | 'regex';
   values: string[];
-  artifacts?: Array<'markdown' | 'screenshot'>;
+  artifacts?: ArtifactType[];
 };
 
 export type LabelRuleCondition = {
@@ -35,7 +42,7 @@ export type LabelRule = {
   matchType: 'label';
   listType: ListType;
   when: LabelRuleCondition[];
-  artifacts?: Array<'markdown' | 'screenshot'>;
+  artifacts?: ArtifactType[];
 };
 
 export type Rule = UrlRule | LabelRule;
@@ -55,7 +62,7 @@ function RuleDescriptionText({ rule, showArtifacts }: { rule: Rule; showArtifact
       return <span>{ruleTypeText} <code className="text-xs bg-muted px-1 rounded">{valsSummary}</code> 的网址，直接<strong>丢弃</strong></span>;
     }
     const arts = showArtifacts && urlRule.artifacts?.length
-      ? urlRule.artifacts.map(a => a === 'markdown' ? 'Markdown' : '截图').join('/')
+      ? urlRule.artifacts.map(artifactLabel).join('/')
       : '';
     if (urlRule.listType === 'whitelist') {
       return <span><strong>仅限</strong> {ruleTypeText} <code className="text-xs bg-muted px-1 rounded">{valsSummary}</code> 的网址<strong>强制允许</strong>{arts ? <>，采集 <strong>{arts}</strong></> : ''}</span>;
@@ -74,7 +81,7 @@ function RuleDescriptionText({ rule, showArtifacts }: { rule: Rule; showArtifact
         return `${c.key}取值是${opText} ${valsStr}`;
       }).join(' 且 ');
   const arts = showArtifacts && labelRule.artifacts?.length
-    ? labelRule.artifacts.map(a => a === 'markdown' ? 'Markdown' : '截图').join('/')
+    ? labelRule.artifacts.map(artifactLabel).join('/')
     : '';
 
   if (labelRule.listType === 'blacklist') {
@@ -196,9 +203,9 @@ function RuleEditorItem({
   const matchType = rule.matchType || 'url';
   const selectedListType = allowedListTypes.includes(rule.listType) ? rule.listType : (allowedListTypes[0] ?? 'scopelist');
 
-  const handleArtifactChange = (artifact: 'markdown' | 'screenshot', checked: boolean) => {
+  const handleArtifactChange = (artifact: ArtifactType, checked: boolean) => {
     const current = rule.artifacts || ['markdown']; // default
-    let next: Array<'markdown' | 'screenshot'>;
+    let next: ArtifactType[];
     if (checked) {
       next = [...new Set([...current, artifact])];
     } else {
@@ -318,6 +325,14 @@ function RuleEditorItem({
                       onChange={(e) => handleArtifactChange('screenshot', e.target.checked)}
                     />
                     截图
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(rule.artifacts || []).includes('structured')}
+                      onChange={(e) => handleArtifactChange('structured', e.target.checked)}
+                    />
+                    结构化
                   </label>
                 </div>
               </div>

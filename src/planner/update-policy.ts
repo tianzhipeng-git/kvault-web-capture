@@ -18,13 +18,23 @@ function getRequiredArtifacts(history: HistoricalPageState): ArtifactType[] {
 }
 
 function getArtifactStatus(history: HistoricalPageState, artifactType: ArtifactType): string | null {
-  return artifactType === 'markdown'
-    ? history.lastMarkdownStatus
-    : history.lastScreenshotStatus;
+  if (artifactType === 'markdown') {
+    return history.lastMarkdownStatus;
+  }
+  if (artifactType === 'screenshot') {
+    return history.lastScreenshotStatus;
+  }
+  return history.lastStructuredStatus;
 }
 
 function getArtifactTimestamp(history: HistoricalPageState, artifactType: ArtifactType): string | null {
-  return artifactType === 'markdown' ? history.lastMarkdownAt : history.lastScreenshotAt;
+  if (artifactType === 'markdown') {
+    return history.lastMarkdownAt;
+  }
+  if (artifactType === 'screenshot') {
+    return history.lastScreenshotAt;
+  }
+  return history.lastStructuredAt;
 }
 
 function hasMissingOrFailedRequiredArtifact(history: HistoricalPageState): boolean {

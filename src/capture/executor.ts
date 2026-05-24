@@ -3,6 +3,7 @@ import { toolCoversAnyNeed } from './capability-utils.js';
 import { CaptureProfileResolver } from './profile-resolver.js';
 import { ResultValidator } from './result-validator.js';
 import type { CaptureInput, CaptureResult, CaptureTool, CaptureToolResult } from './types.js';
+import { isSiteAutomationAdapter } from './types.js';
 import { CaptureToolRegistry } from './tool-registry.js';
 
 function toolResultHasCapability(toolResult: CaptureToolResult, need: CaptureCapability): boolean {
@@ -120,6 +121,16 @@ export class PageCaptureExecutor {
         continue;
       }
 
+      if (isSiteAutomationAdapter(tool) && !tool.matches(input)) {
+        result.diagnostics.push({
+          toolName: tool.name,
+          status: 'skipped',
+          capabilities: [...tool.capabilities],
+          message: `site adapter ${tool.siteKey} does not match ${input.normalizedUrl}`,
+        });
+        continue;
+      }
+
       try {
         const toolNeeds = remainingNeeds.filter((need) => tool.capabilities.includes(need));
         const toolResult = await tool.capture({
@@ -156,11 +167,17 @@ export class PageCaptureExecutor {
             : `profile=${resolvedProfile.name}`,
         });
       } catch (error) {
+        const proxyPolicy = input.siteConfig.proxyPolicy;
+        const proxyMessage = proxyPolicy?.mode === 'retry_on_failure'
+          ? `; proxyPolicy=retry_on_failure provider=${proxyPolicy.provider ?? 'crawlee'} next fallback may use runtime proxy/session`
+          : proxyPolicy?.mode === 'always'
+            ? `; proxyPolicy=always provider=${proxyPolicy.provider ?? 'crawlee'}`
+            : '';
         result.diagnostics.push({
           toolName: tool.name,
           status: 'failed',
           capabilities: [...tool.capabilities],
-          message: error instanceof Error ? error.message : String(error),
+          message: `${error instanceof Error ? error.message : String(error)}${proxyMessage}`,
         });
       }
     }

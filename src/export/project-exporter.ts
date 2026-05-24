@@ -43,6 +43,8 @@ interface PageExportRow {
   last_markdown_at: string | null;
   last_screenshot_status: string | null;
   last_screenshot_at: string | null;
+  last_structured_status: string | null;
+  last_structured_at: string | null;
   first_discovered_at: string;
   updated_at: string;
   latest_page_run_id: number | null;
@@ -73,7 +75,7 @@ interface ArtifactExportRow {
   meta_json: string | null;
 }
 
-export type ProjectExportArtifact = 'base' | 'markdown' | 'screenshot';
+export type ProjectExportArtifact = 'base' | 'markdown' | 'screenshot' | 'structured';
 
 export interface ProjectExportOptions {
   siteIds?: number[];
@@ -213,7 +215,7 @@ function requiredArtifacts(value: string | null): string {
 }
 
 function normalizeExportArtifacts(artifacts: ProjectExportOptions['artifacts']): Set<ProjectExportArtifact> {
-  return new Set(artifacts ?? ['base', 'markdown', 'screenshot']);
+  return new Set(artifacts ?? ['base', 'markdown', 'screenshot', 'structured']);
 }
 
 function excelColumnLetter(index: number): string {
@@ -426,9 +428,12 @@ async function writePageListWorkbook(
     { header: 'markdown_at', key: 'markdownAt', width: 26 },
     { header: 'screenshot_status', key: 'screenshotStatus', width: 18 },
     { header: 'screenshot_at', key: 'screenshotAt', width: 26 },
+    { header: 'structured_status', key: 'structuredStatus', width: 18 },
+    { header: 'structured_at', key: 'structuredAt', width: 26 },
     { header: 'base_source_path', key: 'baseSourcePath', width: 48 },
     { header: 'markdown_source_path', key: 'markdownSourcePath', width: 48 },
     { header: 'screenshot_source_path', key: 'screenshotSourcePath', width: 48 },
+    { header: 'structured_source_path', key: 'structuredSourcePath', width: 48 },
     { header: 'export_page_dir', key: 'exportPageDir', width: 54 },
   ];
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -452,6 +457,7 @@ async function writePageListWorkbook(
   for (const page of pages) {
     const markdown = artifacts.get(`${page.id}:markdown`);
     const screenshot = artifacts.get(`${page.id}:screenshot`);
+    const structured = artifacts.get(`${page.id}:structured`);
     sheet.addRow({
       pageId: page.id,
       title: page.latest_title ?? page.title ?? '',
@@ -475,9 +481,12 @@ async function writePageListWorkbook(
       markdownAt: page.last_markdown_at ?? '',
       screenshotStatus: page.last_screenshot_status ?? '',
       screenshotAt: page.last_screenshot_at ?? '',
+      structuredStatus: page.last_structured_status ?? '',
+      structuredAt: page.last_structured_at ?? '',
       baseSourcePath: page.base_capture_path ?? '',
       markdownSourcePath: markdown?.output_path ?? '',
       screenshotSourcePath: screenshot?.output_path ?? '',
+      structuredSourcePath: structured?.output_path ?? '',
       exportPageDir: pageDirById.get(page.id) ?? '',
     }).commit();
   }
@@ -644,6 +653,18 @@ export class ProjectExporter {
         await addArtifactFileOrInlineContent(input.zip, {
           artifact: screenshot,
           zipPath: `${pageRoot}/screenshot.png`,
+          readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+        })
+      ) {
+        artifactFileCount += 1;
+      }
+
+      const structured = input.artifacts.get(`${page.id}:structured`);
+      if (
+        input.selectedArtifacts.has('structured') &&
+        await addArtifactFileOrInlineContent(input.zip, {
+          artifact: structured,
+          zipPath: `${pageRoot}/structured.json`,
           readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
         })
       ) {
@@ -855,6 +876,8 @@ export class ProjectExporter {
            sp.last_markdown_at,
            sp.last_screenshot_status,
            sp.last_screenshot_at,
+           sp.last_structured_status,
+           sp.last_structured_at,
            sp.first_discovered_at,
            sp.updated_at,
            pr.id AS latest_page_run_id,
@@ -906,6 +929,8 @@ export class ProjectExporter {
            sp.last_markdown_at,
            sp.last_screenshot_status,
            sp.last_screenshot_at,
+           sp.last_structured_status,
+           sp.last_structured_at,
            sp.first_discovered_at,
            sp.updated_at,
            pr.id AS latest_page_run_id,

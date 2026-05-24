@@ -161,4 +161,103 @@ describe('repositories', () => {
       capturedPages: 1,
     });
   });
+
+  it('tracks structured artifacts in inventory completion', async () => {
+    const dir = createTempDir('kvault-repos-structured-');
+    const db = await openDatabase(join(dir, 'state.db'));
+    openHandles.push(db);
+    await initializeSchema(db);
+
+    const clock = new SystemClock();
+    const projects = new ProjectRepository(db, clock);
+    const sites = new SiteRepository(db, clock);
+    const runs = new RunRepository(db, clock);
+    const pages = new SitePageRepository(db, clock);
+    const pageRuns = new PageRunRepository(db, clock);
+    const artifactRuns = new ArtifactRunRepository(db, clock);
+
+    const project = await projects.create('Structured Project');
+    const site = await sites.create({
+      projectId: project.id,
+      name: 'structured-site',
+      baseUrl: 'https://example.com',
+      storageRoot: dir,
+      config: createDefaultSiteConfig('https://example.com/docs'),
+    });
+    const runId = await runs.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+    const sitePageId = await pages.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
+    });
+    const pageRunId = await pageRuns.create({
+      runId,
+      sitePageId,
+      baseCaptureStatus: 'succeeded',
+      baseCapturePath: '/tmp/base.md',
+      title: 'Docs',
+      metaDescription: 'Example docs',
+      bodyText: 'hello docs',
+      classificationLabels: { content_type: ['docs'] },
+      ruleOutcome: 'allow',
+      decisionOutcome: 'allow',
+      decisionReason: null,
+      pendingReason: null,
+      requiredArtifacts: ['structured'],
+    });
+
+    await pages.recordBaseCapture({
+      sitePageId,
+      runId,
+      title: 'Docs',
+      pageOutcome: 'allow',
+      requiredArtifacts: ['structured'],
+      pendingReason: null,
+    });
+
+    expect(await pages.summarizeInventory(site.id)).toEqual({
+      totalPages: 1,
+      pendingPages: 1,
+      deniedPages: 0,
+      capturedPages: 0,
+    });
+
+    await artifactRuns.create({
+      runId,
+      pageRunId,
+      sitePageId,
+      artifactType: 'structured',
+      status: 'succeeded',
+      content: '{"items":[]}',
+      outputPath: '/tmp/structured.json',
+      errorMessage: null,
+      meta: null,
+    });
+    await pages.recordArtifactResult({
+      sitePageId,
+      runId,
+      artifactType: 'structured',
+      status: 'succeeded',
+    });
+
+    const history = await pages.getHistoricalState(site.id, 'https://example.com/docs');
+
+    expect(history?.lastStructuredStatus).toBe('succeeded');
+    expect(await pages.summarizeInventory(site.id)).toEqual({
+      totalPages: 1,
+      pendingPages: 0,
+      deniedPages: 0,
+      capturedPages: 1,
+    });
+  });
 });

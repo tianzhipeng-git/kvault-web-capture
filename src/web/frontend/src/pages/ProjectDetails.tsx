@@ -26,7 +26,7 @@ export function ProjectDetails() {
   const [exportError, setExportError] = useState("");
   const [selectedExportSiteIds, setSelectedExportSiteIds] = useState<Set<number>>(new Set());
   const [selectedExportArtifacts, setSelectedExportArtifacts] = useState<Set<ProjectExportArtifact>>(
-    new Set(["base", "markdown", "screenshot"]),
+    new Set(["base", "markdown", "screenshot", "structured"]),
   );
   const [includeDeniedPages, setIncludeDeniedPages] = useState(true);
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
@@ -185,11 +185,12 @@ export function ProjectDetails() {
 
               <div className="space-y-3">
                 <Label>Artifacts</Label>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                   {[
                     ["base", "Base 文本"],
                     ["markdown", "Markdown"],
                     ["screenshot", "截图"],
+                    ["structured", "结构化 JSON"],
                   ].map(([artifact, label]) => (
                     <label key={artifact} className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                       <input

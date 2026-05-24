@@ -44,6 +44,7 @@ import type { CaptureTool } from '../capture/types.js';
 import {
   Crawl4AITool,
   HttpBaseTool,
+  KickstarterCommentsAdapter,
   MarkdownTool,
   PlaywrightScreenshotTool,
   ScraplingTool,
@@ -130,6 +131,7 @@ export class M1App {
       new PlaywrightScreenshotTool(),
       new Crawl4AITool(),
       new ScraplingTool(),
+      new KickstarterCommentsAdapter(),
     ];
     this.defaultCaptureToolChain = options.captureTools
       ? options.captureTools.map((tool) => tool.name)

@@ -251,7 +251,7 @@ export class SiteOverviewQuery {
            SUM(CASE WHEN sp.inventory_status = 'stage2_pending' THEN 1 ELSE 0 END) AS pending_pages,
            SUM(CASE WHEN sp.inventory_status = 'url_rule_denied' THEN 1 ELSE 0 END) AS denied_pages,
            SUM(CASE WHEN sp.inventory_status = 'stage2_captured' THEN 1 ELSE 0 END) AS captured_pages,
-           MAX(CASE WHEN sp.inventory_status = 'stage2_captured' THEN COALESCE(sp.last_markdown_at, sp.last_screenshot_at, sp.last_base_at) END) AS latest_successful_capture_at
+           MAX(CASE WHEN sp.inventory_status = 'stage2_captured' THEN COALESCE(sp.last_markdown_at, sp.last_screenshot_at, sp.last_structured_at, sp.last_base_at) END) AS latest_successful_capture_at
          FROM sites s
          INNER JOIN projects p ON p.id = s.project_id
          LEFT JOIN site_pages sp ON sp.site_id = s.id
@@ -443,12 +443,13 @@ export class SitePageListQuery {
            sp.last_pending_reason,
            sp.latest_title,
            sp.discovery_source,
-           COALESCE(sp.last_markdown_at, sp.last_screenshot_at, sp.last_base_at) AS latest_handled_at,
+           COALESCE(sp.last_markdown_at, sp.last_screenshot_at, sp.last_structured_at, sp.last_base_at) AS latest_handled_at,
            pr.classification_labels_json,
            pr.decision_outcome,
            pr.required_artifacts_json,
            sp.last_markdown_status,
-           sp.last_screenshot_status
+           sp.last_screenshot_status,
+           sp.last_structured_status
          FROM site_pages sp
          LEFT JOIN page_runs pr ON pr.id = (
            SELECT pr2.id
@@ -477,6 +478,19 @@ export class SitePageListQuery {
           [];
         const markdownDone = record.last_markdown_status === 'succeeded';
         const screenshotDone = record.last_screenshot_status === 'succeeded';
+        const structuredDone = record.last_structured_status === 'succeeded';
+        const captureSummaryParts = requiredArtifacts.map((artifactType) => {
+          if (artifactType === 'markdown') {
+            return markdownDone ? 'Markdown 已生成' : 'Markdown 待定';
+          }
+          if (artifactType === 'screenshot') {
+            return screenshotDone ? '截图已生成' : '截图待定';
+          }
+          if (artifactType === 'structured') {
+            return structuredDone ? '结构化已生成' : '结构化待定';
+          }
+          return `${artifactType} 待定`;
+        });
 
         return {
           sitePageId: Number(record.id),
@@ -501,14 +515,14 @@ export class SitePageListQuery {
           captureSummary:
             requiredArtifacts.length === 0
               ? '只保留基础信息'
-              : `${markdownDone ? 'Markdown 已生成' : 'Markdown 待定'} / ${screenshotDone ? '截图已生成' : '截图待定'}`,
+              : captureSummaryParts.join(' / '),
         };
       }),
     };
   }
 }
 
-type ProcessingKind = 'base' | 'markdown' | 'screenshot';
+type ProcessingKind = 'base' | 'markdown' | 'screenshot' | 'structured';
 
 interface LatestPageRunRow {
   id: number;
@@ -560,7 +574,9 @@ function buildProcessingState(input: {
       ? '基础爬取'
       : input.kind === 'markdown'
         ? 'Markdown'
-        : 'Screenshot';
+        : input.kind === 'screenshot'
+          ? 'Screenshot'
+          : 'Structured';
   let reason = '';
 
   if (!input.shouldRun) {
@@ -621,6 +637,7 @@ export class SitePageDetailQuery {
     latestBase: ReturnType<typeof buildProcessingState>;
     latestMarkdown: ReturnType<typeof buildProcessingState>;
     latestScreenshot: ReturnType<typeof buildProcessingState>;
+    latestStructured: ReturnType<typeof buildProcessingState>;
     latestPageRun: {
       pageRunId: number;
       crawlRunId: number;
@@ -645,6 +662,11 @@ export class SitePageDetailQuery {
       screenshot: {
         artifactRunId: number | null;
         outputPath: string | null;
+      };
+      structured: {
+        artifactRunId: number | null;
+        outputPath: string | null;
+        content: string | null;
       };
     };
     runHistory: Array<{
@@ -697,6 +719,9 @@ export class SitePageDetailQuery {
         last_screenshot_status: string | null;
         last_screenshot_run_id: number | null;
         last_screenshot_at: string | null;
+        last_structured_status: string | null;
+        last_structured_run_id: number | null;
+        last_structured_at: string | null;
         first_discovered_at: string;
         updated_at: string;
       }>(
@@ -719,6 +744,9 @@ export class SitePageDetailQuery {
            last_screenshot_status,
            last_screenshot_run_id,
            last_screenshot_at,
+           last_structured_status,
+           last_structured_run_id,
+           last_structured_at,
            first_discovered_at,
            updated_at
          FROM site_pages
@@ -791,6 +819,7 @@ export class SitePageDetailQuery {
     );
     const markdownArtifact = latestArtifactByType.get('markdown') ?? null;
     const screenshotArtifact = latestArtifactByType.get('screenshot') ?? null;
+    const structuredArtifact = latestArtifactByType.get('structured') ?? null;
 
     const pageRuns = await this.db.all<{
         id: number;
@@ -968,6 +997,18 @@ export class SitePageDetailQuery {
         requiredArtifacts,
         errorMessage: screenshotArtifact?.error_message ?? null,
       }),
+      latestStructured: buildProcessingState({
+        kind: 'structured',
+        shouldRun: decisionOutcome === 'allow' && hasRequiredArtifact(requiredArtifacts, 'structured'),
+        status: page.last_structured_status,
+        runId: page.last_structured_run_id,
+        handledAt: page.last_structured_at,
+        outputPath: structuredArtifact?.output_path ?? null,
+        decisionOutcome,
+        pendingReason,
+        requiredArtifacts,
+        errorMessage: structuredArtifact?.error_message ?? null,
+      }),
       latestPageRun:
         latestPageRun === null
           ? null
@@ -995,6 +1036,11 @@ export class SitePageDetailQuery {
         screenshot: {
           artifactRunId: screenshotArtifact?.id ?? null,
           outputPath: screenshotArtifact?.output_path ?? null,
+        },
+        structured: {
+          artifactRunId: structuredArtifact?.id ?? null,
+          outputPath: structuredArtifact?.output_path ?? null,
+          content: structuredArtifact?.content ?? await readTextFile(structuredArtifact?.output_path ?? null),
         },
       },
       runHistory,

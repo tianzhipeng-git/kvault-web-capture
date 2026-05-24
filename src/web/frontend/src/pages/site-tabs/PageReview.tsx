@@ -46,6 +46,7 @@ const exportArtifactOptions: Array<{ value: ProjectExportArtifact; label: string
   { value: "base", label: "Base 文本" },
   { value: "markdown", label: "Markdown" },
   { value: "screenshot", label: "截图" },
+  { value: "structured", label: "结构化 JSON" },
 ];
 type UpdatePolicy = "skip_existing" | "force_recrawl_all" | "stale_after_duration";
 
@@ -116,7 +117,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-type PreviewKind = "base" | "markdown" | "screenshot";
+type PreviewKind = "base" | "markdown" | "screenshot" | "structured";
 type PreviewMode = "text" | "markdown";
 
 interface SiteConfigShape {
@@ -231,13 +232,17 @@ function PreviewPanel({
       ? detail.latestPreviews.base
       : activePreview === "markdown"
         ? detail.latestPreviews.markdown
-        : detail.latestPreviews.screenshot;
+        : activePreview === "screenshot"
+          ? detail.latestPreviews.screenshot
+          : detail.latestPreviews.structured;
   const title =
     activePreview === "base"
       ? "基础爬取预览"
       : activePreview === "markdown"
         ? "Markdown 预览"
-        : "Screenshot 预览";
+        : activePreview === "screenshot"
+          ? "Screenshot 预览"
+          : "结构化 JSON 预览";
   const textContent = "content" in preview ? preview.content : null;
 
   return (
@@ -247,7 +252,7 @@ function PreviewPanel({
           <div className="font-semibold">{title}</div>
           <div className="text-xs text-muted-foreground truncate">{preview.outputPath || "暂无输出文件"}</div>
         </div>
-        {activePreview !== "screenshot" && (
+        {activePreview !== "screenshot" && activePreview !== "structured" && (
           <div className="flex rounded-md border p-1 shrink-0">
             <Button size="sm" variant={previewMode === "text" ? "default" : "ghost"} onClick={() => onPreviewModeChange("text")}>文本</Button>
             <Button size="sm" variant={previewMode === "markdown" ? "default" : "ghost"} onClick={() => onPreviewModeChange("markdown")}>Markdown</Button>
@@ -270,6 +275,10 @@ function PreviewPanel({
             暂无截图文件。
           </div>
         )
+      ) : activePreview === "structured" ? (
+        <div className="h-[520px] overflow-auto rounded-lg bg-muted p-3" style={{ maxWidth: '1400px' }}>
+          <pre className="whitespace-pre-wrap break-words text-xs m-0 p-0">{textContent || "暂无结构化内容。"}</pre>
+        </div>
       ) : previewMode === "markdown" ? (
         <div className="h-[520px] max-w-full overflow-auto rounded-lg bg-background p-3">
           <MarkdownPreview content={textContent || ""} />
@@ -330,6 +339,7 @@ function PageDetailDialog({
     `根据当前规则是否应该base抓取: ${pageDetail.latestBase.shouldRun ? "是" : "否"}`,
     `根据当前规则是否应该Markdown抓取: ${pageDetail.latestMarkdown.shouldRun ? "是" : "否"}`,
     `根据当前规则是否应该截图: ${pageDetail.latestScreenshot.shouldRun ? "是" : "否"}`,
+    `根据当前规则是否应该结构化抓取: ${pageDetail.latestStructured.shouldRun ? "是" : "否"}`,
     `当前页面状态: ${pageDetail.businessStatus}`,
     `当前规则判定: ${pageDetail.latestDecision ?? "无"}`,
     `待确认原因: ${pageDetail.latestPendingReasonLabel ?? "无"}`,
@@ -373,6 +383,7 @@ function PageDetailDialog({
         { label: "Base", value: detail.latestBase.shouldRun ? "应该抓取" : "不要求抓取" },
         { label: "Markdown", value: detail.latestMarkdown.shouldRun ? "应该抓取" : "不要求抓取" },
         { label: "截图", value: detail.latestScreenshot.shouldRun ? "应该抓取" : "不要求抓取" },
+        { label: "结构化", value: detail.latestStructured.shouldRun ? "应该抓取" : "不要求抓取" },
       ]
     : [];
 
@@ -440,6 +451,7 @@ function PageDetailDialog({
               <ProcessingCard state={detail.latestBase} active={activePreview === "base"} onSelect={() => setActivePreview("base")} />
               <ProcessingCard state={detail.latestMarkdown} active={activePreview === "markdown"} onSelect={() => setActivePreview("markdown")} />
               <ProcessingCard state={detail.latestScreenshot} active={activePreview === "screenshot"} onSelect={() => setActivePreview("screenshot")} />
+              <ProcessingCard state={detail.latestStructured} active={activePreview === "structured"} onSelect={() => setActivePreview("structured")} />
             </div>
 
             {detail.latestPageRun && (
@@ -556,7 +568,7 @@ export function PageReview({
   const [pageIdExportInput, setPageIdExportInput] = useState("");
   const [isExportingPageIds, setIsExportingPageIds] = useState(false);
   const [selectedPageIdExportArtifacts, setSelectedPageIdExportArtifacts] = useState<Set<ProjectExportArtifact>>(
-    new Set(["base", "markdown", "screenshot"]),
+    new Set(["base", "markdown", "screenshot", "structured"]),
   );
 
   useEffect(() => {

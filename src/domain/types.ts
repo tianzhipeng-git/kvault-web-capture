@@ -1,6 +1,6 @@
-export type ArtifactType = 'markdown' | 'screenshot';
+export type ArtifactType = 'markdown' | 'screenshot' | 'structured';
 
-export type CaptureCapability = 'base' | ArtifactType | 'structured';
+export type CaptureCapability = 'base' | ArtifactType;
 
 export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
@@ -91,6 +91,11 @@ export interface CaptureProfileConfig {
   validation?: CaptureValidationConfig;
 }
 
+export interface ProxyPolicyConfig {
+  mode: 'off' | 'always' | 'retry_on_failure';
+  provider?: 'crawlee' | 'apify';
+}
+
 export interface SiteConfig {
   seedUrls: string[];
   sitemaps: string[];
@@ -100,6 +105,7 @@ export interface SiteConfig {
   captureProfiles?: Record<string, CaptureProfileConfig>;
   defaultCaptureProfile?: string;
   validation?: CaptureValidationConfig;
+  proxyPolicy?: ProxyPolicyConfig;
 }
 
 export interface RuleEvaluation {
@@ -159,6 +165,8 @@ export interface HistoricalPageState {
   lastMarkdownAt: string | null;
   lastScreenshotStatus: ArtifactRunStatus | null;
   lastScreenshotAt: string | null;
+  lastStructuredStatus: ArtifactRunStatus | null;
+  lastStructuredAt: string | null;
 }
 
 export interface CrawlRunCreateInput {

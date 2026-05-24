@@ -108,8 +108,10 @@ describe('project export', () => {
     mkdirSync(artifactDir, { recursive: true });
     const basePath = join(artifactDir, 'base.md');
     const screenshotPath = join(artifactDir, 'screenshot.png');
+    const structuredPath = join(artifactDir, 'structured.json');
     writeFileSync(basePath, '# Base\n\nHello base\n', 'utf8');
     writeFileSync(screenshotPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(structuredPath, JSON.stringify({ comments: [{ id: 1, body: 'hello' }] }, null, 2), 'utf8');
 
     const db = await openDatabase(dbPath);
     openHandles.push(db);
@@ -170,14 +172,14 @@ describe('project export', () => {
       decisionOutcome: 'allow',
       decisionReason: null,
       pendingReason: null,
-      requiredArtifacts: ['markdown', 'screenshot'],
+      requiredArtifacts: ['markdown', 'screenshot', 'structured'],
     });
     await pages.recordBaseCapture({
       sitePageId,
       runId,
       title: 'Long Blog',
       pageOutcome: 'allow',
-      requiredArtifacts: ['markdown', 'screenshot'],
+      requiredArtifacts: ['markdown', 'screenshot', 'structured'],
       pendingReason: null,
     });
     await artifactRuns.create({
@@ -214,6 +216,23 @@ describe('project export', () => {
       artifactType: 'screenshot',
       status: 'succeeded',
     });
+    await artifactRuns.create({
+      runId,
+      pageRunId,
+      sitePageId,
+      artifactType: 'structured',
+      status: 'succeeded',
+      content: null,
+      outputPath: structuredPath,
+      errorMessage: null,
+      meta: null,
+    });
+    await pages.recordArtifactResult({
+      sitePageId,
+      runId,
+      artifactType: 'structured',
+      status: 'succeeded',
+    });
     const deniedUrl = 'https://www.example.com/login';
     await pages.upsertDiscovery({
       siteId: site.id,
@@ -239,6 +258,7 @@ describe('project export', () => {
     const baseEntryPath = [...entries.keys()].find((path) => path.endsWith('/base.md'));
     const markdownEntryPath = [...entries.keys()].find((path) => path.endsWith('/markdown.md'));
     const screenshotEntryPath = [...entries.keys()].find((path) => path.endsWith('/screenshot.png'));
+    const structuredEntryPath = [...entries.keys()].find((path) => path.endsWith('/structured.json'));
 
     expect(siteInfoPath).toBeTruthy();
     expect(pageListPath).toBeTruthy();
@@ -246,6 +266,7 @@ describe('project export', () => {
     expect(entries.get(baseEntryPath!)?.toString('utf8')).toContain('Hello base');
     expect(entries.get(markdownEntryPath!)?.toString('utf8')).toContain('# Markdown');
     expect(entries.get(screenshotEntryPath!)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    expect(entries.get(structuredEntryPath!)?.toString('utf8')).toContain('"comments"');
     expect(Buffer.byteLength(basename(dirname(baseEntryPath!)), 'utf8')).toBeLessThanOrEqual(120);
 
     const workbook = new ExcelJS.Workbook();
@@ -255,6 +276,7 @@ describe('project export', () => {
     const sheet = workbook.getWorksheet('pages');
     expect(sheet?.getRow(2).getCell(3).value).toBe('Example blog');
     expect(sheet?.getRow(2).getCell(4).value).toBe(longUrl);
+    expect(sheet?.getRow(2).getCell(23).value).toBe('succeeded');
     expect(sheet?.getRow(3).getCell(4).value).toBe(deniedUrl);
     expect(sheet?.getRow(3).getCell(26).value).toBe('');
 
@@ -286,6 +308,7 @@ describe('project export', () => {
     expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/base.md'))).toBe(true);
     expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/markdown.md'))).toBe(false);
     expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/screenshot.png'))).toBe(false);
+    expect([...baseOnlyEntries.keys()].some((path) => path.endsWith('/structured.json'))).toBe(false);
     expect([...baseOnlyEntries.keys()].filter((path) => path.endsWith('/page_info.json'))).toHaveLength(1);
 
     const withoutDeniedOutputPath = join(dir, 'export-without-denied.zip');
@@ -329,7 +352,7 @@ describe('project export', () => {
       siteId: site.id,
       pageIds: [sitePageId, 999999, sitePageId],
       outputPath: pageIdOutputPath,
-      artifacts: ['base', 'markdown'],
+      artifacts: ['base', 'markdown', 'structured'],
     });
     const pageIdEntries = await readZipEntries(pageIdResult.outputPath);
     const pageIdPageListPath = [...pageIdEntries.keys()].find((path) => path.endsWith('page_list.xlsx'));
@@ -344,6 +367,7 @@ describe('project export', () => {
     expect([...pageIdEntries.keys()].filter((path) => path.endsWith('/page_info.json'))).toHaveLength(1);
     expect([...pageIdEntries.keys()].some((path) => path.endsWith('/base.md'))).toBe(true);
     expect([...pageIdEntries.keys()].some((path) => path.endsWith('/markdown.md'))).toBe(true);
+    expect([...pageIdEntries.keys()].some((path) => path.endsWith('/structured.json'))).toBe(true);
     expect([...pageIdEntries.keys()].some((path) => path.endsWith('/screenshot.png'))).toBe(false);
   });
 });

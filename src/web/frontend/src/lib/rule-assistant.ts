@@ -4,7 +4,7 @@ type UrlRule = {
   listType: "blacklist" | "scopelist" | "whitelist";
   ruleType: "prefix" | "regex";
   values: string[];
-  artifacts?: Array<"markdown" | "screenshot">;
+  artifacts?: Array<"markdown" | "screenshot" | "structured">;
 };
 
 type LabelRuleCondition = {
@@ -18,7 +18,7 @@ type LabelRule = {
   matchType: "label";
   listType: "blacklist" | "scopelist" | "whitelist";
   when: LabelRuleCondition[];
-  artifacts?: Array<"markdown" | "screenshot">;
+  artifacts?: Array<"markdown" | "screenshot" | "structured">;
 };
 
 export type Rule = UrlRule | LabelRule;

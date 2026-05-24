@@ -160,6 +160,8 @@ export class SitePageRepository {
       last_markdown_at: string | null;
       last_screenshot_status: ArtifactRunStatus | null;
       last_screenshot_at: string | null;
+      last_structured_status: ArtifactRunStatus | null;
+      last_structured_at: string | null;
     }>(
       `SELECT
          id,
@@ -178,7 +180,9 @@ export class SitePageRepository {
          last_markdown_status,
          last_markdown_at,
          last_screenshot_status,
-         last_screenshot_at
+         last_screenshot_at,
+         last_structured_status,
+         last_structured_at
        FROM site_pages
        WHERE site_id = ? AND normalized_url = ?`,
       [siteId, normalizedUrl],
@@ -206,6 +210,8 @@ export class SitePageRepository {
       lastMarkdownAt: row.last_markdown_at,
       lastScreenshotStatus: row.last_screenshot_status,
       lastScreenshotAt: row.last_screenshot_at,
+      lastStructuredStatus: row.last_structured_status,
+      lastStructuredAt: row.last_structured_at,
     };
   }
 
@@ -288,11 +294,13 @@ export class SitePageRepository {
       last_stage_decision_json: string | null;
       last_markdown_status: ArtifactRunStatus | null;
       last_screenshot_status: ArtifactRunStatus | null;
+      last_structured_status: ArtifactRunStatus | null;
     }>(
       `SELECT
          last_stage_decision_json,
          last_markdown_status,
-         last_screenshot_status
+         last_screenshot_status,
+         last_structured_status
        FROM site_pages
        WHERE id = ?`,
       [input.sitePageId],
@@ -306,6 +314,7 @@ export class SitePageRepository {
     const artifactStatuses: Partial<Record<ArtifactType, ArtifactRunStatus | null>> = {
       markdown: row.last_markdown_status,
       screenshot: row.last_screenshot_status,
+      structured: row.last_structured_status,
       [input.artifactType]: input.status,
     };
     const inventoryStatus = deriveInventoryStatus({
@@ -329,12 +338,26 @@ export class SitePageRepository {
       return;
     }
 
+    if (input.artifactType === 'screenshot') {
+      await this.db.run(
+        `UPDATE site_pages
+         SET inventory_status = ?,
+             last_screenshot_status = ?,
+             last_screenshot_run_id = ?,
+             last_screenshot_at = ?,
+             updated_at = ?
+         WHERE id = ?`,
+        [inventoryStatus, input.status, input.runId, now, now, input.sitePageId],
+      );
+      return;
+    }
+
     await this.db.run(
       `UPDATE site_pages
        SET inventory_status = ?,
-           last_screenshot_status = ?,
-           last_screenshot_run_id = ?,
-           last_screenshot_at = ?,
+           last_structured_status = ?,
+           last_structured_run_id = ?,
+           last_structured_at = ?,
            updated_at = ?
        WHERE id = ?`,
       [inventoryStatus, input.status, input.runId, now, now, input.sitePageId],

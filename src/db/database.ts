@@ -217,6 +217,9 @@ const sqliteSchema = `
     last_screenshot_status TEXT,
     last_screenshot_run_id INTEGER,
     last_screenshot_at TEXT,
+    last_structured_status TEXT,
+    last_structured_run_id INTEGER,
+    last_structured_at TEXT,
     first_discovered_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -224,7 +227,8 @@ const sqliteSchema = `
     FOREIGN KEY (site_id) REFERENCES sites(id),
     FOREIGN KEY (last_base_run_id) REFERENCES crawl_runs(id),
     FOREIGN KEY (last_markdown_run_id) REFERENCES crawl_runs(id),
-    FOREIGN KEY (last_screenshot_run_id) REFERENCES crawl_runs(id)
+    FOREIGN KEY (last_screenshot_run_id) REFERENCES crawl_runs(id),
+    FOREIGN KEY (last_structured_run_id) REFERENCES crawl_runs(id)
   );
 
   CREATE TABLE IF NOT EXISTS page_runs (
@@ -284,7 +288,7 @@ const sqliteSchema = `
     ON site_pages(site_id, inventory_status);
 
   CREATE INDEX IF NOT EXISTS idx_site_pages_site_latest_handled
-    ON site_pages(site_id, (COALESCE(last_markdown_at, last_screenshot_at, last_base_at)) DESC, id DESC);
+    ON site_pages(site_id, (COALESCE(last_markdown_at, last_screenshot_at, last_structured_at, last_base_at)) DESC, id DESC);
 
   CREATE INDEX IF NOT EXISTS idx_page_runs_run
     ON page_runs(crawl_run_id);
@@ -316,6 +320,9 @@ export async function initializeSchema(db: DbClient): Promise<void> {
   const migrations = [
     `ALTER TABLE crawl_runs ADD COLUMN error_message TEXT`,
     `ALTER TABLE page_runs ADD COLUMN error_message TEXT`,
+    `ALTER TABLE site_pages ADD COLUMN last_structured_status TEXT`,
+    `ALTER TABLE site_pages ADD COLUMN last_structured_run_id INTEGER`,
+    `ALTER TABLE site_pages ADD COLUMN last_structured_at TEXT`,
   ];
 
   for (const sql of migrations) {

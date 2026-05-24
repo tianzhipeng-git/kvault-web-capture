@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PageCaptureExecutor } from '../src/capture/executor.js';
 import { PythonBridge } from '../src/capture/python-bridge.js';
-import type { CaptureTool, RuntimeContext } from '../src/capture/types.js';
+import type { CaptureTool, RuntimeContext, SiteAutomationAdapter } from '../src/capture/types.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
 
 const runtime: RuntimeContext = {
@@ -149,6 +149,77 @@ describe('PageCaptureExecutor', () => {
         runtime,
       }),
     ).rejects.toThrow('missing markdown');
+  });
+
+  it('skips site automation adapters that do not match the URL', async () => {
+    const adapter: SiteAutomationAdapter = {
+      name: 'site-adapter',
+      siteKey: 'special-site',
+      capabilities: ['markdown'],
+      matches: () => false,
+      async capture() {
+        throw new Error('should not run');
+      },
+    };
+    const markdownTool: CaptureTool = {
+      name: 'markdown',
+      capabilities: ['markdown'],
+      async capture() {
+        return {
+          toolName: 'markdown',
+          markdown: '# fallback\n',
+        };
+      },
+    };
+
+    const result = await new PageCaptureExecutor([adapter, markdownTool]).capture({
+      url: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      needs: ['markdown'],
+      siteConfig: createDefaultSiteConfig('https://example.com'),
+      runtime,
+    });
+
+    expect(result.markdown?.content).toBe('# fallback\n');
+    expect(result.diagnostics[0]).toMatchObject({
+      toolName: 'site-adapter',
+      status: 'skipped',
+    });
+  });
+
+  it('records proxyPolicy diagnostics when a tool fails before fallback', async () => {
+    const siteConfig = createDefaultSiteConfig('https://example.com');
+    siteConfig.proxyPolicy = { mode: 'retry_on_failure', provider: 'apify' };
+
+    const result = await new PageCaptureExecutor([
+      {
+        name: 'broken-markdown',
+        capabilities: ['markdown'],
+        async capture() {
+          throw new Error('blocked');
+        },
+      },
+      {
+        name: 'markdown',
+        capabilities: ['markdown'],
+        async capture() {
+          return {
+            toolName: 'markdown',
+            markdown: '# ok\n',
+          };
+        },
+      },
+    ]).capture({
+      url: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      needs: ['markdown'],
+      siteConfig,
+      runtime,
+    });
+
+    expect(result.markdown?.content).toBe('# ok\n');
+    expect(result.diagnostics[0].message).toContain('proxyPolicy=retry_on_failure');
+    expect(result.diagnostics[0].message).toContain('provider=apify');
   });
 
   it('uses capture profile tool order and falls back after validator rejection', async () => {

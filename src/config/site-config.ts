@@ -6,6 +6,7 @@ import type {
   CaptureValidationConfig,
   CaptureValidationRule,
   LabelRule,
+  ProxyPolicyConfig,
   SiteConfig,
   SiteRunOptions,
   UrlRule,
@@ -39,8 +40,8 @@ function assertUniqueRuleNames(rules: Array<{ name: string }>, fieldName: string
 function parseArtifacts(value: unknown, fieldName: string): ArtifactType[] {
   const artifacts = asStringArray(value, fieldName);
   assert(
-    artifacts.every((artifact) => artifact === 'markdown' || artifact === 'screenshot'),
-    `${fieldName} only supports markdown or screenshot`,
+    artifacts.every((artifact) => artifact === 'markdown' || artifact === 'screenshot' || artifact === 'structured'),
+    `${fieldName} only supports markdown, screenshot, or structured`,
   );
   return artifacts as ArtifactType[];
 }
@@ -249,10 +250,32 @@ function parseCaptureProfiles(value: unknown): Record<string, CaptureProfileConf
   return Object.fromEntries(entries);
 }
 
+function parseProxyPolicy(value: unknown): ProxyPolicyConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  assert(isRecord(value), 'proxyPolicy must be an object');
+  assert(
+    value.mode === 'off' || value.mode === 'always' || value.mode === 'retry_on_failure',
+    'proxyPolicy.mode must be off, always, or retry_on_failure',
+  );
+  assert(
+    value.provider === undefined || value.provider === 'crawlee' || value.provider === 'apify',
+    'proxyPolicy.provider must be crawlee or apify',
+  );
+
+  return {
+    mode: value.mode,
+    provider: value.provider,
+  };
+}
+
 export function parseSiteConfig(input: unknown): SiteConfig {
   assert(isRecord(input), 'site config must be an object');
 
   const captureProfiles = parseCaptureProfiles(input.captureProfiles);
+  const proxyPolicy = parseProxyPolicy(input.proxyPolicy);
   const defaultCaptureProfile = input.defaultCaptureProfile;
   assert(
     defaultCaptureProfile === undefined || typeof defaultCaptureProfile === 'string',
@@ -286,6 +309,9 @@ export function parseSiteConfig(input: unknown): SiteConfig {
   }
   if (input.validation !== undefined) {
     config.validation = parseValidationConfig(input.validation, 'validation');
+  }
+  if (proxyPolicy !== undefined) {
+    config.proxyPolicy = proxyPolicy;
   }
 
   return config;

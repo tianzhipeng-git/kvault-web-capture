@@ -129,7 +129,7 @@ function parseProjectExportOptions(value: unknown): ProjectExportOptions {
         .map((siteId) => typeof siteId === 'number' ? siteId : Number(siteId))
         .filter((siteId) => Number.isInteger(siteId) && siteId > 0)
     : undefined;
-  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot']);
+  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
   const artifacts = Array.isArray(record.artifacts)
     ? record.artifacts.filter((artifact): artifact is ProjectExportArtifact => (
         typeof artifact === 'string' && allowedArtifacts.has(artifact as ProjectExportArtifact)
@@ -147,7 +147,7 @@ function parseProjectExportOptions(value: unknown): ProjectExportOptions {
 }
 
 function parseExportArtifacts(value: unknown): ProjectExportArtifact[] | undefined {
-  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot']);
+  const allowedArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
   return Array.isArray(value)
     ? value.filter((artifact): artifact is ProjectExportArtifact => (
         typeof artifact === 'string' && allowedArtifacts.has(artifact as ProjectExportArtifact)
@@ -196,6 +196,10 @@ function parseLlmHistory(value: unknown): ChatCompletionMessageParam[] {
 }
 
 function artifactContentType(path: string, artifactType: string): string {
+  if (artifactType === 'structured') {
+    return 'application/json; charset=utf-8';
+  }
+
   if (artifactType !== 'screenshot') {
     return 'text/plain; charset=utf-8';
   }

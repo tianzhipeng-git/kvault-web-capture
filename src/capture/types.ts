@@ -67,3 +67,12 @@ export interface CaptureTool {
   readonly capabilities: readonly CaptureCapability[];
   capture(input: CaptureInput): Promise<CaptureToolResult>;
 }
+
+export interface SiteAutomationAdapter extends CaptureTool {
+  readonly siteKey: string;
+  matches(input: CaptureInput): boolean;
+}
+
+export function isSiteAutomationAdapter(tool: CaptureTool): tool is SiteAutomationAdapter {
+  return typeof (tool as Partial<SiteAutomationAdapter>).matches === 'function';
+}

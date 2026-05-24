@@ -95,6 +95,14 @@ function makeMarkdownCaptureResult(): CaptureResult {
   };
 }
 
+function makeStructuredCaptureResult(): CaptureResult {
+  return {
+    url: 'https://example.com/docs',
+    structured: { title: 'Docs page', items: [{ id: 1, text: 'hello' }] },
+    diagnostics: [],
+  };
+}
+
 function makeNoopPlanner(): RunPlanner {
   return {
     planRequest: async () => ({ siteId: 10, sitePageId: 101, normalizedUrl: 'https://example.com/other', enqueue: false, urlRuleDecision: 'allow', planReason: null }),
@@ -373,6 +381,61 @@ describe('createPageCaptureRequestHandler – artifact-only task', () => {
     expect((artifactRunCalls[0] as { status: string }).status).toBe('succeeded');
     expect(sitePageCalls).toHaveLength(1);
     expect((sitePageCalls[0] as { status: string }).status).toBe('succeeded');
+  });
+
+  it('writes structured artifact-only task as JSON', async () => {
+    const executorCaptureCalls: unknown[] = [];
+    const executor = {
+      capture: async (input: unknown) => {
+        executorCaptureCalls.push(input);
+        return makeStructuredCaptureResult();
+      },
+    } as unknown as PageCaptureExecutor;
+
+    const artifactRunCalls: unknown[] = [];
+    const artifactRunRepository = makeArtifactRunRepository({
+      create: async (args: unknown) => { artifactRunCalls.push(args); return 1; },
+    });
+
+    const sitePageCalls: unknown[] = [];
+    const sitePageRepository = makeSitePageRepository({
+      recordArtifactResult: async (args: unknown) => { sitePageCalls.push(args); },
+    });
+
+    const { writer, textCalls } = makeArtifactWriter();
+    const handler = createPageCaptureRequestHandler({
+      executor,
+      classifier: new FakeClassifier(),
+      siteConfig,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      pageCaptureQueue: makeNoopRequestQueue().queue,
+      artifactWriter: writer,
+      artifactRunRepository,
+      pageRunRepository: makePageRunRepository(),
+      sitePageRepository,
+      runPlanner: makeNoopPlanner(),
+      runLog: noopRunLog,
+    });
+
+    await handler({
+      task: makeArtifactTask({ needs: ['structured'], pageRunId: 999 }),
+      runtime,
+    });
+
+    expect(executorCaptureCalls).toHaveLength(1);
+    expect((executorCaptureCalls[0] as { needs: string[] }).needs).toEqual(['structured']);
+    expect(textCalls).toHaveLength(1);
+    expect((textCalls[0] as { artifactType: string; extension: string; content: string }).artifactType).toBe('structured');
+    expect((textCalls[0] as { extension: string }).extension).toBe('json');
+    expect(JSON.parse((textCalls[0] as { content: string }).content)).toEqual({
+      title: 'Docs page',
+      items: [{ id: 1, text: 'hello' }],
+    });
+    expect((artifactRunCalls[0] as { artifactType: string; status: string }).artifactType).toBe('structured');
+    expect((artifactRunCalls[0] as { status: string }).status).toBe('succeeded');
+    expect((sitePageCalls[0] as { artifactType: string; status: string }).artifactType).toBe('structured');
   });
 
   it('throws when artifact-only task has no pageRunId', async () => {

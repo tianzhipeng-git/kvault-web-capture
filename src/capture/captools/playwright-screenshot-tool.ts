@@ -1,11 +1,7 @@
-import { existsSync } from 'node:fs';
+import type { Page } from 'playwright';
 
-import { chromium, type Browser, type Page } from 'playwright';
-
+import { PlaywrightBrowserProvider, type BrowserProvider } from '../browser-provider.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
-
-const HAS_SYSTEM_CHROME =
-  process.platform === 'darwin' && existsSync('/Applications/Google Chrome.app');
 
 export async function captureFullPagePng(page: Pick<Page, 'screenshot'>): Promise<Buffer> {
   return page.screenshot({
@@ -18,30 +14,29 @@ export class PlaywrightScreenshotTool implements CaptureTool {
   readonly name = 'playwright-screenshot';
   readonly capabilities = ['screenshot'] as const;
 
+  constructor(private readonly browserProvider: BrowserProvider = new PlaywrightBrowserProvider()) {}
+
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
-    let browser: Browser | null = null;
-    let page: Page | null = null;
+    const lease = await this.browserProvider.acquirePage({
+      url: input.url,
+      runtime: input.runtime,
+    });
 
     try {
-      browser = await chromium.launch(
-        HAS_SYSTEM_CHROME ? { channel: 'chrome' as const } : undefined,
-      );
-      page = await browser.newPage();
-      await page.goto(input.url, {
+      await lease.page.goto(input.url, {
         waitUntil: 'load',
         timeout: 45_000,
       });
-      await page.waitForTimeout(3000);
+      await lease.page.waitForTimeout(3000);
 
       return {
         toolName: this.name,
-        finalUrl: page.url(),
-        screenshot: await captureFullPagePng(page),
+        finalUrl: lease.page.url(),
+        screenshot: await captureFullPagePng(lease.page),
         screenshotExtension: 'png',
       };
     } finally {
-      await page?.close().catch(() => {});
-      await browser?.close().catch(() => {});
+      await lease.release();
     }
   }
 }
