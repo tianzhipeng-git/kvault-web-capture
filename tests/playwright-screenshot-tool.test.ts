@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { PlaywrightScreenshotTool, captureFullPagePng } from '../src/capture/captools/index.js';
-import type { BrowserProvider } from '../src/capture/browser-provider.js';
+import type { BrowserIdentity, BrowserProvider } from '../src/capture/browser-provider.js';
 import type { RuntimeContext } from '../src/capture/types.js';
 
 describe('captureFullPagePng', () => {
@@ -35,8 +35,17 @@ describe('PlaywrightScreenshotTool', () => {
           url: () => 'https://example.com/final',
           screenshot: async () => Buffer.from('png'),
         } as never,
+        identity: {
+          runId: 1,
+          siteId: 1,
+          engine: 'chromium',
+          profileMode: 'ephemeral',
+        },
         release: async () => { events.push('release'); },
       }),
+      acquireCdpEndpoint: async () => { throw new Error('not used'); },
+      retireIdentity: async () => {},
+      close: async () => {},
     };
     const runtime: RuntimeContext = {
       requestId: 'test-request',
@@ -44,6 +53,8 @@ describe('PlaywrightScreenshotTool', () => {
     };
 
     const result = await new PlaywrightScreenshotTool(provider).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/start',
       normalizedUrl: 'https://example.com/start',
       needs: ['screenshot'],
@@ -60,5 +71,71 @@ describe('PlaywrightScreenshotTool', () => {
     expect(result.finalUrl).toBe('https://example.com/final');
     expect(result.screenshot?.toString()).toBe('png');
     expect(events).toEqual(['goto:https://example.com/start', 'wait', 'release']);
+  });
+
+  it('builds browser identity from run, site, Crawlee session, and proxy', async () => {
+    let acquiredIdentity: BrowserIdentity | null = null;
+    const provider: BrowserProvider = {
+      acquirePage: async ({ identity }) => {
+        acquiredIdentity = identity;
+        return {
+          identity,
+          page: {
+            goto: async () => {},
+            waitForTimeout: async () => {},
+            url: () => 'https://example.com/final',
+            screenshot: async () => Buffer.from('png'),
+          } as never,
+          release: async () => {},
+        };
+      },
+      acquireCdpEndpoint: async () => { throw new Error('not used'); },
+      retireIdentity: async () => {},
+      close: async () => {},
+    };
+
+    await new PlaywrightScreenshotTool(provider).capture({
+      runId: 42,
+      siteId: 7,
+      url: 'https://example.com/start',
+      normalizedUrl: 'https://example.com/start',
+      needs: ['screenshot'],
+      siteConfig: {
+        seedUrls: [],
+        sitemaps: [],
+        rulesBeforeBaseEq: [],
+        rulesBeforeStage2Eq: [],
+        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+        browser: {
+          engine: 'chromium',
+          profileMode: 'ephemeral',
+          reuse: 'run_browser',
+          contextReuse: 'site_session_proxy',
+          pageReuse: 'none',
+          proxyBinding: 'session',
+        },
+      },
+      runtime: {
+        requestId: 'test-request',
+        sendRequest: async () => { throw new Error('not used'); },
+        session: {
+          id: 'session-a',
+          userData: { profileKey: 'profile-a' },
+        },
+        proxyInfo: {
+          url: 'http://proxy.example:8080',
+        },
+      },
+    });
+
+    expect(acquiredIdentity).toEqual({
+      runId: 42,
+      siteId: 7,
+      sessionId: 'session-a',
+      proxyKey: 'http://proxy.example:8080',
+      engine: 'chromium',
+      profileMode: 'ephemeral',
+      profileKey: 'profile-a',
+    });
   });
 });

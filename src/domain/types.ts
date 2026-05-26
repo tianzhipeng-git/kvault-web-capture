@@ -96,6 +96,19 @@ export interface ProxyPolicyConfig {
   provider?: 'crawlee' | 'apify';
 }
 
+export type BrowserEngine = 'chromium' | 'cloakbrowser' | 'lightpanda';
+
+export type BrowserProfileMode = 'ephemeral' | 'persistent' | 'storage_state';
+
+export interface BrowserConfig {
+  engine: BrowserEngine;
+  profileMode: BrowserProfileMode;
+  reuse?: 'run_browser' | 'site_browser';
+  contextReuse?: 'site_session_proxy' | 'site_run';
+  pageReuse?: 'none';
+  proxyBinding?: 'session' | 'none';
+}
+
 export interface SiteConfig {
   seedUrls: string[];
   sitemaps: string[];
@@ -106,6 +119,7 @@ export interface SiteConfig {
   defaultCaptureProfile?: string;
   validation?: CaptureValidationConfig;
   proxyPolicy?: ProxyPolicyConfig;
+  browser?: BrowserConfig;
 }
 
 export interface RuleEvaluation {

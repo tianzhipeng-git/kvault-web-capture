@@ -305,6 +305,8 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
   }
 
   const result = await deps.executor.capture({
+    runId: task.runId,
+    siteId: task.siteId,
     url: task.url,
     normalizedUrl: task.normalizedUrl,
     needs: task.needs,
@@ -565,6 +567,8 @@ async function handleArtifactOnlyTask(input: PageCaptureHandlerInput): Promise<v
 
   const artifacts = artifactNeeds(task.needs);
   const result = await deps.executor.capture({
+    runId: task.runId,
+    siteId: task.siteId,
     url: task.url,
     normalizedUrl: task.normalizedUrl,
     needs: artifacts,

@@ -45,6 +45,8 @@ describe('MarkdownTool', () => {
     ] satisfies MarkdownCaptureStrategy[]);
 
     await expect(tool.capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com',
       normalizedUrl: 'https://example.com',
       needs: ['markdown'],
@@ -80,6 +82,8 @@ describe('MarkdownTool', () => {
     ] satisfies MarkdownCaptureStrategy[]);
 
     await expect(tool.capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com',
       normalizedUrl: 'https://example.com',
       needs: ['markdown'],

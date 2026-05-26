@@ -18,6 +18,8 @@ describe('HttpBaseTool', () => {
 
     await expect(
       new HttpBaseTool().capture({
+        runId: 1,
+        siteId: 1,
         url: 'http://127.0.0.1:4318/not-exists',
         normalizedUrl: 'http://127.0.0.1:4318/not-exists',
         needs: ['base'],

@@ -41,6 +41,7 @@ import type {
 import { openRunQueue } from '../crawlee/queue-factory.js';
 import { PageCaptureExecutor } from '../capture/executor.js';
 import type { CaptureTool } from '../capture/types.js';
+import { PlaywrightBrowserManager } from '../capture/browser-provider.js';
 import {
   Crawl4AITool,
   HttpBaseTool,
@@ -116,7 +117,7 @@ export class M1App {
 
   private readonly classifier: Classifier | null;
 
-  private readonly captureTools: CaptureTool[];
+  private readonly captureTools: CaptureTool[] | null;
 
   private readonly defaultCaptureToolChain: string[];
 
@@ -125,14 +126,7 @@ export class M1App {
   private constructor(private readonly options: M1AppOptions) {
     this.clock = new SystemClock();
     this.classifier = options.classifier ?? null;
-    this.captureTools = options.captureTools ?? [
-      new HttpBaseTool(),
-      new MarkdownTool(),
-      new PlaywrightScreenshotTool(),
-      new Crawl4AITool(),
-      new ScraplingTool(),
-      new KickstarterCommentsAdapter(),
-    ];
+    this.captureTools = options.captureTools ?? null;
     this.defaultCaptureToolChain = options.captureTools
       ? options.captureTools.map((tool) => tool.name)
       : ['http-base', 'markdown', 'playwright-screenshot'];
@@ -622,7 +616,16 @@ export class M1App {
         ? new LLMClassifier(labelDefinitions)
         : new FakeClassifier());
 
-    const toolRegistry = new CaptureToolRegistry(this.captureTools);
+    const browserManager = new PlaywrightBrowserManager(effectiveConfig);
+    const captureTools = this.captureTools ?? [
+      new HttpBaseTool(),
+      new MarkdownTool(),
+      new PlaywrightScreenshotTool(browserManager),
+      new Crawl4AITool(browserManager),
+      new ScraplingTool(browserManager),
+      new KickstarterCommentsAdapter(),
+    ];
+    const toolRegistry = new CaptureToolRegistry(captureTools);
     const executor = new PageCaptureExecutor(toolRegistry, {
       profileResolver: new CaptureProfileResolver(toolRegistry, this.defaultCaptureToolChain),
     });
@@ -705,6 +708,8 @@ export class M1App {
         errorMessage,
       });
       throw error;
+    } finally {
+      await browserManager.close();
     }
 
     return {

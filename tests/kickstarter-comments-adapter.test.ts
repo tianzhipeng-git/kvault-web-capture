@@ -20,6 +20,8 @@ describe('KickstarterCommentsAdapter', () => {
   it('matches kickstarter comments URLs and emits structured JSON plus markdown', async () => {
     const adapter = new KickstarterCommentsAdapter();
     const input = {
+      runId: 1,
+      siteId: 1,
       url: 'https://www.kickstarter.com/projects/acme/widget/comments',
       normalizedUrl: 'https://www.kickstarter.com/projects/acme/widget/comments',
       needs: ['structured', 'markdown'] satisfies CaptureCapability[],
@@ -69,6 +71,8 @@ describe('KickstarterCommentsAdapter', () => {
     const adapter = new KickstarterCommentsAdapter();
 
     expect(adapter.matches({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/comments',
       normalizedUrl: 'https://example.com/comments',
       needs: ['structured'],

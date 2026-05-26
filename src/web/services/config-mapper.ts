@@ -13,6 +13,8 @@ export interface SiteConfigFormInput {
   captureProfiles?: SiteConfig['captureProfiles'];
   defaultCaptureProfile?: SiteConfig['defaultCaptureProfile'];
   validation?: SiteConfig['validation'];
+  browser?: SiteConfig['browser'];
+  proxyPolicy?: SiteConfig['proxyPolicy'];
 }
 
 export interface CrawlRunFormInput {
@@ -36,6 +38,8 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
     captureProfiles: input.captureProfiles,
     defaultCaptureProfile: input.defaultCaptureProfile,
     validation: input.validation,
+    browser: input.browser,
+    proxyPolicy: input.proxyPolicy,
   });
 }
 

@@ -1,5 +1,10 @@
 import { spawn } from 'node:child_process';
 
+import {
+  browserIdentityFromRuntime,
+  type BrowserManager,
+  type CdpLease,
+} from './browser-provider.js';
 import type { CaptureInput, CaptureToolResult } from './types.js';
 
 export interface PythonBridgeOutput {
@@ -22,6 +27,7 @@ export interface PythonBridgeOptions {
   scriptPath: string;
   pythonPath?: string;
   timeoutMs?: number;
+  browserManager?: BrowserManager;
   runProcessFn?: (input: {
     command: string;
     args: string[];
@@ -38,11 +44,13 @@ export class PythonBridge {
   }
 
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
+    const cdpLease = await this.tryAcquireCdpLease(input);
     const payload = JSON.stringify({
       url: input.url,
       normalizedUrl: input.normalizedUrl,
       needs: input.needs,
       proxyUrl: input.runtime.proxyInfo?.url ?? null,
+      cdpUrl: cdpLease?.cdpUrl ?? null,
     });
 
     let stdout: string;
@@ -71,6 +79,8 @@ export class PythonBridge {
         ? `: ${maybe.stderr.trim()}`
         : '';
       throw new Error(`${this.options.toolName} bridge failed with ${reason}${stderrText}`);
+    } finally {
+      await cdpLease?.release().catch(() => {});
     }
 
     let parsed: PythonBridgeOutput;
@@ -117,6 +127,30 @@ export class PythonBridge {
     };
 
     return result;
+  }
+
+  private async tryAcquireCdpLease(input: CaptureInput): Promise<CdpLease | null> {
+    if (!this.options.browserManager) {
+      return null;
+    }
+
+    try {
+      return await this.options.browserManager.acquireCdpEndpoint({
+        identity: browserIdentityFromRuntime({
+          runId: input.runId,
+          siteId: input.siteId,
+          siteConfig: input.siteConfig,
+          runtime: input.runtime,
+        }),
+        runtime: input.runtime,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('not implemented')) {
+        return null;
+      }
+      throw error;
+    }
   }
 }
 

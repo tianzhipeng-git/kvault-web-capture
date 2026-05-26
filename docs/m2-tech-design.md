@@ -4,7 +4,7 @@
 
 ## 1. 背景与核心结论
 
-当前项目把 Crawlee 同时用作：
+Milestone2 最初要解决的是早期 M1 架构里 Crawlee 职责过重的问题。当时 Crawlee 同时被用作：
 
 - run 内临时队列和并发调度器
 - HTTP 页面抓取器（`CheerioCrawler`）
@@ -12,10 +12,13 @@
 - 浏览器页面抓取器（`PlaywrightCrawler`）
 - 重试、Session、Proxy、blocked retry 等爬虫运行能力提供者
 
+当前主干已经朝 `BasicCrawler + pageCaptureQueue + PageCaptureExecutor + CaptureTool` 的方向迁移；本文保留目标架构和后续浏览器能力升级边界，作为 M2 及其后续演进的设计基线。
+
 Milestone2 希望增强反爬、代理、fallback、点击交互、结构化抽取，以及 Crawl4AI / Scrapling / CloakBrowser 等工具接入能力。继续让 `CheerioCrawler` / `LinkeDOMCrawler` / `PlaywrightCrawler` 作为阶段入口会带来两个问题：
 
 1. 这些 crawler 会在 handler 之前先发起请求；如果它们失败，高级工具策略没有机会介入。
 2. handler 中再调用高级工具会导致同一 URL 被重复请求或重复打开浏览器。
+3. 浏览器、session、proxy、profile 的身份模型会分散在不同 crawler/tool 中，难以保证 HTTP 抓取、浏览器截图、Python 工具之间的身份一致。
 
 因此目标架构是：
 
@@ -29,9 +32,16 @@ Milestone2 希望增强反爬、代理、fallback、点击交互、结构化抽�
 - `sendRequest` / got-scraping HTTP 能力
 - `SessionPool`
 - `ProxyConfiguration`
-- 可选的 `BrowserPool`
+- session/proxy 的健康状态和封禁信号
 
 `CheerioCrawler`、`LinkeDOMCrawler`、`PlaywrightCrawler` 这三个层级会被移除，不保留 legacy 兼容路径。它们提供的能力会被拆解为多个不依赖 Crawlee 专用 crawler 的 `CaptureTool`。
+
+浏览器能力不由 Crawlee `BrowserPool` 作为全局模型承载，而由项目自己的 `BrowserManager` 管理。Playwright/CDP 作为浏览器控制协议层，连接 Chromium、CloakBrowser、Lightpanda 等底层 engine，并向本项目 TS tool、Crawl4AI、Scrapling 等上层工具提供 `PageLease` 或 `CdpLease`。
+
+浏览器分层与复用策略的详细设计见：
+
+- `docs/tech-details/browser-layering-design.md`
+- `docs/tech-details/browser-reuse-strategy.md`
 
 ## 2. 目标分层
 
@@ -48,6 +58,10 @@ flowchart TD
   TOOLS --> HTTP["HTTP / DOM tools"]
   TOOLS --> BROWSER["Browser tools"]
   TOOLS --> PY["Python bridge tools"]
+  BROWSER --> MANAGER["BrowserManager"]
+  PY --> MANAGER
+  MANAGER --> CONTROL["Playwright / CDP"]
+  CONTROL --> ENGINES["Chromium / CloakBrowser / Lightpanda"]
   HANDLER --> DB["page_runs / artifact_runs / site_pages"]
   HANDLER --> ARTIFACTS["artifact files"]
 ```
@@ -128,7 +142,7 @@ interface PageCaptureTask {
 
 但阶段不再等同于物理队列。
 
-当前三队列模型：
+旧三队列模型：
 
 ```text
 baseQueue
@@ -173,8 +187,17 @@ interface RuntimeContext {
 - `sendRequest` / got-scraping HTTP client
 - `SessionPool`
 - `ProxyConfiguration`
-- `BrowserPool` 与 Playwright 插件
 - `failedRequestHandler`
+
+当前项目使用的 `BasicCrawler` 默认启用 `SessionPool`，并且 `CrawleeCaptureRuntime` 显式传入 `sessionPoolOptions.maxPoolSize = 50`。因此 `RuntimeContext.session` 不是未来扩展点，而是当前已经存在的运行时身份信号。
+
+目标架构中，Crawlee session 的定位是：
+
+- 为 HTTP `sendRequest` 提供 cookie jar 和 session health。
+- 为 BrowserManager 提供 `session.id`、cookie、`userData`、健康状态等输入。
+- 在浏览器侧明确遇到 403/429/captcha/access denied 时接收 `markBad()` 或 `retire()` 反馈。
+
+不把 Crawlee session 当作完整浏览器 profile。完整 profile、storageState、CDP endpoint、browser process/context/page 生命周期由 BrowserManager 管理。
 
 ### 3.2 明确不使用的 Crawlee 能力
 
@@ -183,8 +206,11 @@ interface RuntimeContext {
 - `CheerioCrawler`
 - `LinkeDOMCrawler`
 - `PlaywrightCrawler`
+- Crawlee `BrowserPool` 作为全局浏览器资源池
 
 也不在 `CaptureTool` 内部手工创建这些 crawler。否则会把完整 crawler 生命周期嵌入 tool，重新引入 handler 前置请求、内部 retry、队列语义和失败路径混乱。
+
+Crawlee `BrowserPool` 可以作为局部参考或实验实现，但不作为 M2 的浏览器生命周期边界。原因是项目需要同时管理 TS tool、Python tool、CDP endpoint、CloakBrowser、Lightpanda 和 persistent profile，这些概念超出了 Crawlee crawler 内部 browser pool 的职责。
 
 ## 4. PageCaptureExecutor
 
@@ -283,37 +309,128 @@ interface CaptureToolResult {
 
 原来的 `PlaywrightCrawler` 能力拆解为：
 
-- `BrowserProvider`：提供 page / browser context
+- `BrowserManager`：提供 page / browser context / CDP endpoint / browser identity
 - `PlaywrightPageTool`：导航、等待、读取 HTML
 - `PlaywrightScreenshotTool`：截图
 
-这些 tool 不调用 Crawlee 专用 crawler，但可以复用 Crawlee 的底层 HTTP、session、proxy、browser pool 能力。
+这些 tool 不调用 Crawlee 专用 crawler，但可以复用 Crawlee 的底层 HTTP、session、proxy 信号和 BrowserManager 管理的浏览器资源。
 
-## 6. BrowserProvider
+## 6. BrowserManager
 
-`BrowserProvider` 只服务于浏览器类工具，不是业务层概念。
+`BrowserManager` 是 M2 浏览器能力的项目内边界。它只服务于浏览器类工具和 Python bridge tool，不是 planner、rules、repository、web read model 的业务概念。
 
-可能实现：
+它负责统一管理：
 
-- 裸 Playwright provider
-- Crawlee `BrowserPool` provider
-- CloakBrowser provider
-- 远程浏览器 provider
+- browser process pool
+- BrowserContext / persistent context
+- persistent profile / `userDataDir`
+- `storageState`
+- CDP endpoint
+- page lease
+- proxy/session/profile 的绑定关系
+- browser identity 的 retire / recycle
+- TS tool 与 Python tool 之间的浏览器共享
 
-目标是让以下逻辑集中管理：
+`BrowserManager` 之下可以有多个 `BrowserEngine`：
 
-- browser launch options
-- CloakBrowser / system Chrome / Playwright Chromium 选择
-- browser context 生命周期
-- proxy 注入
-- page 创建与释放
-- browser recycle / retire
+- Chromium / Playwright engine
+- CloakBrowser engine
+- Lightpanda engine
+- 远程浏览器 / CDP provider
 
-浏览器类 tool 只关心：
+### 6.1 Playwright/CDP 控制层
+
+Playwright/CDP 是浏览器控制协议层，不是项目的业务资源模型。
+
+```mermaid
+flowchart TD
+  Tools["CaptureTool<br/>Playwright / Crawl4AI / Scrapling"] --> Manager["BrowserManager"]
+  Manager --> Lease["PageLease / CdpLease"]
+  Lease --> Control["Playwright / CDP"]
+  Control --> Engines["Chromium / CloakBrowser / Lightpanda"]
+```
+
+TS 侧浏览器 tool 优先拿 `PageLease`：
 
 ```text
 acquire page -> goto -> interact / extract / screenshot -> release page
 ```
+
+Python 侧 Crawl4AI / Scrapling 优先拿 `CdpLease`：
+
+```text
+acquire cdp endpoint -> Python tool connect via cdp_url -> release lease
+```
+
+这样可以让多种上层工具共享同一个底层浏览器身份，而不是每个 tool 自己启动浏览器。
+
+### 6.2 BrowserIdentity
+
+BrowserManager 应把 Crawlee runtime、站点配置和 profile 策略合成为 `BrowserIdentity`：
+
+```ts
+interface BrowserIdentity {
+  siteId: number;
+  runId: number;
+  sessionId?: string;
+  proxyKey?: string;
+  engine: 'chromium' | 'cloakbrowser' | 'lightpanda';
+  profileMode: 'ephemeral' | 'persistent' | 'storage_state';
+  profileKey?: string;
+}
+```
+
+其中：
+
+- `sessionId` 优先来自 `RuntimeContext.session.id`。
+- `proxyKey` 来自 `RuntimeContext.proxyInfo.url` 或代理 session key。
+- `profileKey` 可以来自站点配置、账号配置或 `session.userData.profileKey`。
+- `engine` 由站点 browser config 或 capture profile 的默认策略决定。
+
+### 6.3 复用策略
+
+默认复用策略：
+
+```text
+run 内复用 browser process
+site/session/proxy 级创建 context
+每个 capture task 创建 page lease
+page 用完关闭
+run 结束关闭 ephemeral context
+```
+
+复用边界：
+
+| 实体 | M2 默认策略 | 说明 |
+|------|-------------|------|
+| Browser process | 复用 | 按 `engine + runId` 或更细 key 分池，避免每页冷启动 |
+| BrowserContext | 按身份复用 | 按 `siteId + sessionId + proxyKey + profileMode` 复用 |
+| Page / tab | 不复用 | 单任务短租短还，避免页面残留 |
+| Persistent profile | 后置启用 | 只在登录态、强反爬、人工预热场景使用 |
+| storageState | 可选启用 | 比完整 profile 更轻，适合登录态恢复 |
+| CDP endpoint | 按 engine/identity 复用 | 供 TS/Python 工具连接同一浏览器身份 |
+
+### 6.4 Crawlee session 与 BrowserManager
+
+BrowserManager 应读取 Crawlee session，但不把 Crawlee session 当作完整浏览器 profile。
+
+推荐交互：
+
+- 读取 `session.id` 构造 `BrowserIdentity.sessionId`。
+- 读取 `session.getCookies(url)` 注入 BrowserContext。
+- 按策略把浏览器侧新 cookie 回写 `session.setCookies(...)`。
+- 浏览器侧确认封禁时调用 `session.markBad()` 或 `session.retire()`。
+- 只在 `session.userData` 存 profile key、fingerprint key 等轻量 metadata，不存完整 profile。
+
+### 6.5 非目标
+
+M2 不把以下内容作为默认方案：
+
+- 每个 tool 自己启动和关闭浏览器。
+- 直接用 Crawlee `BrowserPool` 作为全局浏览器资源池。
+- 复用 page/tab 作为默认性能优化。
+- 把完整 `userDataDir`、storageState dump 或大量 cookie 塞进 Crawlee session。
+- 让业务层直接依赖 Playwright 类型。
 
 ## 7. Bridge Tool
 
@@ -331,11 +448,20 @@ Bridge 职责：
 
 - 接收标准 `CaptureInput`
 - 将 URL、proxy、headers、等待策略、抽取配置转成 Python 侧输入
+- 从 BrowserManager 获取可选 `cdp_url`，让 Python 工具连接项目管理的浏览器身份
 - 调用 Python script、sidecar 或 CLI
 - 解析 JSON / base64 输出
 - 转换为 `CaptureToolResult`
 
 Bridge 不应该出现在 `M1App`、planner、rules、repository 中。
+
+Bridge tool 不应默认自己启动浏览器。对于 Crawl4AI / Scrapling 这类可连接 CDP 的工具，优先路径是：
+
+```text
+CaptureTool -> BrowserManager.acquireCdpEndpoint(...) -> Python bridge payload.cdpUrl -> Python tool connect
+```
+
+fallback 路径可以保留“Python 工具自己管理浏览器”，用于本地依赖缺失、CDP engine 不支持某项能力或调试场景。但默认运行形态应尽量复用 BrowserManager 的 browser identity，避免 TS tool、HTTP tool、Python tool 对同一 URL 呈现不同代理、cookie、profile。
 
 ## 8. CaptureProfile 与工具策略
 
@@ -405,9 +531,10 @@ Proxy 策略属于 executor/runtime/tool 协作边界。
 目标模型：
 
 - runtime 提供基础 proxy/session 能力
-- executor 根据 capture profile 判断是否需要 retry with proxy
-- tool 接收当前 attempt 的 proxy/session 信息
-- 失败后 executor 可以切换 proxy、标记 session bad、尝试下一个 tool
+- executor 根据 capture profile 判断是否需要 retry with proxy 或切换 tool
+- tool 接收当前 attempt 的 proxy/session/browser identity 信息
+- BrowserManager 将 proxy/session 绑定到 BrowserContext 或 persistent profile
+- 失败后 executor 可以切换 proxy、标记 session bad、retire browser identity、尝试下一个 tool
 
 示意配置：
 
@@ -421,6 +548,15 @@ Proxy 策略属于 executor/runtime/tool 协作边界。
 ```
 
 如果使用 Apify Proxy，优先通过 Crawlee `ProxyConfiguration` 集成，避免自行拼装代理轮换和 session 生命周期。
+
+需要避免两类身份断裂：
+
+| 断裂 | 结果 |
+|------|------|
+| HTTP base 走 Crawlee proxy/session，浏览器截图走本机直连 | base 成功但截图看到风控页，或两个结果不是同一地域/身份 |
+| Python tool 自己启动浏览器，TS screenshot 使用另一个浏览器 | markdown/screenshot/structured 来自不同 cookie 和 fingerprint |
+
+因此 proxyPolicy 不只是“是否使用代理”，还要决定 proxy 与 browser identity 的绑定方式.
 
 ## 11. 站点定制交互与结构化抽取
 
@@ -576,11 +712,13 @@ Tool 不直接 import repository，也不直接写 artifact 文件。
 | 三个物理队列：base / markdown / screenshot | 一个 page capture 队列 |
 | `CheerioCrawler` 负责 base 抓取 | `BasicCrawler` 调度，`HttpBaseTool` 抓取 |
 | `LinkeDOMCrawler` 给 markdown handler 提供 Document | `HttpHtmlTool` + `LinkeDOM/Defuddle` tool |
-| `PlaywrightCrawler` 负责截图页面导航 | `PlaywrightScreenshotTool` 自己通过 `BrowserProvider` 导航 |
+| `PlaywrightCrawler` 负责截图页面导航 | `PlaywrightScreenshotTool` 通过 BrowserManager 获取 page 后导航 |
 | markdown fallback 藏在 `FallbackMarkdownCaptureAdapter` | executor 统一处理 tool chain fallback |
 | 成功判定主要是 tool 没抛错 | validator 明确定义结果是否可接受 |
 | 工具策略固定在代码中 | site config 中配置 capture profile |
 | Crawlee 同时是 runtime 和抓取实现 | Crawlee 只作为 runtime kernel 和底层能力提供者 |
+| 各工具各自决定浏览器生命周期 | BrowserManager 统一管理 browser/context/profile/CDP/page lease |
+| HTTP session 与浏览器 session 分裂 | Crawlee session/proxy 作为 BrowserIdentity 输入，必要时同步 cookie 与 retire 信号 |
 
 ## 16. 明确的非目标
 
@@ -591,6 +729,9 @@ Tool 不直接 import repository，也不直接写 artifact 文件。
 - 在 tool 内部嵌套创建 Crawlee crawler
 - 为 full capture 设计独立 task mode
 - 立即设计通用点击 DSL
+- 直接使用 Crawlee `BrowserPool` 作为全局浏览器资源池
+- 默认复用 page/tab
+- 把完整 persistent profile 写入 Crawlee session
 - 改变 SQLite 作为业务真相源的原则
 - 改变 `RunPlanner` / rules / repository 的核心职责
 - 把 classifier 或 stage2 规则下沉到 tool / executor
@@ -612,182 +753,11 @@ PageCaptureExecutor:
 CaptureTool:
   single URL capture implementation
 
+BrowserManager:
+  browser identity / process / context / CDP / page lease
+
 Business handler:
   domain state machine and persistence
 ```
 
-这个边界可以让项目继续复用 Crawlee 成熟的运行工程能力，同时摆脱专用 crawler 对请求时机和失败路径的控制，为 Crawl4AI、Scrapling、CloakBrowser、代理重试、站点定制交互和结构化抽取留出清晰接入点。
-
-## 18. 开发阶段拆解
-
-Milestone2 应拆成三个阶段推进。拆分原则是先替换主链路的架构边界，再接入新工具，最后补充站点定制和运行策略。这样可以避免在旧三 crawler 模型上继续堆补丁，也能保证每个阶段结束后系统仍有可验证的采集能力。
-
-### 18.1 阶段一：核心架构改动
-
-目标：把当前 `CheerioCrawler` / `LinkeDOMCrawler` / `PlaywrightCrawler` 三物理队列模型迁移为 `BasicCrawler + pageCaptureQueue + PageCaptureExecutor + CaptureTool` 模型，并保持现有 base / markdown / screenshot 行为等价。
-
-这一阶段只做架构骨架和现有能力搬迁，不接入 Crawl4AI、Scrapling、CloakBrowser，也不引入复杂 proxy 策略或站点专用 adapter。
-
-主要改动：
-
-- 新增核心类型：`CaptureCapability`、`PageCaptureTask`、`RuntimeContext`、`CaptureInput`、`CaptureToolResult`、`CaptureResult`。
-- 新增 `CrawleeCaptureRuntime`，用 `BasicCrawler` 打开单一 `run-{runId}-page-capture` 队列，并包装 `sendRequest`、session、proxyInfo、abortSignal。
-- 新增 `PageCaptureExecutor`，支持按 `needs` 调用 tool、合并结果、执行基础 validator、返回工具诊断。
-- 新增现有能力对应的内置 tool：
-  - `HttpHtmlTool` / `BaseExtractTool`：替代 `CheerioCrawler` base 抓取。
-  - `DefuddleMarkdownTool`，复用当前 Defuddle / LinkeDOM 逻辑。
-  - `LightpandaMarkdownTool` 和 `JinaMarkdownTool`，迁移当前 markdown fallback。
-  - `PlaywrightScreenshotTool`，先用简单 Playwright 实现，暂不抽象高级 BrowserProvider。
-- 重写 Crawlee handler 为 page task handler：
-  - `needs` 包含 `base` 时执行 base、分类、stage2 规则、page run 写入、链接发现、artifact 补抓入队。
-  - `needs` 不包含 `base` 时要求携带 `pageRunId`，只写 artifact 结果和更新页面聚合状态。
-- 调整 `RunPlanner` 与 `M1App` 编排：
-  - 启动 URL、运行中发现 URL 都入队 `needs: ['base']`。
-  - `crawl_run` 中 stage2 allow 后入队剩余 artifact needs。
-  - `seed_run` 只执行 base needs，保持 `stage2_pending / seed_run` 语义。
-- 移除 `CheerioCrawler`、`LinkeDOMCrawler`、`PlaywrightCrawler` 作为阶段入口，不保留 legacy 兼容路径。
-
-建议落地顺序：
-
-1. 先引入新类型和 executor 的纯单元测试，不接 Crawlee。
-2. 搬迁 base 抓取和 base handler，跑通 `seed_run`。
-3. 搬迁 markdown / screenshot artifact 抓取，跑通 `crawl_run`。
-4. 删除旧三队列 factory 和旧 request userData 类型。
-5. 更新 `technical-module-structure.md`，让现状文档和新架构一致。
-
-验收标准：
-
-- CLI `run:seed` 和 `run:crawl` 行为与当前主干等价。
-- Web 后端异步运行、run counts、inventory 状态、artifact 文件路径保持可用。
-- 现有规则、分类、update policy、repository 职责没有下沉到 tool / executor。
-- 单元测试覆盖 executor fallback、partial result merge、base task 状态机、artifact-only task 状态机。
-- 集成测试覆盖 seed run、crawl run、pending、deny、artifact 成功和 artifact 失败。
-
-不在本阶段做：
-
-- Crawl4AI / Scrapling / CloakBrowser。
-- 站点专用 Adapter。
-- proxyPolicy 配置化。
-- 高级 BrowserProvider 抽象。
-- structured artifact。
-
-### 18.2 阶段二：新工具接入
-
-目标：在阶段一的新架构上接入 Crawl4AI / Scrapling 等新工具，并让工具选择由 capture profile 驱动，而不是写死在 handler 或规则系统里。
-
-这一阶段的核心是证明新工具可以作为 `CaptureTool` 加入 executor 的 fallback 链，并且一次访问可以产出 base / markdown / screenshot / structured 中的一种或多种能力。
-
-主要改动：
-
-- 扩展 `SiteConfig`，新增最小可用的 `captureProfiles` 配置。
-- 新增 `CaptureToolRegistry`，负责按 tool name 注册和创建 tool。
-- 新增 `CaptureProfileResolver`，根据 site config、task needs 和默认策略选择 tool chain。
-- 完善 `ResultValidator`：
-  - base：statusCode、HTML 非空、拒绝页关键词。
-  - markdown：minLength、rejectRegex、requireRegex。
-  - screenshot：minBytes。
-  - structured：基础 schema / JSON 可序列化检查。
-- 新增 Python bridge 基础设施：
-  - 标准输入输出 JSON 协议。
-  - timeout、stderr、exit code、base64 buffer 处理。
-  - bridge 级诊断写入 executor diagnostics。
-- 接入 `Crawl4AITool`：
-  - 优先覆盖 `base + markdown`。
-  - 如果工具可产出 screenshot 或 structured，再按 capability 暴露。
-- 接入 `ScraplingTool`：
-  - 优先覆盖 `base` 或 `structured`。
-  - 不把 Scrapling 放进 planner、rules、repository。
-- 支持 profile 中工具部分成功后继续补齐剩余 needs。
-
-建议落地顺序：
-
-1. 先实现 config schema、registry、resolver 和 validator。
-2. 接入一个最小 bridge tool，使用 fixture 验证 bridge 协议和错误路径。
-3. 接入 Crawl4AI，覆盖 base + markdown 的 happy path 和失败 fallback。
-4. 接入 Scrapling，覆盖 structured 或 base 的窄场景。
-5. 为 Web / CLI 暴露必要的配置导入校验错误，不新增复杂 UI。
-
-验收标准：
-
-- 默认配置仍使用阶段一迁移后的内置 tool，老站点无需修改即可运行。
-- 配置了 capture profile 的站点可以按 tool chain 执行，并在失败时 fallback。
-- executor diagnostics 能看出每个 tool 的尝试顺序、失败原因和最终采用结果。
-- validator 能拒绝明显的反爬页、空 markdown、过小截图。
-- Python 工具缺失、超时、输出非法 JSON 时不会破坏 run 状态机。
-
-不在本阶段做：
-
-- 复杂点击 DSL。
-- 站点专用交互逻辑。
-- 代理自动升级策略。
-- CloakBrowser 或远程浏览器。
-- 大规模 Web 配置编辑器。
-
-### 18.3 阶段三：非核心改动与策略扩展
-
-目标：在核心架构和新工具稳定后，补齐高价值站点的定制 adapter、proxyPolicy、BrowserProvider、structured artifact 展示等外围能力。
-
-这一阶段允许做更贴近具体网站和运行环境的策略，但仍要遵守边界：adapter 是 tool，proxy 是 runtime / executor / tool 协作策略，BrowserProvider 只服务浏览器类 tool，业务状态仍由 page task handler 写入。
-
-主要改动：
-
-- 新增 `SiteAutomationAdapter` 基础接口，并作为 `CaptureTool` 注册。
-- 为高价值站点实现专用 adapter，例如 Kickstarter comments：
-  - 站点匹配逻辑。
-  - 点击、等待、分页、load more。
-  - structured JSON schema。
-  - markdown / screenshot 辅助产物。
-- 新增 `structured` artifact 的写入、查询和预览：
-  - 文件写入为 JSON。
-  - SQLite `artifact_runs` 复用或扩展 artifact 类型。
-  - Web read model 暴露 structured artifact 摘要。
-- 新增 `proxyPolicy`：
-  - `off`。
-  - `always`。
-  - `retry_on_failure`。
-  - provider 优先支持 Crawlee `ProxyConfiguration` / Apify Proxy。
-- 新增 `BrowserProvider`：
-  - 裸 Playwright provider。
-  - Crawlee BrowserPool provider。
-  - CloakBrowser provider。
-  - 远程浏览器 provider。
-- 浏览器类 tool 改为依赖 `BrowserProvider`，集中处理 launch options、context 生命周期、proxy 注入、page recycle。
-- 根据前两阶段的实际运行数据，补充 Web 侧配置和诊断展示。
-
-建议落地顺序：
-
-1. 先加 structured artifact 的存储和读取能力，避免 adapter 产物无处落地。
-2. 实现第一个站点专用 adapter，用真实需求反推 adapter 接口是否够用。
-3. 抽出 BrowserProvider，并把 `PlaywrightScreenshotTool` 迁移过去。
-4. 增加 proxyPolicy，先覆盖 retry_on_failure 的窄场景。
-5. 再接 CloakBrowser / 远程浏览器等更重的 provider。
-
-验收标准：
-
-- 至少一个站点专用 adapter 能稳定产出 structured + markdown 或 screenshot。
-- proxyPolicy 的失败升级路径有可观测日志，不会和 Crawlee retry 互相放大。
-- BrowserProvider 能复用 / 回收 page 或 context，浏览器失败能被 executor 正常诊断并 fallback。
-- structured artifact 能被 CLI / Web 查询到，并能定位到文件路径。
-- 非核心策略改动不影响默认站点的 seed / crawl 行为。
-
-不在本阶段做：
-
-- 通用点击 DSL。
-- 用 Python 工具替换 Crawlee runtime。
-- 让 adapter 直接写数据库或 artifact 文件。
-- 把 profile 选择混入 URL / label 规则职责。
-
-### 18.4 阶段依赖关系
-
-```mermaid
-flowchart TD
-  P1["阶段一: 核心架构改动"] --> P2["阶段二: 新工具接入"]
-  P2 --> P3["阶段三: 非核心改动与策略扩展"]
-  P1 --> KEEP["保持现有 seed/crawl 行为等价"]
-  P2 --> TOOLS["CaptureProfile + Bridge Tool + Validator"]
-  P3 --> STRATEGY["Adapter + proxyPolicy + BrowserProvider"]
-```
-
-阶段二依赖阶段一的原因是：Crawl4AI / Scrapling 必须接在 `CaptureTool` 和 executor 后面，否则会重新落回 handler 里手工调用工具、重复请求 URL 的旧问题。
-
-阶段三依赖阶段二的原因是：站点 Adapter、proxyPolicy、BrowserProvider 都属于策略扩展。它们需要稳定的 tool registry、profile resolver、validator 和 diagnostics，否则很容易变成分散在各个 handler 里的特殊分支。
+这个边界可以让项目继续复用 Crawlee 成熟的运行工程能力，同时摆脱专用 crawler 对请求时机和失败路径的控制。Playwright/CDP 作为浏览器控制层，BrowserManager 作为浏览器资源与身份层，为 Crawl4AI、Scrapling、CloakBrowser、Lightpanda、代理重试、站点定制交互和结构化抽取留出清晰接入点。

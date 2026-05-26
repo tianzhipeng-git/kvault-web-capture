@@ -15,6 +15,8 @@ export interface RuntimeContext {
 }
 
 export interface CaptureInput {
+  runId: number;
+  siteId: number;
   url: string;
   normalizedUrl: string;
   needs: CaptureCapability[];

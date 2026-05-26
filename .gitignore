@@ -65,3 +65,4 @@ deploy_yunxiao.sh
 .venv/
 .venv-pytools/
 __pycache__/
+docs/old-docs/

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { BrowserManager } from '../src/capture/browser-provider.js';
 import { PageCaptureExecutor } from '../src/capture/executor.js';
 import { PythonBridge } from '../src/capture/python-bridge.js';
 import type { CaptureTool, RuntimeContext, SiteAutomationAdapter } from '../src/capture/types.js';
@@ -51,6 +52,8 @@ describe('PageCaptureExecutor', () => {
     ];
 
     const result = await new PageCaptureExecutor(tools).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
       needs: ['base', 'markdown', 'screenshot'],
@@ -112,6 +115,8 @@ describe('PageCaptureExecutor', () => {
     ];
 
     const result = await new PageCaptureExecutor(tools).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
       needs: ['base', 'markdown', 'screenshot'],
@@ -142,6 +147,8 @@ describe('PageCaptureExecutor', () => {
 
     await expect(
       executor.capture({
+        runId: 1,
+        siteId: 1,
         url: 'https://example.com/docs',
         normalizedUrl: 'https://example.com/docs',
         needs: ['markdown'],
@@ -173,6 +180,8 @@ describe('PageCaptureExecutor', () => {
     };
 
     const result = await new PageCaptureExecutor([adapter, markdownTool]).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
       needs: ['markdown'],
@@ -210,6 +219,8 @@ describe('PageCaptureExecutor', () => {
         },
       },
     ]).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
       needs: ['markdown'],
@@ -280,6 +291,8 @@ describe('PageCaptureExecutor', () => {
     ];
 
     const result = await new PageCaptureExecutor(tools).capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com/docs',
       normalizedUrl: 'https://example.com/docs',
       needs: ['base', 'markdown'],
@@ -328,6 +341,8 @@ describe('PageCaptureExecutor', () => {
     });
 
     const result = await bridge.capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com',
       normalizedUrl: 'https://example.com',
       needs: ['base', 'markdown', 'screenshot', 'structured'],
@@ -351,6 +366,8 @@ describe('PageCaptureExecutor', () => {
 
     await expect(
       brokenBridge.capture({
+        runId: 1,
+        siteId: 1,
         url: 'https://example.com',
         normalizedUrl: 'https://example.com',
         needs: ['base'],
@@ -373,6 +390,8 @@ describe('PageCaptureExecutor', () => {
     });
 
     const result = await bridge.capture({
+      runId: 1,
+      siteId: 1,
       url: 'https://example.com',
       normalizedUrl: 'https://example.com',
       needs: ['base'],
@@ -381,6 +400,47 @@ describe('PageCaptureExecutor', () => {
     });
 
     expect(result.extracted).toBeUndefined();
+  });
+
+  it('passes BrowserManager CDP leases to Python bridge payloads and releases them', async () => {
+    let stdinPayload: unknown = null;
+    let releaseCount = 0;
+    const browserManager: BrowserManager = {
+      acquirePage: async () => { throw new Error('not used'); },
+      acquireCdpEndpoint: async ({ identity }) => ({
+        identity,
+        cdpUrl: 'http://127.0.0.1:9222',
+        release: async () => { releaseCount += 1; },
+      }),
+      retireIdentity: async () => {},
+      close: async () => {},
+    };
+    const bridge = new PythonBridge({
+      toolName: 'fixture-python',
+      scriptPath: '/fixture.py',
+      browserManager,
+      runProcessFn: async ({ stdin }) => {
+        stdinPayload = JSON.parse(stdin);
+        return {
+          stdout: JSON.stringify({ title: 'ok' }),
+          stderr: '',
+        };
+      },
+    });
+
+    await bridge.capture({
+      runId: 10,
+      siteId: 20,
+      url: 'https://example.com',
+      normalizedUrl: 'https://example.com',
+      needs: ['base'],
+      siteConfig: createDefaultSiteConfig('https://example.com'),
+      runtime,
+    });
+
+    expect(stdinPayload).not.toBeNull();
+    expect((stdinPayload as Record<string, unknown>).cdpUrl).toBe('http://127.0.0.1:9222');
+    expect(releaseCount).toBe(1);
   });
 
   it('validates base minLength against bodyText rather than raw HTML length', async () => {
@@ -408,6 +468,8 @@ describe('PageCaptureExecutor', () => {
 
     await expect(
       executor.capture({
+        runId: 1,
+        siteId: 1,
         url: 'https://example.com/docs',
         normalizedUrl: 'https://example.com/docs',
         needs: ['base'],
@@ -440,6 +502,8 @@ describe('PageCaptureExecutor', () => {
 
     await expect(
       executor.capture({
+        runId: 1,
+        siteId: 1,
         url: 'https://example.com/docs',
         normalizedUrl: 'https://example.com/docs',
         needs: ['base'],

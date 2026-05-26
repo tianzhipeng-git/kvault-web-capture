@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import type {
   ArtifactType,
+  BrowserConfig,
   CaptureProfileConfig,
   CaptureValidationConfig,
   CaptureValidationRule,
@@ -271,11 +272,57 @@ function parseProxyPolicy(value: unknown): ProxyPolicyConfig | undefined {
   };
 }
 
+function parseBrowserConfig(value: unknown): BrowserConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  assert(isRecord(value), 'browser must be an object');
+  const engine = value.engine ?? 'chromium';
+  const profileMode = value.profileMode ?? 'ephemeral';
+  const reuse = value.reuse ?? 'run_browser';
+  const contextReuse = value.contextReuse ?? 'site_session_proxy';
+  const pageReuse = value.pageReuse ?? 'none';
+  const proxyBinding = value.proxyBinding ?? 'session';
+
+  assert(
+    engine === 'chromium' || engine === 'cloakbrowser' || engine === 'lightpanda',
+    'browser.engine must be chromium, cloakbrowser, or lightpanda',
+  );
+  assert(
+    profileMode === 'ephemeral' || profileMode === 'persistent' || profileMode === 'storage_state',
+    'browser.profileMode must be ephemeral, persistent, or storage_state',
+  );
+  assert(
+    reuse === 'run_browser' || reuse === 'site_browser',
+    'browser.reuse must be run_browser or site_browser',
+  );
+  assert(
+    contextReuse === 'site_session_proxy' || contextReuse === 'site_run',
+    'browser.contextReuse must be site_session_proxy or site_run',
+  );
+  assert(pageReuse === 'none', 'browser.pageReuse currently only supports none');
+  assert(
+    proxyBinding === 'session' || proxyBinding === 'none',
+    'browser.proxyBinding must be session or none',
+  );
+
+  return {
+    engine,
+    profileMode,
+    reuse,
+    contextReuse,
+    pageReuse,
+    proxyBinding,
+  };
+}
+
 export function parseSiteConfig(input: unknown): SiteConfig {
   assert(isRecord(input), 'site config must be an object');
 
   const captureProfiles = parseCaptureProfiles(input.captureProfiles);
   const proxyPolicy = parseProxyPolicy(input.proxyPolicy);
+  const browser = parseBrowserConfig(input.browser);
   const defaultCaptureProfile = input.defaultCaptureProfile;
   assert(
     defaultCaptureProfile === undefined || typeof defaultCaptureProfile === 'string',
@@ -312,6 +359,9 @@ export function parseSiteConfig(input: unknown): SiteConfig {
   }
   if (proxyPolicy !== undefined) {
     config.proxyPolicy = proxyPolicy;
+  }
+  if (browser !== undefined) {
+    config.browser = browser;
   }
 
   return config;

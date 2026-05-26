@@ -1,6 +1,10 @@
 import type { Page } from 'playwright';
 
-import { PlaywrightBrowserProvider, type BrowserProvider } from '../browser-provider.js';
+import {
+  browserIdentityFromRuntime,
+  PlaywrightBrowserManager,
+  type BrowserManager,
+} from '../browser-provider.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
 
 export async function captureFullPagePng(page: Pick<Page, 'screenshot'>): Promise<Buffer> {
@@ -13,11 +17,20 @@ export async function captureFullPagePng(page: Pick<Page, 'screenshot'>): Promis
 export class PlaywrightScreenshotTool implements CaptureTool {
   readonly name = 'playwright-screenshot';
   readonly capabilities = ['screenshot'] as const;
+  private readonly browserManager: BrowserManager;
 
-  constructor(private readonly browserProvider: BrowserProvider = new PlaywrightBrowserProvider()) {}
+  constructor(browserManager?: BrowserManager) {
+    this.browserManager = browserManager ?? new PlaywrightBrowserManager();
+  }
 
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
-    const lease = await this.browserProvider.acquirePage({
+    const lease = await this.browserManager.acquirePage({
+      identity: browserIdentityFromRuntime({
+        runId: input.runId,
+        siteId: input.siteId,
+        siteConfig: input.siteConfig,
+        runtime: input.runtime,
+      }),
       url: input.url,
       runtime: input.runtime,
     });

@@ -59,6 +59,37 @@ describe('web config mapper', () => {
     expect(config.validation?.screenshot?.minBytes).toBe(20000);
   });
 
+  it('preserves browser and proxy policy fields', () => {
+    const config = mapConfigFormToSiteConfig({
+      seedUrls: ['https://example.com'],
+      browser: {
+        engine: 'chromium',
+        profileMode: 'ephemeral',
+        reuse: 'run_browser',
+        contextReuse: 'site_session_proxy',
+        pageReuse: 'none',
+        proxyBinding: 'session',
+      },
+      proxyPolicy: {
+        mode: 'retry_on_failure',
+        provider: 'crawlee',
+      },
+    });
+
+    expect(config.browser).toEqual({
+      engine: 'chromium',
+      profileMode: 'ephemeral',
+      reuse: 'run_browser',
+      contextReuse: 'site_session_proxy',
+      pageReuse: 'none',
+      proxyBinding: 'session',
+    });
+    expect(config.proxyPolicy).toEqual({
+      mode: 'retry_on_failure',
+      provider: 'crawlee',
+    });
+  });
+
   it('rejects dangling default capture profile and reports invalid regex field names', () => {
     expect(() =>
       parseSiteConfig({

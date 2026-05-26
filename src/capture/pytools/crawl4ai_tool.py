@@ -15,12 +15,16 @@ async def run(payload):
     needs = set(payload.get("needs") or [])
     url = payload["url"]
 
-    browser_cfg = BrowserConfig(
-        headless=True,
-        enable_stealth=True,
-        verbose=False,
-        proxy=payload.get("proxyUrl") or None,
-    )
+    cdp_url = payload.get("cdpUrl") or None
+    browser_cfg_kwargs = {
+        "headless": True,
+        "enable_stealth": True,
+        "verbose": False,
+        "proxy": payload.get("proxyUrl") or None,
+    }
+    if cdp_url:
+        browser_cfg_kwargs["cdp_url"] = cdp_url
+    browser_cfg = BrowserConfig(**browser_cfg_kwargs)
     run_cfg = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         delay_before_return_html=2.0,
@@ -55,6 +59,7 @@ async def run(payload):
         } if "structured" in needs else None,
         "diagnostics": {
             "source": "crawl4ai",
+            "cdpUrlUsed": bool(cdp_url),
         },
     }
 
