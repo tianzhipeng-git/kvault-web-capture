@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { spawn, type ChildProcess } from 'node:child_process';
 
 import {
   chromium,
@@ -35,7 +37,8 @@ export interface PageLease {
 }
 
 export interface CdpLease {
-  cdpUrl: string;
+  cdpHttpUrl: string;
+  cdpWebSocketUrl: string;
   identity: BrowserIdentity;
   release(): Promise<void>;
 }
@@ -59,6 +62,9 @@ export type BrowserProvider = BrowserManager;
 
 interface BrowserProcessEntry {
   browser: Browser;
+  cdpHttpUrl?: string;
+  cdpWebSocketUrl?: string;
+  process?: ChildProcess;
 }
 
 interface BrowserContextEntry {
@@ -150,7 +156,9 @@ export class PlaywrightBrowserManager implements BrowserManager {
     runtime: RuntimeContext;
   }): Promise<PageLease> {
     if (input.identity.engine !== 'chromium') {
-      throw new Error(`Browser engine ${input.identity.engine} is not implemented yet`);
+      if (input.identity.engine !== 'cloakbrowser' && input.identity.engine !== 'lightpanda') {
+        throw new Error(`Browser engine ${input.identity.engine} is not implemented yet`);
+      }
     }
 
     const session = getRuntimeSession(input.runtime);
@@ -180,8 +188,17 @@ export class PlaywrightBrowserManager implements BrowserManager {
     identity: BrowserIdentity;
     runtime: RuntimeContext;
   }): Promise<CdpLease> {
-    void input;
-    throw new Error('CDP endpoint leases are not implemented for the Playwright native chromium engine yet');
+    const entry = await this.getBrowserProcess(input.identity);
+    if (!entry.cdpHttpUrl || !entry.cdpWebSocketUrl) {
+      throw new Error(`CDP endpoint leases are not available for browser engine ${input.identity.engine}`);
+    }
+
+    return {
+      cdpHttpUrl: entry.cdpHttpUrl,
+      cdpWebSocketUrl: entry.cdpWebSocketUrl,
+      identity: input.identity,
+      release: async () => {},
+    };
   }
 
   async retireIdentity(identity: BrowserIdentity, reason: string): Promise<void> {
@@ -201,21 +218,84 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
     const browsers = [...this.browserProcesses.values()];
     this.browserProcesses.clear();
-    await Promise.all(browsers.map((entry) => entry.browser.close().catch(() => {})));
+    await Promise.all(browsers.map(async (entry) => {
+      await entry.browser.close().catch(() => {});
+      if (entry.process && !entry.process.killed) {
+        entry.process.kill('SIGTERM');
+      }
+    }));
   }
 
   private async getBrowser(identity: BrowserIdentity): Promise<Browser> {
+    return (await this.getBrowserProcess(identity)).browser;
+  }
+
+  private async getBrowserProcess(identity: BrowserIdentity): Promise<BrowserProcessEntry> {
     const key = processKey(identity, this.siteConfig?.browser);
     const existing = this.browserProcesses.get(key);
     if (existing?.browser.isConnected()) {
-      return existing.browser;
+      return existing;
+    }
+
+    const entry = await this.launchBrowserProcess(identity);
+    this.browserProcesses.set(key, entry);
+    return entry;
+  }
+
+  private async launchBrowserProcess(identity: BrowserIdentity): Promise<BrowserProcessEntry> {
+    if (identity.engine === 'cloakbrowser') {
+      return this.launchCloakBrowser(identity);
+    }
+
+    if (identity.engine === 'lightpanda') {
+      return this.launchLightpanda(identity);
     }
 
     const browser = await chromium.launch(
       HAS_SYSTEM_CHROME ? { channel: 'chrome' as const } : undefined,
     );
-    this.browserProcesses.set(key, { browser });
-    return browser;
+    return { browser };
+  }
+
+  private async launchCloakBrowser(identity: BrowserIdentity): Promise<BrowserProcessEntry> {
+    const { launch } = await importCloakBrowser();
+    const port = await getFreePort();
+    const cdpHttpUrl = `http://127.0.0.1:${port}`;
+    const browser = await launch({
+      headless: true,
+      proxy: identity.proxyKey,
+      args: [
+        `--remote-debugging-port=${port}`,
+        '--remote-debugging-address=127.0.0.1',
+      ],
+    });
+    const cdpWebSocketUrl = await readCdpWebSocketUrl(cdpHttpUrl);
+    return { browser, cdpHttpUrl, cdpWebSocketUrl };
+  }
+
+  private async launchLightpanda(identity: BrowserIdentity): Promise<BrowserProcessEntry> {
+    const port = await getFreePort();
+    const binary = process.env.LIGHTPANDA_BINARY ?? 'lightpanda';
+    const args = ['serve', '--host', '127.0.0.1', '--port', String(port)];
+    if (identity.proxyKey) {
+      args.push('--http_proxy', identity.proxyKey);
+    }
+
+    const child = spawn(binary, args, {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    const cdpHttpUrl = `http://127.0.0.1:${port}`;
+
+    try {
+      const cdpWebSocketUrl = await waitForCdpWebSocketUrl(cdpHttpUrl);
+      const browser = await chromium.connectOverCDP(cdpHttpUrl);
+      return { browser, cdpHttpUrl, cdpWebSocketUrl, process: child };
+    } catch (error) {
+      if (!child.killed) {
+        child.kill('SIGTERM');
+      }
+      throw error;
+    }
   }
 
   private async getContext(input: {
@@ -273,6 +353,74 @@ export class PlaywrightBrowserManager implements BrowserManager {
     const cookies = await context.cookies(url);
     await session.setCookies(cookies, url);
   }
+}
+
+async function importCloakBrowser(): Promise<{
+  launch: (options: {
+    headless?: boolean;
+    proxy?: string;
+    args?: string[];
+  }) => Promise<Browser>;
+}> {
+  try {
+    const moduleName = 'cloakbrowser';
+    return await import(moduleName) as {
+      launch: (options: {
+        headless?: boolean;
+        proxy?: string;
+        args?: string[];
+      }) => Promise<Browser>;
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`cloakbrowser package is required for browser.engine=cloakbrowser: ${message}`);
+  }
+}
+
+async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close(() => {
+        if (typeof address === 'object' && address !== null) {
+          resolve(address.port);
+          return;
+        }
+        reject(new Error('Could not allocate a local port'));
+      });
+    });
+  });
+}
+
+async function waitForCdpWebSocketUrl(httpUrl: string): Promise<string> {
+  const startedAt = Date.now();
+  let lastError: Error | null = null;
+
+  while (Date.now() - startedAt < 10_000) {
+    try {
+      return await readCdpWebSocketUrl(httpUrl);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  throw new Error(`Timed out waiting for CDP endpoint at ${httpUrl}: ${lastError?.message ?? 'unknown error'}`);
+}
+
+async function readCdpWebSocketUrl(httpUrl: string): Promise<string> {
+  const response = await fetch(`${httpUrl}/json/version`);
+  if (!response.ok) {
+    throw new Error(`CDP version endpoint failed with status ${response.status}`);
+  }
+
+  const body = await response.json() as { webSocketDebuggerUrl?: unknown };
+  if (typeof body.webSocketDebuggerUrl !== 'string' || body.webSocketDebuggerUrl === '') {
+    throw new Error('CDP version endpoint did not return webSocketDebuggerUrl');
+  }
+  return body.webSocketDebuggerUrl;
 }
 
 function normalizeCookieForPlaywright(cookie: unknown, url: string) {

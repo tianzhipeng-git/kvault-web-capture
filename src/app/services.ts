@@ -44,9 +44,11 @@ import type { CaptureTool } from '../capture/types.js';
 import { PlaywrightBrowserManager } from '../capture/browser-provider.js';
 import {
   Crawl4AITool,
+  DefuddleMarkdownTool,
   HttpBaseTool,
+  JinaMarkdownTool,
   KickstarterCommentsAdapter,
-  MarkdownTool,
+  LightpandaMarkdownTool,
   PlaywrightScreenshotTool,
   ScraplingTool,
 } from '../capture/captools/index.js';
@@ -129,7 +131,7 @@ export class M1App {
     this.captureTools = options.captureTools ?? null;
     this.defaultCaptureToolChain = options.captureTools
       ? options.captureTools.map((tool) => tool.name)
-      : ['http-base', 'markdown', 'playwright-screenshot'];
+      : ['http-base', 'defuddle-markdown', 'lightpanda-markdown', 'jina-markdown', 'playwright-screenshot'];
     this.runNotificationBot = options.feishuBot;
   }
 
@@ -619,7 +621,9 @@ export class M1App {
     const browserManager = new PlaywrightBrowserManager(effectiveConfig);
     const captureTools = this.captureTools ?? [
       new HttpBaseTool(),
-      new MarkdownTool(),
+      new DefuddleMarkdownTool(),
+      new LightpandaMarkdownTool(browserManager),
+      new JinaMarkdownTool(),
       new PlaywrightScreenshotTool(browserManager),
       new Crawl4AITool(browserManager),
       new ScraplingTool(browserManager),

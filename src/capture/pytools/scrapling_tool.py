@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import os
 import sys
@@ -5,7 +6,7 @@ import sys
 from common import extract_page, read_input, redirect_process_stdout_to_stderr, write_output
 
 
-def run(payload):
+async def run(payload):
     try:
         from scrapling import StealthyFetcher
     except Exception as exc:
@@ -14,17 +15,24 @@ def run(payload):
     needs = set(payload.get("needs") or [])
     url = payload["url"]
     proxy_url = payload.get("proxyUrl") or None
+    cdp_url = payload.get("cdpWebSocketUrl") or None
     fetch_kwargs = {
-        "headless": True,
         "timeout": 120000,
         "network_idle": True,
         "solve_cloudflare": True,
     }
-    if proxy_url:
-        fetch_kwargs["proxy"] = proxy_url
+
+    if cdp_url:
+        fetch_kwargs["cdp_url"] = cdp_url
+        fetch = StealthyFetcher.async_fetch
+    else:
+        fetch_kwargs["headless"] = True
+        if proxy_url:
+            fetch_kwargs["proxy"] = proxy_url
+        fetch = StealthyFetcher.async_fetch
 
     with contextlib.redirect_stdout(sys.stderr):
-        response = StealthyFetcher.fetch(
+        response = await fetch(
             url,
             **fetch_kwargs,
         )
@@ -49,6 +57,7 @@ def run(payload):
         } if "structured" in needs else None,
         "diagnostics": {
             "source": "scrapling",
+            "cdpUrlUsed": bool(cdp_url),
         },
     }
 
@@ -56,7 +65,7 @@ def run(payload):
 def main():
     output_fd = redirect_process_stdout_to_stderr()
     try:
-        write_output(run(read_input()), output_fd=output_fd)
+        write_output(asyncio.run(run(read_input())), output_fd=output_fd)
     except Exception as exc:
         try:
             os.close(output_fd)

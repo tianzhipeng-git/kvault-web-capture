@@ -15,7 +15,7 @@ async def run(payload):
     needs = set(payload.get("needs") or [])
     url = payload["url"]
 
-    cdp_url = payload.get("cdpUrl") or None
+    cdp_url = payload.get("cdpWebSocketUrl") or payload.get("cdpHttpUrl") or None
     browser_cfg_kwargs = {
         "headless": True,
         "enable_stealth": True,

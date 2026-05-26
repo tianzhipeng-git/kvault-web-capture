@@ -409,7 +409,8 @@ describe('PageCaptureExecutor', () => {
       acquirePage: async () => { throw new Error('not used'); },
       acquireCdpEndpoint: async ({ identity }) => ({
         identity,
-        cdpUrl: 'http://127.0.0.1:9222',
+        cdpHttpUrl: 'http://127.0.0.1:9222',
+        cdpWebSocketUrl: 'ws://127.0.0.1:9222/devtools/browser/abc',
         release: async () => { releaseCount += 1; },
       }),
       retireIdentity: async () => {},
@@ -439,7 +440,8 @@ describe('PageCaptureExecutor', () => {
     });
 
     expect(stdinPayload).not.toBeNull();
-    expect((stdinPayload as Record<string, unknown>).cdpUrl).toBe('http://127.0.0.1:9222');
+    expect((stdinPayload as Record<string, unknown>).cdpHttpUrl).toBe('http://127.0.0.1:9222');
+    expect((stdinPayload as Record<string, unknown>).cdpWebSocketUrl).toBe('ws://127.0.0.1:9222/devtools/browser/abc');
     expect(releaseCount).toBe(1);
   });
 

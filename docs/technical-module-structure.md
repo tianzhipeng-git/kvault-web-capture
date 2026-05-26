@@ -18,7 +18,7 @@ Kvault Web Capture 是一个本地运行的可交互网页采集系统。核心�
 - Runtime：Node.js + TypeScript ESM
 - 爬虫运行时：Crawlee `BasicCrawler` + run-scoped `RequestQueue`
 - 基础页面抓取：`HttpBaseTool`
-- Markdown 抓取：`MarkdownTool` + `Defuddle` / Lightpanda / Jina fallback
+- Markdown 抓取：`DefuddleMarkdownTool` / `LightpandaMarkdownTool` / `JinaMarkdownTool`，由 `PageCaptureExecutor` 按 profile 顺序 fallback
 - 截图抓取：`PlaywrightScreenshotTool`
 - 数据库：`node:sqlite` 的 `DatabaseSync`
 - Web 后端：Fastify
@@ -178,7 +178,7 @@ flowchart TD
 默认依赖：
 
 - 分类器：`FakeClassifier`
-- Capture tools：`HttpBaseTool`、`MarkdownTool`、`PlaywrightScreenshotTool`
+- Capture tools：`HttpBaseTool`、`DefuddleMarkdownTool`、`LightpandaMarkdownTool`、`JinaMarkdownTool`、`PlaywrightScreenshotTool`、Python bridge tools
 
 ### 3.3 URL 发现与入队规划
 
@@ -279,8 +279,10 @@ artifact-only task 负责：
 阶段一内置 tools 在 `src/capture/captools/`：
 
 - `HttpBaseTool`：通过 `RuntimeContext.sendRequest` 获取 HTML，并解析 title、meta、body text 和 links。
-- `MarkdownTool`：按 `DefuddleMarkdownStrategy`、`LightpandaMarkdownStrategy`、`JinaMarkdownStrategy` 顺序 fallback。
-- `PlaywrightScreenshotTool`：自己创建 page、导航和截图。
+- `DefuddleMarkdownTool`：通过 `RuntimeContext.sendRequest` 获取 HTML，并用 Defuddle 生成 Markdown。
+- `LightpandaMarkdownTool`：通过 `BrowserManager` 获取 Lightpanda CDP page，并调用 `LP.getMarkdown`。
+- `JinaMarkdownTool`：通过 Jina Reader API 生成 Markdown。
+- `PlaywrightScreenshotTool`：通过 `BrowserManager` 获取 page lease、导航和截图。
 
 ### 4.4 分类
 
@@ -301,11 +303,7 @@ artifact-only task 负责：
 - 非 http / https 协议
 - 带非 HTML 扩展名的资源文件
 
-`src/capture/captools/markdown-tool.ts` 默认使用 fallback 策略：
-
-1. `DefuddleMarkdownStrategy`：需要 LinkeDOM document
-2. `LightpandaMarkdownStrategy`：调用 `lightpanda fetch --dump markdown`
-3. `JinaMarkdownStrategy`：需要 `JINA_API_TOKEN`
+`src/capture/captools/markdown-tool.ts` 提供三个独立 Markdown tool。fallback 顺序由 `PageCaptureExecutor` 和 capture profile 决定，而不是由一个 Markdown 聚合 tool 内部决定。
 
 `src/capture/captools/playwright-screenshot-tool.ts` 默认使用 Playwright 全页 PNG。
 

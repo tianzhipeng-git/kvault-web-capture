@@ -473,7 +473,7 @@ fallback 路径可以保留“Python 工具自己管理浏览器”，用于本�
 {
   "captureProfiles": {
     "default": {
-      "tools": ["http-base", "defuddle", "playwright-screenshot", "crawl4ai-page"]
+      "tools": ["http-base", "defuddle-markdown", "lightpanda-markdown", "jina-markdown", "playwright-screenshot", "crawl4ai-page"]
     },
     "kickstarter-comments": {
       "tools": ["kickstarter-comments-adapter", "playwright-cloak-screenshot"]

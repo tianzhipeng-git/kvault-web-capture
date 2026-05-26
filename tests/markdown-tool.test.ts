@@ -1,133 +1,151 @@
 import { describe, expect, it } from 'vitest';
-import { parseHTML } from 'linkedom';
 
+import type { BrowserManager } from '../src/capture/browser-provider.js';
 import {
-  DefuddleMarkdownStrategy,
-  JinaMarkdownStrategy,
-  LightpandaMarkdownStrategy,
-  MarkdownTool,
-  type MarkdownCaptureStrategy,
+  DefuddleMarkdownTool,
+  JinaMarkdownTool,
+  LightpandaMarkdownTool,
 } from '../src/capture/captools/index.js';
-import type { RuntimeContext } from '../src/capture/types.js';
+import type { CaptureInput, RuntimeContext } from '../src/capture/types.js';
 
-const runtime: RuntimeContext = {
-  requestId: 'test-request',
-  async sendRequest() {
-    throw new Error('not used');
-  },
-};
+function makeInput(overrides: Partial<CaptureInput> = {}): CaptureInput {
+  return {
+    runId: 1,
+    siteId: 1,
+    url: 'https://example.com/docs',
+    normalizedUrl: 'https://example.com/docs',
+    needs: ['markdown'],
+    siteConfig: {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+    },
+    runtime: {
+      requestId: 'test-request',
+      async sendRequest() {
+        throw new Error('not used');
+      },
+    },
+    ...overrides,
+  };
+}
 
-describe('MarkdownTool', () => {
-  it('stops at the first successful strategy', async () => {
-    const calls: string[] = [];
-    const tool = new MarkdownTool([
-      {
-        name: 'first',
-        async capture() {
-          calls.push('first');
-          throw new Error('boom');
-        },
-      },
-      {
-        name: 'second',
-        async capture() {
-          calls.push('second');
-          return '# ok\n';
-        },
-      },
-      {
-        name: 'third',
-        async capture() {
-          calls.push('third');
-          return '# later\n';
-        },
-      },
-    ] satisfies MarkdownCaptureStrategy[]);
+describe('DefuddleMarkdownTool', () => {
+  it('converts fetched HTML into markdown', async () => {
+    const runtime: RuntimeContext = {
+      requestId: 'test-request',
+      sendRequest: async () => ({
+        statusCode: 200,
+        url: 'https://example.com/docs',
+        body: `<!doctype html>
+          <html>
+            <body>
+              <article>
+                <h1>Docs Title</h1>
+                <p>Hello markdown world.</p>
+              </article>
+            </body>
+          </html>`,
+      }),
+    };
 
-    await expect(tool.capture({
-      runId: 1,
-      siteId: 1,
-      url: 'https://example.com',
-      normalizedUrl: 'https://example.com',
-      needs: ['markdown'],
-      siteConfig: {
-        seedUrls: [],
-        sitemaps: [],
-        rulesBeforeBaseEq: [],
-        rulesBeforeStage2Eq: [],
-        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
-      },
-      runtime,
-    })).resolves.toMatchObject({
-      markdown: '# ok\n',
-      markdownStrategyName: 'second',
-    });
-    expect(calls).toEqual(['first', 'second']);
+    const result = await new DefuddleMarkdownTool().capture(makeInput({ runtime }));
+
+    expect(result.toolName).toBe('defuddle-markdown');
+    expect(result.markdown).toContain('Hello markdown world.');
+    expect(result.markdownStrategyName).toBe('defuddle-markdown');
+  });
+});
+
+describe('LightpandaMarkdownTool', () => {
+  it('uses BrowserManager page leases and LP.getMarkdown', async () => {
+    const events: string[] = [];
+    const browserManager: BrowserManager = {
+      acquirePage: async ({ identity }) => ({
+        identity,
+        page: {
+          goto: async (url: string) => { events.push(`goto:${url}`); },
+          url: () => 'https://example.com/final',
+          context: () => ({
+            newCDPSession: async () => ({
+              send: async (method: string) => {
+                events.push(`cdp:${method}`);
+                return { markdown: '# Lightpanda result\n' };
+              },
+            }),
+          }),
+        } as never,
+        release: async () => { events.push('release'); },
+      }),
+      acquireCdpEndpoint: async () => { throw new Error('not used'); },
+      retireIdentity: async () => {},
+      close: async () => {},
+    };
+
+    const result = await new LightpandaMarkdownTool(browserManager).capture(makeInput());
+
+    expect(result.toolName).toBe('lightpanda-markdown');
+    expect(result.finalUrl).toBe('https://example.com/final');
+    expect(result.markdown).toBe('# Lightpanda result\n');
+    expect(events).toEqual([
+      'goto:https://example.com/docs',
+      'cdp:LP.getMarkdown',
+      'release',
+    ]);
   });
 
-  it('reports all fallback failures', async () => {
-    const tool = new MarkdownTool([
-      {
-        name: 'first',
-        async capture() {
-          throw new Error('one');
-        },
-      },
-      {
-        name: 'second',
-        async capture() {
-          throw new Error('two');
-        },
-      },
-    ] satisfies MarkdownCaptureStrategy[]);
+  it('throws when LP.getMarkdown returns empty markdown', async () => {
+    const browserManager: BrowserManager = {
+      acquirePage: async ({ identity }) => ({
+        identity,
+        page: {
+          goto: async () => {},
+          url: () => 'https://example.com/final',
+          context: () => ({
+            newCDPSession: async () => ({
+              send: async () => ({ markdown: '   ' }),
+            }),
+          }),
+        } as never,
+        release: async () => {},
+      }),
+      acquireCdpEndpoint: async () => { throw new Error('not used'); },
+      retireIdentity: async () => {},
+      close: async () => {},
+    };
 
-    await expect(tool.capture({
-      runId: 1,
-      siteId: 1,
-      url: 'https://example.com',
-      normalizedUrl: 'https://example.com',
-      needs: ['markdown'],
-      siteConfig: {
-        seedUrls: [],
-        sitemaps: [],
-        rulesBeforeBaseEq: [],
-        rulesBeforeStage2Eq: [],
-        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
-      },
-      runtime,
-    })).rejects.toThrow(
-      'Markdown capture failed for https://example.com. first: one | second: two',
+    await expect(new LightpandaMarkdownTool(browserManager).capture(makeInput())).rejects.toThrow(
+      'lightpanda-markdown returned empty markdown',
     );
   });
 });
 
-describe('JinaMarkdownStrategy', () => {
+describe('JinaMarkdownTool', () => {
   it('throws when token is null', async () => {
-    const strategy = new JinaMarkdownStrategy(null);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow('Missing JINA_API_TOKEN');
+    await expect(new JinaMarkdownTool(null).capture(makeInput())).rejects.toThrow('Missing JINA_API_TOKEN');
   });
 
   it('throws when response is not ok', async () => {
     const fakeFetch = async () => ({ ok: false, status: 429 }) as Response;
-    const strategy = new JinaMarkdownStrategy('token', fakeFetch as typeof fetch);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow(
+    await expect(new JinaMarkdownTool('token', fakeFetch as typeof fetch).capture(makeInput())).rejects.toThrow(
       'Jina request failed with status 429',
     );
   });
 
   it('returns trimmed markdown with trailing newline on success', async () => {
     const fakeFetch = async () =>
-      ({ ok: true, text: async () => '# Heading\n\nContent here.' }) as Response;
-    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch as typeof fetch);
-    const result = await strategy.capture('https://example.com');
-    expect(result).toBe('# Heading\n\nContent here.\n');
+      ({ ok: true, status: 200, text: async () => '# Heading\n\nContent here.' }) as Response;
+    const result = await new JinaMarkdownTool('my-token', fakeFetch as typeof fetch).capture(makeInput());
+    expect(result.markdown).toBe('# Heading\n\nContent here.\n');
+    expect(result.markdownStrategyName).toBe('jina-markdown');
   });
 
   it('throws when response text is empty', async () => {
-    const fakeFetch = async () => ({ ok: true, text: async () => '   ' }) as Response;
-    const strategy = new JinaMarkdownStrategy('my-token', fakeFetch as typeof fetch);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow(
-      'jina returned empty markdown',
+    const fakeFetch = async () => ({ ok: true, status: 200, text: async () => '   ' }) as Response;
+    await expect(new JinaMarkdownTool('my-token', fakeFetch as typeof fetch).capture(makeInput())).rejects.toThrow(
+      'jina-markdown returned empty markdown',
     );
   });
 
@@ -135,84 +153,16 @@ describe('JinaMarkdownStrategy', () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fakeFetch = async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
-      return { ok: true, text: async () => '# ok\n' } as Response;
+      return { ok: true, status: 200, text: async () => '# ok\n' } as Response;
     };
-    const strategy = new JinaMarkdownStrategy('test-token', fakeFetch as typeof fetch);
-    await strategy.capture('https://example.com/page');
+    await new JinaMarkdownTool('test-token', fakeFetch as typeof fetch).capture(makeInput({
+      url: 'https://example.com/page',
+      normalizedUrl: 'https://example.com/page',
+    }));
+
     expect(calls[0].url).toBe('https://r.jina.ai/https://example.com/page');
     expect((calls[0].init?.headers as Record<string, string>)['Authorization']).toBe(
       'Bearer test-token',
     );
-  });
-});
-
-describe('LightpandaMarkdownStrategy', () => {
-  function makeExecFile(stdout: string, stderr: string): () => Promise<{ stdout: string; stderr: string }> {
-    return async () => ({ stdout, stderr });
-  }
-
-  it('returns markdown from stdout', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Lightpanda result\n', '') as never);
-    await expect(strategy.capture('https://example.com')).resolves.toBe('# Lightpanda result\n');
-  });
-
-  it('throws when stderr contains "error"', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'fetch error: connection refused') as never);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow(
-      'fetch error: connection refused',
-    );
-  });
-
-  it('throws when stderr contains "failed"', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('', 'request failed') as never);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow('request failed');
-  });
-
-  it('ignores non-error stderr (warnings)', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('# Content\n', 'some warning message') as never);
-    await expect(strategy.capture('https://example.com')).resolves.toBe('# Content\n');
-  });
-
-  it('throws when stdout is empty', async () => {
-    const strategy = new LightpandaMarkdownStrategy('lightpanda', makeExecFile('   \n  ', '') as never);
-    await expect(strategy.capture('https://example.com')).rejects.toThrow(
-      'lightpanda returned empty markdown',
-    );
-  });
-
-  it('passes the correct binary path and arguments to execFile', async () => {
-    const calls: Array<{ bin: string; args: string[] }> = [];
-    const fakeExecFile = async (bin: string, args: string[]) => {
-      calls.push({ bin, args });
-      return { stdout: '# ok\n', stderr: '' };
-    };
-    const strategy = new LightpandaMarkdownStrategy('/opt/lightpanda', fakeExecFile as never);
-    await strategy.capture('https://example.com/page');
-    expect(calls[0].bin).toBe('/opt/lightpanda');
-    expect(calls[0].args).toEqual(['fetch', '--dump', 'markdown', 'https://example.com/page']);
-  });
-});
-
-describe('DefuddleMarkdownStrategy', () => {
-  it('converts a LinkeDOM document into markdown', async () => {
-    const { document } = parseHTML(
-      `<!doctype html>
-      <html>
-        <body>
-          <article>
-            <h1>Docs Title</h1>
-            <p>Hello markdown world.</p>
-          </article>
-        </body>
-      </html>`,
-    );
-
-    const markdown = await new DefuddleMarkdownStrategy().capture('https://example.com/docs', {
-      document: document as unknown as Document,
-      finalUrl: 'https://example.com/docs',
-    });
-
-    expect(markdown).toContain('Hello markdown world.');
-    expect(markdown.startsWith('Hello markdown world.')).toBe(true);
   });
 });

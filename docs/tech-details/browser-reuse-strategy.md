@@ -484,7 +484,7 @@ capture profile 仍负责 tool 顺序：
 {
   "captureProfiles": {
     "default": {
-      "tools": ["http-base", "markdown", "playwright-screenshot"]
+      "tools": ["http-base", "defuddle-markdown", "lightpanda-markdown", "jina-markdown", "playwright-screenshot"]
     }
   }
 }

@@ -1,93 +1,110 @@
-import { execFile as execFileCallback } from 'node:child_process';
-import { promisify } from 'node:util';
-
 import { Defuddle } from 'defuddle/node';
 
+import {
+  browserIdentityFromRuntime,
+  PlaywrightBrowserManager,
+  type BrowserManager,
+} from '../browser-provider.js';
 import { parseHtmlDocument } from '../html.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
 import { responseBody, responseFinalUrl, responseStatusCode } from './http-base-tool.js';
 
-const execFile = promisify(execFileCallback);
-
-export interface MarkdownStrategyContext {
-  document?: Document;
-  finalUrl?: string;
-  html?: string;
-}
-
-export interface MarkdownCaptureStrategy {
-  readonly name: string;
-  readonly needsDocument?: boolean;
-  capture(url: string, context?: MarkdownStrategyContext): Promise<string>;
-}
-
-function requireNonEmptyMarkdown(content: string, strategyName: string): string {
+function requireNonEmptyMarkdown(content: string, toolName: string): string {
   const trimmed = content.trim();
 
   if (trimmed === '') {
-    throw new Error(`${strategyName} returned empty markdown`);
+    throw new Error(`${toolName} returned empty markdown`);
   }
 
   return trimmed.endsWith('\n') ? trimmed : `${trimmed}\n`;
 }
 
-export class DefuddleMarkdownStrategy implements MarkdownCaptureStrategy {
-  readonly name = 'defuddle';
-  readonly needsDocument = true;
+export class DefuddleMarkdownTool implements CaptureTool {
+  readonly name = 'defuddle-markdown';
+  readonly capabilities = ['markdown'] as const;
 
-  async capture(url: string, context?: MarkdownStrategyContext): Promise<string> {
-    if (!context?.document) {
-      throw new Error('Defuddle requires a DOM document');
-    }
-
-    const result = await Defuddle(context.document, context.finalUrl ?? url, {
+  async capture(input: CaptureInput): Promise<CaptureToolResult> {
+    const response = await input.runtime.sendRequest(input.url);
+    const html = responseBody(response);
+    const finalUrl = responseFinalUrl(response, input.url);
+    const document = parseHtmlDocument(html);
+    const result = await Defuddle(document, finalUrl, {
       markdown: true,
       useAsync: false,
     });
 
-    return requireNonEmptyMarkdown(result.content ?? '', this.name);
+    return {
+      toolName: this.name,
+      finalUrl,
+      statusCode: responseStatusCode(response),
+      html,
+      markdown: requireNonEmptyMarkdown(result.content ?? '', this.name),
+      markdownStrategyName: this.name,
+    };
   }
 }
 
-export class LightpandaMarkdownStrategy implements MarkdownCaptureStrategy {
-  readonly name = 'lightpanda';
+export class LightpandaMarkdownTool implements CaptureTool {
+  readonly name = 'lightpanda-markdown';
+  readonly capabilities = ['markdown'] as const;
 
-  constructor(
-    private readonly binaryPath: string = 'lightpanda',
-    private readonly execFileFn: typeof execFile = execFile,
-  ) {}
+  constructor(private readonly browserManager: BrowserManager = new PlaywrightBrowserManager()) {}
 
-  async capture(url: string): Promise<string> {
-    const { stdout, stderr } = await this.execFileFn(this.binaryPath, ['fetch', '--dump', 'markdown', url], {
-      maxBuffer: 10 * 1024 * 1024,
+  async capture(input: CaptureInput): Promise<CaptureToolResult> {
+    const identity = {
+      ...browserIdentityFromRuntime({
+        runId: input.runId,
+        siteId: input.siteId,
+        siteConfig: input.siteConfig,
+        runtime: input.runtime,
+      }),
+      engine: 'lightpanda' as const,
+    };
+    const lease = await this.browserManager.acquirePage({
+      identity,
+      url: input.url,
+      runtime: input.runtime,
     });
 
-    if (stderr.trim() !== '') {
-      const lower = stderr.toLowerCase();
+    try {
+      await lease.page.goto(input.url, {
+        waitUntil: 'load',
+        timeout: 45_000,
+      });
+      const client = await lease.page.context().newCDPSession(lease.page);
+      const result = await (client.send as (method: string, params: Record<string, unknown>) => Promise<unknown>)(
+        'LP.getMarkdown',
+        {},
+      ) as { markdown?: unknown };
+      const markdown = typeof result.markdown === 'string' ? result.markdown : '';
 
-      if (lower.includes('error') || lower.includes('failed')) {
-        throw new Error(stderr.trim());
-      }
+      return {
+        toolName: this.name,
+        finalUrl: lease.page.url(),
+        markdown: requireNonEmptyMarkdown(markdown, this.name),
+        markdownStrategyName: this.name,
+      };
+    } finally {
+      await lease.release();
     }
-
-    return requireNonEmptyMarkdown(stdout, this.name);
   }
 }
 
-export class JinaMarkdownStrategy implements MarkdownCaptureStrategy {
-  readonly name = 'jina';
+export class JinaMarkdownTool implements CaptureTool {
+  readonly name = 'jina-markdown';
+  readonly capabilities = ['markdown'] as const;
 
   constructor(
-    private readonly token: string | null,
+    private readonly token: string | null = process.env.JINA_API_TOKEN ?? null,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async capture(url: string): Promise<string> {
+  async capture(input: CaptureInput): Promise<CaptureToolResult> {
     if (!this.token) {
       throw new Error('Missing JINA_API_TOKEN');
     }
 
-    const response = await this.fetchImpl(`https://r.jina.ai/${url}`, {
+    const response = await this.fetchImpl(`https://r.jina.ai/${input.url}`, {
       headers: {
         Authorization: `Bearer ${this.token}`,
       },
@@ -97,57 +114,12 @@ export class JinaMarkdownStrategy implements MarkdownCaptureStrategy {
       throw new Error(`Jina request failed with status ${response.status}`);
     }
 
-    return requireNonEmptyMarkdown(await response.text(), this.name);
+    return {
+      toolName: this.name,
+      finalUrl: input.url,
+      statusCode: response.status,
+      markdown: requireNonEmptyMarkdown(await response.text(), this.name),
+      markdownStrategyName: this.name,
+    };
   }
-}
-
-export class MarkdownTool implements CaptureTool {
-  readonly name = 'markdown';
-  readonly capabilities = ['markdown'] as const;
-
-  constructor(private readonly strategies: MarkdownCaptureStrategy[] = createDefaultMarkdownStrategies()) {}
-
-  async capture(input: CaptureInput): Promise<CaptureToolResult> {
-    const errors: string[] = [];
-    let context: MarkdownStrategyContext | undefined;
-    let statusCode: number | undefined;
-
-    for (const strategy of this.strategies) {
-      try {
-        if (strategy.needsDocument && !context?.document) {
-          const response = await input.runtime.sendRequest(input.url);
-          const html = responseBody(response);
-          context = {
-            document: parseHtmlDocument(html),
-            finalUrl: responseFinalUrl(response, input.url),
-            html,
-          };
-          statusCode = responseStatusCode(response);
-        }
-
-        const markdown = await strategy.capture(input.url, context);
-        return {
-          toolName: this.name,
-          finalUrl: context?.finalUrl ?? input.url,
-          statusCode,
-          html: context?.html,
-          markdown,
-          markdownStrategyName: strategy.name,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        errors.push(`${strategy.name}: ${message}`);
-      }
-    }
-
-    throw new Error(`Markdown capture failed for ${input.url}. ${errors.join(' | ')}`);
-  }
-}
-
-export function createDefaultMarkdownStrategies(): MarkdownCaptureStrategy[] {
-  return [
-    new DefuddleMarkdownStrategy(),
-    new LightpandaMarkdownStrategy(),
-    new JinaMarkdownStrategy(process.env.JINA_API_TOKEN ?? null),
-  ];
 }

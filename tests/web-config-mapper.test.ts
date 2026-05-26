@@ -33,7 +33,7 @@ describe('web config mapper', () => {
       seedUrls: ['https://example.com'],
       captureProfiles: {
         default: {
-          tools: ['crawl4ai-page', 'http-base', 'markdown'],
+          tools: ['crawl4ai-page', 'http-base', 'defuddle-markdown'],
           validation: {
             markdown: {
               minLength: 500,
@@ -53,7 +53,7 @@ describe('web config mapper', () => {
     expect(config.captureProfiles?.default.tools).toEqual([
       'crawl4ai-page',
       'http-base',
-      'markdown',
+      'defuddle-markdown',
     ]);
     expect(config.captureProfiles?.default.validation?.markdown?.minLength).toBe(500);
     expect(config.validation?.screenshot?.minBytes).toBe(20000);

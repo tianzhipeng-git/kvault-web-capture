@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
+    "cloakbrowser": "^0.3.30",
     "crawlee": "^3.13.8",
     "defuddle": "^0.18.1",
     "dotenv": "^17.4.2",

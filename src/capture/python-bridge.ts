@@ -50,7 +50,8 @@ export class PythonBridge {
       normalizedUrl: input.normalizedUrl,
       needs: input.needs,
       proxyUrl: input.runtime.proxyInfo?.url ?? null,
-      cdpUrl: cdpLease?.cdpUrl ?? null,
+      cdpHttpUrl: cdpLease?.cdpHttpUrl ?? null,
+      cdpWebSocketUrl: cdpLease?.cdpWebSocketUrl ?? null,
     });
 
     let stdout: string;

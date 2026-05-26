@@ -7,7 +7,9 @@ export const DEFAULT_CAPTURE_PROFILE_NAME = 'default';
 
 export const DEFAULT_CAPTURE_TOOL_CHAIN = [
   'http-base',
-  'markdown',
+  'defuddle-markdown',
+  'lightpanda-markdown',
+  'jina-markdown',
   'playwright-screenshot',
 ] as const;
 
