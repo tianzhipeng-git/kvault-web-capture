@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { BrowserManager } from '../src/capture/browser-provider.js';
 import { PageCaptureExecutor } from '../src/capture/executor.js';
-import { PythonBridge } from '../src/capture/python-bridge.js';
+import { PythonBridge, resolvePythonCommand } from '../src/capture/python-bridge.js';
 import type { CaptureTool, RuntimeContext, SiteAutomationAdapter } from '../src/capture/types.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
 
@@ -443,6 +443,40 @@ describe('PageCaptureExecutor', () => {
     expect((stdinPayload as Record<string, unknown>).cdpHttpUrl).toBe('http://127.0.0.1:9222');
     expect((stdinPayload as Record<string, unknown>).cdpWebSocketUrl).toBe('ws://127.0.0.1:9222/devtools/browser/abc');
     expect(releaseCount).toBe(1);
+  });
+
+  it('resolves tool-specific python interpreters before shared fallbacks', async () => {
+    const originalEnv = {
+      KVAULT_PYTHON: process.env.KVAULT_PYTHON,
+      KVAULT_PYTHON_CRAWL4AI: process.env.KVAULT_PYTHON_CRAWL4AI,
+      KVAULT_PYTHON_SCRAPLING: process.env.KVAULT_PYTHON_SCRAPLING,
+    };
+
+    process.env.KVAULT_PYTHON = '/shared/python';
+    process.env.KVAULT_PYTHON_CRAWL4AI = '/tool/crawl4ai-python';
+    process.env.KVAULT_PYTHON_SCRAPLING = '/tool/scrapling-python';
+
+    try {
+      expect(resolvePythonCommand({ toolName: 'crawl4ai-page' })).toBe('/tool/crawl4ai-python');
+      expect(resolvePythonCommand({ toolName: 'scrapling-page' })).toBe('/tool/scrapling-python');
+      expect(resolvePythonCommand()).toBe('/shared/python');
+    } finally {
+      if (originalEnv.KVAULT_PYTHON === undefined) {
+        delete process.env.KVAULT_PYTHON;
+      } else {
+        process.env.KVAULT_PYTHON = originalEnv.KVAULT_PYTHON;
+      }
+      if (originalEnv.KVAULT_PYTHON_CRAWL4AI === undefined) {
+        delete process.env.KVAULT_PYTHON_CRAWL4AI;
+      } else {
+        process.env.KVAULT_PYTHON_CRAWL4AI = originalEnv.KVAULT_PYTHON_CRAWL4AI;
+      }
+      if (originalEnv.KVAULT_PYTHON_SCRAPLING === undefined) {
+        delete process.env.KVAULT_PYTHON_SCRAPLING;
+      } else {
+        process.env.KVAULT_PYTHON_SCRAPLING = originalEnv.KVAULT_PYTHON_SCRAPLING;
+      }
+    }
   });
 
   it('validates base minLength against bodyText rather than raw HTML length', async () => {

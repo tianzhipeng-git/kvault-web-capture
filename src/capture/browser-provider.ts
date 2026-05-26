@@ -143,6 +143,17 @@ function contextKey(identity: BrowserIdentity, browserConfig?: BrowserConfig): s
   ].join('|');
 }
 
+function assertSupportedBrowserEngine(engine: BrowserEngine): void {
+  switch (engine) {
+    case 'chromium':
+    case 'cloakbrowser':
+    case 'lightpanda':
+      return;
+    default:
+      throw new Error(`Browser engine ${engine} is not implemented yet`);
+  }
+}
+
 export class PlaywrightBrowserManager implements BrowserManager {
   private readonly browserProcesses = new Map<string, BrowserProcessEntry>();
 
@@ -155,11 +166,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
     url: string;
     runtime: RuntimeContext;
   }): Promise<PageLease> {
-    if (input.identity.engine !== 'chromium') {
-      if (input.identity.engine !== 'cloakbrowser' && input.identity.engine !== 'lightpanda') {
-        throw new Error(`Browser engine ${input.identity.engine} is not implemented yet`);
-      }
-    }
+    assertSupportedBrowserEngine(input.identity.engine);
 
     const session = getRuntimeSession(input.runtime);
     if (session?.isUsable && !session.isUsable()) {
@@ -251,10 +258,17 @@ export class PlaywrightBrowserManager implements BrowserManager {
       return this.launchLightpanda(identity);
     }
 
-    const browser = await chromium.launch(
-      HAS_SYSTEM_CHROME ? { channel: 'chrome' as const } : undefined,
-    );
-    return { browser };
+    const port = await getFreePort();
+    const cdpHttpUrl = `http://127.0.0.1:${port}`;
+    const browser = await chromium.launch({
+      ...(HAS_SYSTEM_CHROME ? { channel: 'chrome' as const } : {}),
+      args: [
+        `--remote-debugging-port=${port}`,
+        '--remote-debugging-address=127.0.0.1',
+      ],
+    });
+    const cdpWebSocketUrl = await readCdpWebSocketUrl(cdpHttpUrl);
+    return { browser, cdpHttpUrl, cdpWebSocketUrl };
   }
 
   private async launchCloakBrowser(identity: BrowserIdentity): Promise<BrowserProcessEntry> {

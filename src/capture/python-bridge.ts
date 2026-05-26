@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   browserIdentityFromRuntime,
@@ -36,6 +38,46 @@ export interface PythonBridgeOptions {
   }) => Promise<{ stdout: string; stderr: string }>;
 }
 
+const TOOL_PYTHON_ENV_VARS: Partial<Record<string, string>> = {
+  'crawl4ai-page': 'KVAULT_PYTHON_CRAWL4AI',
+  'scrapling-page': 'KVAULT_PYTHON_SCRAPLING',
+};
+
+const TOOL_PYTHON_VENV_DIRS: Partial<Record<string, string>> = {
+  'crawl4ai-page': '.venv-crawl4ai',
+  'scrapling-page': '.venv-scrapling',
+};
+
+export function resolvePythonCommand(input: {
+  cwd?: string;
+  toolName?: string;
+} = {}): string {
+  const cwd = input.cwd ?? process.cwd();
+  const toolEnvVar = input.toolName ? TOOL_PYTHON_ENV_VARS[input.toolName] : undefined;
+  if (toolEnvVar && process.env[toolEnvVar]) {
+    return process.env[toolEnvVar]!;
+  }
+
+  if (process.env.KVAULT_PYTHON) {
+    return process.env.KVAULT_PYTHON;
+  }
+
+  const toolVenvDir = input.toolName ? TOOL_PYTHON_VENV_DIRS[input.toolName] : undefined;
+  if (toolVenvDir) {
+    const toolVenvPython = join(cwd, toolVenvDir, 'bin', 'python');
+    if (existsSync(toolVenvPython)) {
+      return toolVenvPython;
+    }
+  }
+
+  const projectVenvPython = join(cwd, '.venv', 'bin', 'python');
+  if (existsSync(projectVenvPython)) {
+    return projectVenvPython;
+  }
+
+  return 'python3';
+}
+
 export class PythonBridge {
   private readonly runProcessFn: NonNullable<PythonBridgeOptions['runProcessFn']>;
 
@@ -58,7 +100,7 @@ export class PythonBridge {
     let stderr: string;
     try {
       const result = await this.runProcessFn({
-        command: this.options.pythonPath ?? process.env.KVAULT_PYTHON ?? 'python3',
+        command: this.options.pythonPath ?? resolvePythonCommand({ toolName: this.options.toolName }),
         args: [this.options.scriptPath],
         stdin: payload,
         timeoutMs: this.options.timeoutMs ?? 90_000,

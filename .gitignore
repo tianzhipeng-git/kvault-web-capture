@@ -64,5 +64,7 @@ deploy_yunxiao.sh
 # python 
 .venv/
 .venv-pytools/
+.venv-crawl4ai/
+.venv-scrapling/
 __pycache__/
 docs/old-docs/
