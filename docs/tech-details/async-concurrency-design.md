@@ -8,7 +8,7 @@
 
 - 运行批次由 `M1App` 串行编排。
 - 每个 Crawlee crawler 内部按 `maxConcurrency` 并发处理请求。
-- `base -> markdown -> screenshot` 三个阶段按顺序运行，不同时并行。
+- 系统使用单队列统一调度具有不同 needs 的任务，取代了原先 base、markdown、screenshot 按阶段顺序运行的设计。
 - SQLite 默认使用 `node:sqlite` 的 `DatabaseSync`，repository 暴露 `async` 方法，但 SQLite 调用本身是同步执行。
 - Web 入口可以后台启动 run，但 `RunCoordinator` 限制同一站点只能有一个运行中任务，并限制全局同时运行数。
 - Web UI 与 crawler 共处同一进程, Web server 会记录 event loop delay，用于判断 run 期间是否存在主线程阻塞。
@@ -33,23 +33,12 @@
 3. 创建本次 run 的三条 request queue。
 4. 展开启动 URL：seed、sitemap、历史 inventory。
 5. 逐个候选 URL 调用 `RunPlanner.planRequest(...)`。
-6. 将允许抓取的请求加入 base queue。
-7. 创建 base、markdown、screenshot 三个 crawler。
-8. 运行 crawler。
+6. 将允许抓取的候选页面通过 `pageCaptureQueue.addRequest` 写入执行队列。
+7. 创建 `CrawleeCaptureRuntime` 与 `PageCaptureExecutor` 及对应的执行工具链。
+8. 运行 crawler（`await runtime.run()`）。
 9. 刷新统计并结束 run。
 
-关键顺序如下：
-
-```ts
-await baseCrawler.run();
-
-if (input.runType === 'crawl_run') {
-  await markdownCrawler.run();
-  await screenshotCrawler.run();
-}
-```
-
-因此，base 阶段会先完整跑完。只有正式 `crawl_run` 才会继续跑 markdown 和 screenshot。markdown 阶段和 screenshot 阶段也是顺序执行，不会在当前设计下互相抢浏览器、文件系统或数据库写入。
+在新的执行模型中，单次 run 仅启动一个 `BasicCrawler`。任务间的隔离和顺序依赖，通过任务自身声明的 `needs` 能力要求在 handler 内部判定和拆解，而不再是多个 crawler 分阶段阻塞运行。
 
 当前并没有把 crawler 拆到独立 worker 进程。Web server 与 crawler 仍运行在同一个 Node.js 进程里，共享同一个 JavaScript 事件循环；隔离主要依赖：
 
@@ -60,11 +49,9 @@ if (input.runType === 'crawl_run') {
 
 ## 3. Crawlee 队列
 
-`src/crawlee/queue-factory.ts` 为每次 run 创建三条逻辑队列：
+`src/crawlee/queue-factory.ts` 为每次 run 只创建一个命名队列：
 
-- `run-{runId}-base`
-- `run-{runId}-markdown`
-- `run-{runId}-screenshot`
+- `run-{runId}-page-capture`
 
 `services.ts` 中的 Crawlee `Configuration` 设置了：
 
@@ -77,19 +64,11 @@ purgeOnStart: true,
 
 ## 4. Crawler 内部并发
 
-`src/crawlee/crawler-factory.ts` 定义三类 crawler 的并发度。
+现在项目统一使用 `src/crawlee/capture-runtime.ts` 创建 `BasicCrawler`，默认 `maxConcurrency = 5`。这意味着最多 5 个 request handler 同时处于进行中。它们可能并发等待网络、分类器、BrowserManager 控制或 Crawlee queue 操作，但每一次同步 SQLite 调用都会在 Node.js 事件循环上独占执行一小段时间。
 
-| 阶段 | Crawler | 默认并发 | 主要资源 |
-| --- | --- | ---: | --- |
-| base | `CheerioCrawler` | 5 | HTTP、分类器、SQLite、文件系统 |
-| markdown | `LinkeDOMCrawler` 或 `BasicCrawler` | 3 | HTTP 或 adapter、SQLite、文件系统 |
-| screenshot | `PlaywrightCrawler` 或 `BasicCrawler` | 3 / 1 | 浏览器页面、内存、SQLite、文件系统 |
+HTTP 请求由内部工具如 `HttpBaseTool` 的 `sendRequest` 接管，统一走 Crawlee session 机制。截图和 Markdown 生成也交由 BrowserManager 或单独的 Adapter。由于不同任务会按 `needs` 发起真实并发执行，内存占用和带宽压力主要取决于 `PageCaptureExecutor` 中工具链的实际瓶颈。
 
-base 阶段的 `maxConcurrency = 5` 表示最多 5 个 request handler 同时处于进行中。它们可能并发等待网络、分类器或 Crawlee queue 操作，但每一次同步 SQLite 调用都会在 Node.js 事件循环上独占执行一小段时间。
-
-screenshot 阶段使用真实 Playwright adapter 时 `maxConcurrency = 3`。每个并发任务通常对应一个浏览器 page，因此主要瓶颈不是 SQLite，而是浏览器内存、页面脚本和截图耗时。fake/basic adapter 路径下 screenshot crawler 的并发是 1，更适合测试和轻量模拟。
-
-HTTP 型 crawler 共享：
+防封锁共享配置：
 
 - `retryOnBlocked: true`
 - `sameDomainDelaySecs: 1`
@@ -99,28 +78,23 @@ HTTP 型 crawler 共享：
 
 ## 5. Handler 的异步边界
 
-`src/crawlee/handlers.ts` 是每个请求实际执行的位置。
+`src/crawlee/handlers.ts` 是每个请求实际执行的位置。当前入口简化为统一的 `createPageCaptureRequestHandler`，其核心处理根据任务声明的 `needs` 分发：
 
-base handler 的主要步骤：
-
+基础捕获阶段 (`needs` 包含 `'base'`)：
 1. 检查 `RunTargetTracker` 是否已达到目标。
-2. 提取页面内容和链接。
-3. 读取页面历史状态。
-4. 调用 classifier。
-5. 执行 stage2 规则。
-6. 写 base capture 文件。
-7. 创建 `page_runs`。
-8. 更新 `site_pages`。
-9. 按规则和 update policy 加入 markdown / screenshot queue。
-10. 发现链接，逐个调用 `RunPlanner.planRequest(...)` 后加入 base queue。
+2. 调用工具链完成基础内容抓取。
+3. 调用 classifier。
+4. 执行 stage2 规则。
+5. 写 base capture 文件。
+6. 创建 `page_runs` 和更新 `site_pages`。
+7. 按规则和 update policy 需要进一步产出 markdown / screenshot 时，向队列追加对应的 Artifact-only 任务。
+8. 发现链接，交给 `RunPlanner`。
 
-markdown 和 screenshot handler 的模式类似：
-
-1. 调用 adapter 采集内容。
-2. 写 artifact 文件。
-3. 创建 `artifact_runs`。
-4. 更新 `site_pages` 的聚合 artifact 状态。
-5. 写 run log。
+后续产物补齐阶段 (`needs` 包含 `'markdown'`/`'screenshot'`)：
+1. 依赖 Executor 选择工具抓取所需产物。
+2. 写入 artifact 文件。
+3. 创建 `artifact_runs` 和更新 `site_pages` 的聚合 artifact 状态。
+4. 写 run log。
 
 这些 handler 是 `async` 函数，Crawlee 可以让多个 handler 交错执行。但 JavaScript 只有一个主线程，未 `await` 的同步代码不会被其它 handler 打断。项目利用这一点让 `RunTargetTracker` 这类内存计数器保持简单。
 

@@ -18,8 +18,8 @@
 ```mermaid
 flowchart LR
   Planner["RunPlanner / 规则"] --> SQLite["SQLite 业务状态"]
-  Planner --> Enqueue["baseQueue.addRequest"]
-  Enqueue --> Crawlee["Cheerio / Playwright Crawler"]
+  Planner --> Enqueue["pageCaptureQueue.addRequest"]
+  Enqueue --> Crawlee["BasicCrawler"]
   Crawlee --> Handlers["handlers.ts"]
   Handlers --> SQLite
   Handlers --> Artifacts["文件 artifact"]
@@ -28,8 +28,8 @@ flowchart LR
 | 职责 | 负责方 |
 |------|--------|
 | 是否抓取、update policy、URL 规则、站点配置 | SQLite + `RunPlanner` + `rules/` |
-| 队列、并发、重试、HTTP/浏览器请求 | Crawlee |
-| 页面解析、分类、写 artifact、链式入队 markdown/screenshot | `src/crawlee/handlers.ts` + adapters |
+| 队列、并发、重试 | Crawlee |
+| 页面解析、分类、写 artifact、向队列追加后续需要执行的 artifact-only 任务 | `src/crawlee/handlers.ts` + adapters + executor |
 | UI、导出、库存聚合 | 只读 SQLite / 文件系统 |
 
 设计上**不在应用层再实现一套与 Crawlee 竞争的运行队列**；也**不把业务查询建立在 Crawlee storage 内部结构**上。持久真相源是 SQLite 与 artifact 目录。
@@ -40,9 +40,9 @@ flowchart LR
 
 | 文件 | 用途 |
 |------|------|
-| `src/crawlee/crawler-factory.ts` | 创建 `CheerioCrawler`、`PlaywrightCrawler`、`BasicCrawler` |
-| `src/crawlee/handlers.ts` | `RequestQueue`、`CheerioCrawlingContext`、三阶段 request handler |
-| `src/crawlee/queue-factory.ts` | 按 run 打开命名 `RequestQueue` |
+| `src/crawlee/capture-runtime.ts` | 创建包含并封装 `BasicCrawler` 的 `CrawleeCaptureRuntime` |
+| `src/crawlee/handlers.ts` | `RequestQueue`、`createPageCaptureRequestHandler` 和 `BasicCrawlingContext` |
+| `src/crawlee/queue-factory.ts` | 按 run 打开唯一的一个 `page-capture` 的 `RequestQueue` |
 | `src/app/services.ts` | `Configuration`；创建队列与 crawler 并调用 `run()` |
 | `src/utils/runtime-logger.ts` | `LoggerJson` 桥接，将 Crawlee 日志写入当前 run 的 `runtime.log` |
 
@@ -50,7 +50,7 @@ flowchart LR
 
 ### 体量（约数）
 
-- `src/crawlee/*.ts`：约 **936 行**（handlers + factory + queue）
+- `src/crawlee/*.ts`：约 **900+ 行**（handlers + runtime + queue）
 - `src/app/services.ts`：约 **786 行**，其中与 Crawlee 强相关主要为 `executeRunWithRuntime`（约 250 行量级），其余为项目管理、通知、导出等
 - 占 `src/` 下 TypeScript（不含 `frontend`）总量约 **10%** 量级
 
@@ -59,11 +59,11 @@ flowchart LR
 `M1App` 的公开能力大量与 Crawlee 无关（站点/项目 CRUD、导出、库存、配置解析等）。与 Crawlee 的交汇集中在私有方法 `executeRunWithRuntime`：
 
 1. 创建 `Configuration`（内存队列，不持久化 Crawlee storage）
-2. `openRunQueue` 打开 base / markdown / screenshot 三条队列
+2. `openRunQueue` 打开单条 `page-capture` 队列
 3. 展开启动 URL（seed、sitemap、inventory），**在入队前**调用 `RunPlanner.planRequest`
-4. 对允许抓取的候选调用 `baseQueue.addRequest`（带 `uniqueKey` 与 `userData`）
-5. `createBaseCrawler` / `createMarkdownCrawler` / `createScreenshotCrawler`
-6. 顺序执行：`baseCrawler.run()` →（`crawl_run` 时）markdown → screenshot
+4. 对允许抓取的候选调用 `pageCaptureQueue.addRequest`（带 `uniqueKey` 与包含能力需求 `needs` 的 `userData`）
+5. 创建 `CrawleeCaptureRuntime` 和 `PageCaptureExecutor`
+6. 运行执行引擎：`await runtime.run()`
 7. 刷新 SQLite 统计并结束 run
 
 显式避免用 Crawlee storage 承载业务状态：
@@ -84,27 +84,21 @@ const configuration = new Configuration({
 
 ### 5.1 队列
 
-`src/crawlee/queue-factory.ts` 为每次 run 按阶段创建命名队列，例如 `run-{runId}-base`。队列仅存于本次 run 生命周期内。
+`src/crawlee/queue-factory.ts` 为每次 run 创建唯一的命名队列 `run-{runId}-page-capture`。队列仅存于本次 run 生命周期内。
 
-### 5.2 Crawler 工厂
+### 5.2 Capture Runtime
 
-`src/crawlee/crawler-factory.ts`：
-
-| 阶段 | Crawler 类型 | 典型并发 |
-|------|----------------|----------|
-| base | `CheerioCrawler` | `maxConcurrency = 5` |
-| markdown | `BasicCrawler`（调用 markdown adapter） | 见 factory |
-| screenshot | `PlaywrightCrawler` 或 `BasicCrawler`（视 adapter） | 浏览器阶段更低 |
+`src/crawlee/capture-runtime.ts` 创建并封装 `BasicCrawler`。这是当前项目中唯一被初始化的 Crawler（之前版本有 base, markdown 和 screenshot 的专属 Crawler）。默认并发为 `maxConcurrency = 5`，所有任务都在同一个 Crawler 中执行。
 
 ### 5.3 Handlers
 
-`src/crawlee/handlers.ts` 是 Crawlee 侧**最重要的业务入口**，但依赖注入的是项目自己的 repository、planner、adapter，而不是把策略塞进 Crawlee 内部 hook：
+`src/crawlee/handlers.ts` 是 Crawlee 侧**最重要的业务入口**。统一的 `createPageCaptureRequestHandler` 根据队列中每个请求携带的任务描述（尤其是 `needs`），分发相应的业务逻辑。依赖注入的是项目自己的 repository、planner、executor 和 tools，而不是把策略塞进 Crawlee 内部 hook：
 
-- `createBaseRequestHandler` — HTTP 抓取、分类、发现链接、入队 markdown/screenshot
-- markdown / screenshot 阶段 handler — 写 artifact、更新 `artifact_runs`
-- `failedRequestHandler` — Crawlee 重试耗尽后的最终失败落库
+- 处理基础任务（`base`）— 调用 executor 抓取基础内容、分类、发现链接、根据决策规则向同一个队列追加后续 artifact 补抓任务
+- 处理产物生成（`markdown` / `screenshot`）— 调用 executor、写 artifact、更新 `artifact_runs`
+- `createPageCaptureFailedRequestHandler` — Crawlee 重试耗尽后的最终失败落库
 
-Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`RequestQueue`），属于**执行层 API 泄漏**，未上推到 domain/planner。
+Handler 签名仍绑定 Crawlee 类型（如 `BasicCrawlingContext`、`RequestQueue`），属于**执行层 API 泄漏**，未上推到 domain/planner。
 
 ### 5.4 请求模型
 
@@ -115,8 +109,8 @@ Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`Request
 若迁移到其他爬虫/队列框架，需要自行补齐的能力包括：
 
 1. **RequestQueue 语义** — 入队、去重、`uniqueKey`、三阶段队列串联
-2. **HTTP 抓取 + HTML 解析** — 当前为 `CheerioCrawler` + got-scraping
-3. **浏览器抓取** — 截图阶段的 `PlaywrightCrawler`（或 fallback `BasicCrawler`）
+2. **HTTP 抓取 + HTML 解析** — 目前通过注入 `HttpBaseTool` 的 HTTP fetcher 执行（底层仍可利用 Crawlee 的 `sendRequest`）
+3. **浏览器抓取** — 截图/动态渲染通过 BrowserManager 执行（可使用 Playwright、Python tools 等）
 4. **重试与并发** — `maxRequestRetries`、`maxConcurrency`、`failedRequestHandler`
 5. **重定向与最终 URL** — 当前主要依赖 Crawlee 默认行为（如 `request.loadedUrl`），见重定向专题文档
 
@@ -136,7 +130,7 @@ Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`Request
 | 目标 | 优先查看 |
 |------|----------|
 | 改抓取/发现/入队流程 | `src/crawlee/handlers.ts` |
-| 改并发、重试、HTTP/浏览器选项 | `src/crawlee/crawler-factory.ts` |
+| 改并发、重试、HTTP/浏览器选项 | `src/crawlee/capture-runtime.ts` |
 | 改 run 启动、队列生命周期、阶段顺序 | `src/app/services.ts` → `executeRunWithRuntime` |
 | 改「要不要爬」 | `src/planner/`、`src/rules/`（Crawlee 之前） |
 | 改查询/UI | `src/web/queries/`、repositories（无 Crawlee） |
