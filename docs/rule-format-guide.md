@@ -20,7 +20,7 @@
 - 不支持 label 规则，因为页面还没抓取，也还没有分类结果
 - 默认结果是 `allow`，也就是没有规则命中时仍会进入 base 抓取
 - 命中 `deny` 后页面不会进入 base 队列
-- 即使 URL 规则带了 `artifacts`，在这个执行点也不会触发 markdown / screenshot 抓取
+- 即使 URL 规则带了 `artifacts`，在这个执行点也不会触发 artifact 抓取
 
 典型写法：
 
@@ -42,10 +42,11 @@
 
 `rulesBeforeStage2Eq` 在 base 抓取和页面分类完成之后执行，用来决定页面是否需要进入第二阶段 artifact 抓取。
 
-适合用来做“是否产出 Markdown / 截图”的判断，例如：
+适合用来做“是否产出 Markdown / 截图 / 结构化结果”的判断，例如：
 
 - 文档页抓 Markdown
 - 产品页抓 Markdown 和截图
+- 评论页抓结构化数据
 - 某些 URL 路径虽然会被 base 抓取，但不产出 artifact
 - 根据分类 label 决定采集策略
 
@@ -54,7 +55,7 @@
 - 支持 `matchType: "url"` 和 `matchType: "label"`
 - URL 规则和 label 规则会一起参与判断
 - 默认结果是 `pending`，也就是没有任何 whitelist 产出 artifact 时，页面会进入待确认状态
-- 只有规则最终产出至少一个 `artifact` 时，页面才会进入 markdown / screenshot 队列
+- 只有规则最终产出至少一个 `artifact` 时，页面才会进入第二阶段 artifact 抓取
 - `seed_run` 中即使规则判断为 allow，也会被转成 `stage2_pending`，用于摸底和调规则，不会真正产出 artifact
 
 典型写法：
@@ -89,6 +90,7 @@
 | 根据页面分类决定抓 Markdown 还是截图 | `rulesBeforeStage2Eq` | label whitelist |
 | 某类分类结果一律不产出 artifact | `rulesBeforeStage2Eq` | label blacklist |
 | 某个路径下的页面一律抓截图 | `rulesBeforeStage2Eq` | URL whitelist + `artifacts: ["screenshot"]` |
+| 某类页面抓结构化 JSON | `rulesBeforeStage2Eq` | URL / label whitelist + `artifacts: ["structured"]` |
 
 ## 2. 再选规则类型
 
@@ -126,7 +128,7 @@ URL 规则根据页面 URL 匹配。
 | `listType` | 是 | `blacklist`、`scopelist` 或 `whitelist` |
 | `ruleType` | 是 | `prefix` 或 `regex` |
 | `values` | 是 | 字符串数组，任一值匹配即认为这条 URL 规则命中 |
-| `artifacts` | 否 | 只在 `rulesBeforeStage2Eq` 中有实际意义，支持 `markdown`、`screenshot` |
+| `artifacts` | 否 | 只在 `rulesBeforeStage2Eq` 中有实际意义，支持 `markdown`、`screenshot`、`structured` |
 
 URL 匹配时，系统使用 `host + pathname + search` 做比较，不包含协议。例如：
 
@@ -189,7 +191,7 @@ label 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 
 | `matchType` | 是 | 必须是 `label` |
 | `listType` | 是 | `blacklist`、`scopelist` 或 `whitelist` |
 | `when` | 是 | 条件数组，数组里的所有条件都必须匹配 |
-| `artifacts` | 否 | 支持 `markdown`、`screenshot`；label 规则未填写时默认 `["markdown"]` |
+| `artifacts` | 否 | 支持 `markdown`、`screenshot`、`structured`；label 规则未填写时默认 `["markdown"]` |
 
 `when` 中每个条件的格式：
 
@@ -355,7 +357,7 @@ label 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 
 支持值：
 
 ```json
-["markdown", "screenshot"]
+["markdown", "screenshot", "structured"]
 ```
 
 常见组合：
@@ -364,14 +366,16 @@ label 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 
 | --- | --- |
 | 只抓 Markdown | `"artifacts": ["markdown"]` |
 | 只抓截图 | `"artifacts": ["screenshot"]` |
+| 只抓结构化结果 | `"artifacts": ["structured"]` |
 | Markdown 和截图都抓 | `"artifacts": ["markdown", "screenshot"]` |
+| Markdown 和结构化结果都抓 | `"artifacts": ["markdown", "structured"]` |
 
 注意事项：
 
 - `artifacts` 只有在 `rulesBeforeStage2Eq` 的 allow 结果中才会触发实际抓取
 - URL 规则的 `artifacts` 是可选字段；不填时不贡献 artifact
 - label 规则不填 `artifacts` 时默认 `["markdown"]`
-- 如果最终没有任何规则贡献 artifact，`rulesBeforeStage2Eq` 会返回 `pending`，不会抓 Markdown 或截图
+- 如果最终没有任何规则贡献 artifact，`rulesBeforeStage2Eq` 会返回 `pending`，不会抓第二阶段 artifact
 
 ## 5. 完整 JSON 示例
 
