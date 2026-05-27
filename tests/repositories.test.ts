@@ -120,7 +120,7 @@ describe('repositories', () => {
       content: '# Docs',
       outputPath: null,
       errorMessage: null,
-      meta: { strategy: 'defuddle' },
+      meta: { tool: 'defuddle' },
     });
 
     await pages.recordArtifactResult({

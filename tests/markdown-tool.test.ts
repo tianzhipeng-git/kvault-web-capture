@@ -55,7 +55,7 @@ describe('DefuddleMarkdownTool', () => {
 
     expect(result.toolName).toBe('defuddle-markdown');
     expect(result.markdown).toContain('Hello markdown world.');
-    expect(result.markdownStrategyName).toBe('defuddle-markdown');
+    expect(result.markdownToolName).toBe('defuddle-markdown');
   });
 });
 
@@ -139,7 +139,7 @@ describe('JinaMarkdownTool', () => {
       ({ ok: true, status: 200, text: async () => '# Heading\n\nContent here.' }) as Response;
     const result = await new JinaMarkdownTool('my-token', fakeFetch as typeof fetch).capture(makeInput());
     expect(result.markdown).toBe('# Heading\n\nContent here.\n');
-    expect(result.markdownStrategyName).toBe('jina-markdown');
+    expect(result.markdownToolName).toBe('jina-markdown');
   });
 
   it('throws when response text is empty', async () => {

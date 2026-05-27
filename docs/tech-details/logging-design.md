@@ -194,7 +194,7 @@ await runLog.log({
   sitePageId,
   pageRunId,
   message: `[markdown] done ${url}`,
-  meta: { strategy, outputPath },
+  meta: { tool, outputPath },
 });
 ```
 
@@ -206,7 +206,7 @@ await runLog.log({
 
 1. `crawl_runs.status` 和 `crawl_runs.error_message`：确认 run 是否顶层失败。
 2. `run_logs`：查看是否有 `crawl_error`、`base_page_failed`、`artifact_failed`。
-3. `run_logs.meta`：查看 stack、outputPath、strategy、tool 等结构化信息。
+3. `run_logs.meta`：查看 stack、outputPath、tool 等结构化信息。
 4. `runtime.log`：查看 Crawlee 重试、请求过程、分类器异常、启动 URL 规划等细节。
 5. artifact 文件：根据 `outputPath` 检查实际产物。
 

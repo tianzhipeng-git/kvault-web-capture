@@ -19,7 +19,7 @@ class FakeMarkdownTool implements CaptureTool {
     return {
       toolName: this.name,
       markdown: `# Fake markdown capture\n\nSource: ${input.url}\n`,
-      markdownStrategyName: this.name,
+      markdownToolName: this.name,
     };
   }
 }

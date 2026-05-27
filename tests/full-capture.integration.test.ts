@@ -46,7 +46,7 @@ class FullCaptureTool implements CaptureTool {
         links: [],
       },
       markdown: '# Docs\n\nDocs body\n',
-      markdownStrategyName: this.name,
+      markdownToolName: this.name,
       structured: {
         title: 'Docs',
         items: [{ id: 1, text: 'Docs body' }],

@@ -39,7 +39,7 @@ export class DefuddleMarkdownTool implements CaptureTool {
       statusCode: responseStatusCode(response),
       html,
       markdown: requireNonEmptyMarkdown(result.content ?? '', this.name),
-      markdownStrategyName: this.name,
+      markdownToolName: this.name,
     };
   }
 }
@@ -82,7 +82,7 @@ export class LightpandaMarkdownTool implements CaptureTool {
         toolName: this.name,
         finalUrl: lease.page.url(),
         markdown: requireNonEmptyMarkdown(markdown, this.name),
-        markdownStrategyName: this.name,
+        markdownToolName: this.name,
       };
     } finally {
       await lease.release();
@@ -119,7 +119,7 @@ export class JinaMarkdownTool implements CaptureTool {
       finalUrl: input.url,
       statusCode: response.status,
       markdown: requireNonEmptyMarkdown(await response.text(), this.name),
-      markdownStrategyName: this.name,
+      markdownToolName: this.name,
     };
   }
 }

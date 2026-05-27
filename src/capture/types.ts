@@ -31,7 +31,7 @@ export interface CaptureToolResult {
   html?: string;
   extracted?: ExtractedPage;
   markdown?: string;
-  markdownStrategyName?: string;
+  markdownToolName?: string;
   screenshot?: Buffer;
   screenshotExtension?: 'png';
   structured?: unknown;
@@ -53,7 +53,7 @@ export interface CaptureResult {
   extracted?: ExtractedPage;
   markdown?: {
     content: string;
-    strategyName: string;
+    toolName: string;
   };
   screenshot?: {
     data: Buffer;

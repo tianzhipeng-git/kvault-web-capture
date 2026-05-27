@@ -155,7 +155,7 @@ export class KickstarterCommentsAdapter implements SiteAutomationAdapter {
         comments,
       },
       markdown: renderMarkdown(finalUrl, comments),
-      markdownStrategyName: this.name,
+      markdownToolName: this.name,
     };
   }
 }

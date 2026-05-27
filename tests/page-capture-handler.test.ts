@@ -90,7 +90,7 @@ function makeSuccessBaseCaptureResult(): CaptureResult {
 function makeMarkdownCaptureResult(): CaptureResult {
   return {
     url: 'https://example.com/docs',
-    markdown: { content: '# Docs\n', strategyName: 'defuddle' },
+    markdown: { content: '# Docs\n', toolName: 'defuddle' },
     diagnostics: [],
   };
 }

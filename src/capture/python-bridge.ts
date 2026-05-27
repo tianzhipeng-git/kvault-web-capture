@@ -157,7 +157,7 @@ export class PythonBridge {
           }
         : undefined,
       markdown: parsed.markdown,
-      markdownStrategyName: parsed.markdown ? this.options.toolName : undefined,
+      markdownToolName: parsed.markdown ? this.options.toolName : undefined,
       screenshot: parsed.screenshotBase64
         ? Buffer.from(parsed.screenshotBase64, 'base64')
         : undefined,

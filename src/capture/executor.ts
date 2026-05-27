@@ -41,7 +41,7 @@ function mergeResult(
   if (acceptedCapabilities.includes('markdown') && toolResult.markdown !== undefined && toolResult.markdown.trim() !== '') {
     current.markdown = {
       content: toolResult.markdown,
-      strategyName: toolResult.markdownStrategyName ?? toolResult.toolName,
+      toolName: toolResult.markdownToolName ?? toolResult.toolName,
     };
   }
 

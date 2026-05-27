@@ -116,7 +116,7 @@ async function recordArtifactResult(input: {
       content: written.content,
       outputPath: written.outputPath,
       errorMessage: null,
-      meta: { strategy: input.result.markdown.strategyName },
+      meta: { tool: input.result.markdown.toolName },
     });
 
     await input.runLog.log({
@@ -127,7 +127,7 @@ async function recordArtifactResult(input: {
       sitePageId: input.task.sitePageId,
       pageRunId: input.pageRunId,
       message: `[markdown] done ${input.task.normalizedUrl}`,
-      meta: { strategy: input.result.markdown.strategyName, outputPath: written.outputPath },
+      meta: { tool: input.result.markdown.toolName, outputPath: written.outputPath },
     });
   } else if (input.artifactType === 'screenshot') {
     if (!input.result.screenshot) {

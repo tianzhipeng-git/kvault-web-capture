@@ -152,7 +152,7 @@ Crawlee `Session` 本身可以保存和维护这些信息：
 | 成功/失败反馈 | `markGood()`、`markBad()`、`retire()` | Crawlee 会在 request 成功/失败时自动更新，也可由业务显式 retire |
 | 自定义信息 | `session.userData` | 可以挂少量 metadata，例如 fingerprint key、profile key、账号标识 |
 
-当前 `RuntimeContext.sendRequest` 是基于 Crawlee `context.sendRequest` 包装的。Crawlee 的 `sendRequest` 会把当前 session 的 cookie jar 接进 HTTP 请求，并使用当前 crawling context 的 proxy URL。因此 `HttpBaseTool`、部分 markdown strategy、Kickstarter adapter 这类使用 `runtime.sendRequest` 的工具，已经间接受 Crawlee session cookie 影响。
+当前 `RuntimeContext.sendRequest` 是基于 Crawlee `context.sendRequest` 包装的。Crawlee 的 `sendRequest` 会把当前 session 的 cookie jar 接进 HTTP 请求，并使用当前 crawling context 的 proxy URL。因此 `HttpBaseTool`、部分 markdown tool、Kickstarter adapter 这类使用 `runtime.sendRequest` 的工具，已经间接受 Crawlee session cookie 影响。
 
 但当前 `PlaywrightBrowserProvider` 没有读取 `runtime.session`：
 
