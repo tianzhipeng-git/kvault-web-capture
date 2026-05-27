@@ -155,7 +155,7 @@ export async function openDatabase(options: string | OpenDatabaseOptions): Promi
   return new SqliteDbClient(db);
 }
 
-const sqliteSchema = `
+const baseTablesSchema = `
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -283,7 +283,9 @@ const sqliteSchema = `
     created_at TEXT NOT NULL,
     FOREIGN KEY (crawl_run_id) REFERENCES crawl_runs(id)
   );
+`;
 
+const indexesSchema = `
   CREATE INDEX IF NOT EXISTS idx_site_pages_site_inventory
     ON site_pages(site_id, inventory_status);
 
@@ -309,13 +311,13 @@ const sqliteSchema = `
     ON run_logs(crawl_run_id);
 `;
 
-const postgresSchema = sqliteSchema.replaceAll(
+const postgresTablesSchema = baseTablesSchema.replaceAll(
   'INTEGER PRIMARY KEY AUTOINCREMENT',
   'SERIAL PRIMARY KEY',
 );
 
 export async function initializeSchema(db: DbClient): Promise<void> {
-  await db.exec(db.dialect === 'postgres' ? postgresSchema : sqliteSchema);
+  await db.exec(db.dialect === 'postgres' ? postgresTablesSchema : baseTablesSchema);
 
   const migrations = [
     `ALTER TABLE crawl_runs ADD COLUMN error_message TEXT`,
@@ -323,6 +325,7 @@ export async function initializeSchema(db: DbClient): Promise<void> {
     `ALTER TABLE site_pages ADD COLUMN last_structured_status TEXT`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_run_id INTEGER`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_at TEXT`,
+    `DROP INDEX IF EXISTS idx_site_pages_site_latest_handled`,
   ];
 
   for (const sql of migrations) {
@@ -331,7 +334,9 @@ export async function initializeSchema(db: DbClient): Promise<void> {
         db.dialect === 'postgres' ? sql.replace('ADD COLUMN ', 'ADD COLUMN IF NOT EXISTS ') : sql;
       await db.exec(migration);
     } catch {
-      // Column already exists.
+      // Migration already applied.
     }
   }
+
+  await db.exec(indexesSchema);
 }

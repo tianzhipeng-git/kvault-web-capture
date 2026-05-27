@@ -20,7 +20,7 @@ Kvault Web Capture 是一个本地运行的可交互网页采集系统。核心�
 - 基础页面抓取：`HttpBaseTool`
 - Markdown 抓取：`DefuddleMarkdownTool` / `LightpandaMarkdownTool` / `JinaMarkdownTool`，由 `PageCaptureExecutor` 按 profile 顺序 fallback
 - 截图抓取：`PlaywrightScreenshotTool`
-- 数据库：`node:sqlite` 的 `DatabaseSync`
+- 数据库：默认 SQLite `node:sqlite`，可通过 `KVAULT_DATABASE_URL` 使用 PostgreSQL
 - Web 后端：Fastify
 - Web 鉴权：内存 Session + HTTP-only Cookie
 - 前端：React 18 + Vite + React Router v6 + Tailwind CSS + shadcn/ui/Radix + Framer Motion
@@ -40,7 +40,7 @@ src/
   crawlee/             Crawlee runtime、单队列工厂、page task handler
   classification/      页面分类接口
   export/              artifact 文件写入
-  db/                  SQLite schema 与 repository
+  db/                  数据库 schema、兼容迁移与 repository
   web/                 Web API、读模型、运行协调器、前端说明
 ```
 
@@ -164,7 +164,7 @@ flowchart TD
 
 `src/app/services.ts` 中的 `M1App` 是核心编排入口。它负责：
 
-- 打开并初始化 SQLite schema
+- 打开并初始化数据库 schema
 - 构造 repositories
 - 创建项目和站点
 - 读取、更新、导入、克隆站点配置
@@ -317,46 +317,19 @@ artifact-only task 负责：
 {storageRoot}/artifacts/run-{runId}/page-{sitePageId}/screenshot.png
 ```
 
-SQLite 中会保存 `output_path`；markdown 文本也会保存到 `artifact_runs.content`，截图只保存文件路径。
+数据库中会保存 `output_path`；markdown 文本也会保存到 `artifact_runs.content`，截图只保存文件路径。
 
 ## 5. 状态与持久化
 
 ### 5.1 状态分工
 
-- SQLite 保存业务状态、历史结果、统计、日志和 artifact 索引。
+- 业务数据库保存业务状态、历史结果、统计、日志和 artifact 索引。
 - Crawlee storage 保存运行队列、请求重试和 Crawlee 自身执行状态。
 - 文件系统保存 base / markdown / screenshot 等实际产物。
 
 这个分工很重要：不要在应用层再实现一套和 Crawlee 竞争的运行队列；也不要把业务查询建立在 Crawlee storage 内部结构上。
 
-### 5.2 SQLite Schema
-
-Schema 在 `src/db/database.ts`。主要表：
-
-- `projects`
-- `sites`
-- `crawl_runs`
-- `site_pages`
-- `page_runs`
-- `artifact_runs`
-- `run_logs`
-
-关系概览：
-
-```mermaid
-erDiagram
-  projects ||--o{ sites : contains
-  sites ||--o{ crawl_runs : executes
-  sites ||--o{ site_pages : inventories
-  crawl_runs ||--o{ page_runs : records
-  site_pages ||--o{ page_runs : records
-  page_runs ||--o{ artifact_runs : produces
-  site_pages ||--o{ artifact_runs : aggregates
-  crawl_runs ||--o{ run_logs : logs
-```
-
-### 5.3 Repositories
-
+### 5.2 Repositories
 Repository 被拆分在 `src/db/repositories/`：
 
 - `ProjectRepository`
@@ -395,7 +368,7 @@ Repository 被拆分在 `src/db/repositories/`：
 主要组成：
 
 - `M1App`：写路径和运行入口
-- 只读 SQLite connection：供 read model 查询
+- 只读数据库 connection：供 read model 查询
 - `SessionAuth`：管理密码登录和 cookie session
 - `RunCoordinator`：限制同一站点并发和全局最大并发
 - `read-models.ts`：为前端提供业务化视图

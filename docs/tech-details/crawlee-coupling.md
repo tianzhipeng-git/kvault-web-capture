@@ -8,31 +8,31 @@
 |------|------|------|
 | 执行路径 | **高** | 无 Crawlee 则无队列调度、HTTP 抓取（Cheerio/got-scraping）、浏览器截图（Playwright）、内置重试与并发 |
 | 业务模型 | **低** | 领域类型在 `src/domain/types.ts`；`request.userData` 仅为载荷，不依赖 Crawlee 类型泄漏到 planner/db/web |
-| 数据与查询 | **很低** | Web、导出、库存查询只读 SQLite，不读 Crawlee storage |
+| 数据与查询 | **很低** | Web、导出、库存查询只读业务数据库，不读 Crawlee storage |
 | 可替换性 | **中等** | 主要重写 `src/crawlee/` 与 `services.ts` 中的 run 编排；约九成业务代码可保留 |
 
-**一句话**：Crawlee 被当作**单次 run 内的临时调度器 + HTTP/浏览器执行引擎**；SQLite、Planner、规则、导出、Web 等模块**不直接 import `crawlee`**。`src/app/services.ts` 是编排入口，不把核心业务逻辑写进 Crawlee API。
+**一句话**：Crawlee 被当作**单次 run 内的临时调度器 + HTTP/浏览器执行引擎**；业务数据库、Planner、规则、导出、Web 等模块**不直接 import `crawlee`**。`src/app/services.ts` 是编排入口，不把核心业务逻辑写进 Crawlee API。
 
 ## 2. 职责分工
 
 ```mermaid
 flowchart LR
-  Planner["RunPlanner / 规则"] --> SQLite["SQLite 业务状态"]
+  Planner["RunPlanner / 规则"] --> DB["业务数据库"]
   Planner --> Enqueue["baseQueue.addRequest"]
   Enqueue --> Crawlee["Cheerio / Playwright Crawler"]
   Crawlee --> Handlers["handlers.ts"]
-  Handlers --> SQLite
+  Handlers --> DB
   Handlers --> Artifacts["文件 artifact"]
 ```
 
 | 职责 | 负责方 |
 |------|--------|
-| 是否抓取、update policy、URL 规则、站点配置 | SQLite + `RunPlanner` + `rules/` |
+| 是否抓取、update policy、URL 规则、站点配置 | 业务数据库 + `RunPlanner` + `rules/` |
 | 队列、并发、重试、HTTP/浏览器请求 | Crawlee |
 | 页面解析、分类、写 artifact、链式入队 markdown/screenshot | `src/crawlee/handlers.ts` + adapters |
-| UI、导出、库存聚合 | 只读 SQLite / 文件系统 |
+| UI、导出、库存聚合 | 只读业务数据库 / 文件系统 |
 
-设计上**不在应用层再实现一套与 Crawlee 竞争的运行队列**；也**不把业务查询建立在 Crawlee storage 内部结构**上。持久真相源是 SQLite 与 artifact 目录。
+设计上**不在应用层再实现一套与 Crawlee 竞争的运行队列**；也**不把业务查询建立在 Crawlee storage 内部结构**上。持久真相源是业务数据库与 artifact 目录。
 
 ## 3. 直接依赖 Crawlee 的代码
 
@@ -64,7 +64,7 @@ flowchart LR
 4. 对允许抓取的候选调用 `baseQueue.addRequest`（带 `uniqueKey` 与 `userData`）
 5. `createBaseCrawler` / `createMarkdownCrawler` / `createScreenshotCrawler`
 6. 顺序执行：`baseCrawler.run()` →（`crawl_run` 时）markdown → screenshot
-7. 刷新 SQLite 统计并结束 run
+7. 刷新数据库统计并结束 run
 
 显式避免用 Crawlee storage 承载业务状态：
 
@@ -120,7 +120,7 @@ Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`Request
 4. **重试与并发** — `maxRequestRetries`、`maxConcurrency`、`failedRequestHandler`
 5. **重定向与最终 URL** — 当前主要依赖 Crawlee 默认行为（如 `request.loadedUrl`），见重定向专题文档
 
-**不必从 Crawlee 迁出的部分**：站点配置、更新策略、URL 规则、分类器、Markdown/截图 adapter、SQLite schema、导出、Web UI。
+**不必从 Crawlee 迁出的部分**：站点配置、更新策略、URL 规则、分类器、Markdown/截图 adapter、数据库 schema、导出、Web UI。
 
 ## 7. 与 Crawlee 弱耦合或无关的部分
 
@@ -128,7 +128,7 @@ Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`Request
 - **Rules**（`src/rules/`）：二阶段入队决策
 - **Repositories**（`src/db/`）：run、page、artifact 业务状态
 - **Adapters**（`markdown/`、`screenshot/`）：通过接口注入 crawler factory，不 import Crawlee
-- **Web**（`src/web/`）：读模型来自 SQLite；`RunCoordinator` 限制并发 run，与 Crawlee 无直接类型耦合
+- **Web**（`src/web/`）：读模型来自业务数据库；`RunCoordinator` 限制并发 run，与 Crawlee 无直接类型耦合
 - **日志**：`runtime-logger.ts` 对 Crawlee 的依赖仅为全局 logger 桥接，可随执行框架一并替换
 
 ## 8. 修改时的导航
