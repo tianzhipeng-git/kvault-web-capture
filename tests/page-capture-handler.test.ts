@@ -23,6 +23,9 @@ import {
 
 const noopRunLog: RunLogRepository = {
   log: () => Promise.resolve(),
+  base_page_done: () => Promise.resolve(),
+  target_success_count_reached: () => Promise.resolve(),
+  url_plan_skipped: () => Promise.resolve(),
   listByRun: () => Promise.resolve([]),
 } as unknown as RunLogRepository;
 
@@ -192,6 +195,9 @@ describe('createPageCaptureRequestHandler – base task', () => {
     const logCalls: unknown[] = [];
     const runLog: RunLogRepository = {
       log: async (args: unknown) => { logCalls.push(args); },
+      base_page_done: async () => {
+        logCalls.push({ event: 'base_page_done' });
+      },
     } as unknown as RunLogRepository;
 
     const handler = createPageCaptureRequestHandler({

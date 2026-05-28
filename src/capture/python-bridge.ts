@@ -8,6 +8,7 @@ import {
   type CdpLease,
 } from './browser-provider.js';
 import type { CaptureInput, CaptureToolResult } from './types.js';
+import { logger } from '../utils/runtime-logger.js';
 
 export interface PythonBridgeOutput {
   toolName?: string;
@@ -86,6 +87,7 @@ export class PythonBridge {
   }
 
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
+    const startedAt = Date.now();
     const cdpLease = await this.tryAcquireCdpLease(input);
     const payload = JSON.stringify({
       url: input.url,
@@ -95,12 +97,25 @@ export class PythonBridge {
       cdpHttpUrl: cdpLease?.cdpHttpUrl ?? null,
       cdpWebSocketUrl: cdpLease?.cdpWebSocketUrl ?? null,
     });
+    const command = this.options.pythonPath ?? resolvePythonCommand({ toolName: this.options.toolName });
+    logger.info('Python bridge capture started', {
+      runId: input.runId,
+      siteId: input.siteId,
+      requestId: input.runtime.requestId,
+      url: input.normalizedUrl,
+      tool: this.options.toolName,
+      scriptPath: this.options.scriptPath,
+      needs: input.needs,
+      hasProxy: input.runtime.proxyInfo?.url !== undefined,
+      hasCdpLease: cdpLease !== null,
+      timeoutMs: this.options.timeoutMs ?? 90_000,
+    });
 
     let stdout: string;
     let stderr: string;
     try {
       const result = await this.runProcessFn({
-        command: this.options.pythonPath ?? resolvePythonCommand({ toolName: this.options.toolName }),
+        command,
         args: [this.options.scriptPath],
         stdin: payload,
         timeoutMs: this.options.timeoutMs ?? 90_000,
@@ -121,6 +136,17 @@ export class PythonBridge {
       const stderrText = typeof maybe.stderr === 'string' && maybe.stderr.trim() !== ''
         ? `: ${maybe.stderr.trim()}`
         : '';
+      logger.warn('Python bridge capture failed', {
+        runId: input.runId,
+        siteId: input.siteId,
+        requestId: input.runtime.requestId,
+        url: input.normalizedUrl,
+        tool: this.options.toolName,
+        command,
+        reason,
+        stderr: summarizeText(typeof maybe.stderr === 'string' ? maybe.stderr : ''),
+        durationMs: Date.now() - startedAt,
+      });
       throw new Error(`${this.options.toolName} bridge failed with ${reason}${stderrText}`);
     } finally {
       await cdpLease?.release().catch(() => {});
@@ -131,6 +157,16 @@ export class PythonBridge {
       parsed = JSON.parse(stdout) as PythonBridgeOutput;
     } catch (error) {
       const stderrText = stderr.trim() ? ` stderr=${stderr.trim()}` : '';
+      logger.warn('Python bridge returned invalid JSON', {
+        runId: input.runId,
+        siteId: input.siteId,
+        requestId: input.runtime.requestId,
+        url: input.normalizedUrl,
+        tool: this.options.toolName,
+        stdout: summarizeText(stdout),
+        stderr: summarizeText(stderr),
+        durationMs: Date.now() - startedAt,
+      });
       throw new Error(`${this.options.toolName} bridge returned invalid JSON${stderrText}`);
     }
 
@@ -169,6 +205,24 @@ export class PythonBridge {
       },
     };
 
+    logger.info('Python bridge capture finished', {
+      runId: input.runId,
+      siteId: input.siteId,
+      requestId: input.runtime.requestId,
+      url: input.normalizedUrl,
+      tool: this.options.toolName,
+      returnedTool: result.toolName,
+      finalUrl: result.finalUrl,
+      statusCode: result.statusCode,
+      capabilities: {
+        base: result.extracted !== undefined,
+        markdown: result.markdown !== undefined,
+        screenshot: result.screenshot !== undefined,
+        structured: result.structured !== undefined,
+      },
+      stderr: summarizeText(stderr),
+      durationMs: Date.now() - startedAt,
+    });
     return result;
   }
 
@@ -178,7 +232,7 @@ export class PythonBridge {
     }
 
     try {
-      return await this.options.browserManager.acquireCdpEndpoint({
+      const lease = await this.options.browserManager.acquireCdpEndpoint({
         identity: browserIdentityFromRuntime({
           runId: input.runId,
           siteId: input.siteId,
@@ -187,14 +241,31 @@ export class PythonBridge {
         }),
         runtime: input.runtime,
       });
+      return lease;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('not implemented')) {
+        logger.info('Python bridge continuing without CDP lease', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          tool: this.options.toolName,
+          reason: message,
+        });
         return null;
       }
       throw error;
     }
   }
+}
+
+function summarizeText(value: string, maxLength = 2000): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}...` : trimmed;
 }
 
 async function runProcess(input: {

@@ -1,4 +1,5 @@
 import type { CaptureCapability } from '../domain/types.js';
+import { logger } from '../utils/runtime-logger.js';
 import { toolCoversAnyNeed } from './capability-utils.js';
 import { CaptureProfileResolver } from './profile-resolver.js';
 import { ResultValidator } from './result-validator.js';
@@ -95,6 +96,7 @@ export class PageCaptureExecutor {
   }
 
   async capture(input: CaptureInput): Promise<CaptureResult> {
+    const captureStartedAt = Date.now();
     const result: CaptureResult = {
       url: input.url,
       diagnostics: [],
@@ -102,6 +104,15 @@ export class PageCaptureExecutor {
     const resolvedProfile = this.profileResolver.resolve({
       siteConfig: input.siteConfig,
       needs: input.needs,
+    });
+    logger.info('Page capture executor resolved profile', {
+      runId: input.runId,
+      siteId: input.siteId,
+      requestId: input.runtime.requestId,
+      url: input.normalizedUrl,
+      needs: input.needs,
+      profile: resolvedProfile.name,
+      tools: resolvedProfile.tools.map((tool) => tool.name),
     });
 
     for (const tool of resolvedProfile.tools) {
@@ -118,6 +129,17 @@ export class PageCaptureExecutor {
           capabilities: [...tool.capabilities],
           message: 'tool does not cover any remaining need',
         });
+        logger.info('Page capture tool skipped', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          profile: resolvedProfile.name,
+          tool: tool.name,
+          capabilities: tool.capabilities,
+          remainingNeeds,
+          reason: 'tool does not cover any remaining need',
+        });
         continue;
       }
 
@@ -128,11 +150,34 @@ export class PageCaptureExecutor {
           capabilities: [...tool.capabilities],
           message: `site adapter ${tool.siteKey} does not match ${input.normalizedUrl}`,
         });
+        logger.info('Page capture site adapter skipped', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          profile: resolvedProfile.name,
+          tool: tool.name,
+          siteKey: tool.siteKey,
+          capabilities: tool.capabilities,
+          remainingNeeds,
+          reason: 'site adapter does not match URL',
+        });
         continue;
       }
 
       try {
         const toolNeeds = remainingNeeds.filter((need) => tool.capabilities.includes(need));
+        const toolStartedAt = Date.now();
+        logger.info('Page capture tool attempt started', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          profile: resolvedProfile.name,
+          tool: tool.name,
+          needs: toolNeeds,
+          capabilities: tool.capabilities,
+        });
         const toolResult = await tool.capture({
           ...input,
           needs: toolNeeds,
@@ -166,6 +211,22 @@ export class PageCaptureExecutor {
             ? `profile=${resolvedProfile.name}; ${validationMessages.join(' | ')}`
             : `profile=${resolvedProfile.name}`,
         });
+        logger.info('Page capture tool attempt finished', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          profile: resolvedProfile.name,
+          tool: tool.name,
+          needs: toolNeeds,
+          acceptedCapabilities,
+          rejectedCapabilities: toolNeeds.filter((need) => !acceptedCapabilities.includes(need)),
+          validationMessages,
+          durationMs: Date.now() - toolStartedAt,
+          statusCode: toolResult.statusCode,
+          finalUrl: toolResult.finalUrl,
+          diagnostics: toolResult.diagnostics,
+        });
       } catch (error) {
         const proxyPolicy = input.siteConfig.proxyPolicy;
         const proxyMessage = proxyPolicy?.mode === 'retry_on_failure'
@@ -179,6 +240,21 @@ export class PageCaptureExecutor {
           capabilities: [...tool.capabilities],
           message: `${error instanceof Error ? error.message : String(error)}${proxyMessage}`,
         });
+        logger.warn('Page capture tool attempt failed', {
+          runId: input.runId,
+          siteId: input.siteId,
+          requestId: input.runtime.requestId,
+          url: input.normalizedUrl,
+          profile: resolvedProfile.name,
+          tool: tool.name,
+          capabilities: tool.capabilities,
+          remainingNeeds,
+          proxyPolicy: proxyPolicy
+            ? { mode: proxyPolicy.mode, provider: proxyPolicy.provider ?? null }
+            : null,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack ?? null : null,
+        });
       }
     }
 
@@ -191,11 +267,34 @@ export class PageCaptureExecutor {
       const profileMessage = result.diagnostics.length === 0
         ? `profile resolver returned no tools for needs ${input.needs.join(', ')}`
         : '';
+      logger.error('Page capture executor failed', {
+        runId: input.runId,
+        siteId: input.siteId,
+        requestId: input.runtime.requestId,
+        url: input.normalizedUrl,
+        needs: input.needs,
+        profile: resolvedProfile.name,
+        missing,
+        diagnostics: result.diagnostics,
+        durationMs: Date.now() - captureStartedAt,
+      });
       throw new Error(
         `Capture failed for ${input.url}; missing ${missing.join(', ')}${messages || profileMessage ? `. ${messages || profileMessage}` : ''}`,
       );
     }
 
+    logger.info('Page capture executor succeeded', {
+      runId: input.runId,
+      siteId: input.siteId,
+      requestId: input.runtime.requestId,
+      url: input.normalizedUrl,
+      needs: input.needs,
+      profile: resolvedProfile.name,
+      finalUrl: result.finalUrl,
+      statusCode: result.statusCode,
+      diagnostics: result.diagnostics,
+      durationMs: Date.now() - captureStartedAt,
+    });
     return result;
   }
 }

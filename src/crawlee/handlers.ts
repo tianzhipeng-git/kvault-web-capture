@@ -127,7 +127,14 @@ async function recordArtifactResult(input: {
       sitePageId: input.task.sitePageId,
       pageRunId: input.pageRunId,
       message: `[markdown] done ${input.task.normalizedUrl}`,
-      meta: { tool: input.result.markdown.toolName, outputPath: written.outputPath },
+      meta: {
+        tool: input.result.markdown.toolName,
+        outputPath: written.outputPath,
+        artifactType: 'markdown',
+        needs: input.task.needs,
+        purpose: input.task.purpose ?? null,
+        diagnostics: input.result.diagnostics,
+      },
     });
   } else if (input.artifactType === 'screenshot') {
     if (!input.result.screenshot) {
@@ -162,7 +169,14 @@ async function recordArtifactResult(input: {
       sitePageId: input.task.sitePageId,
       pageRunId: input.pageRunId,
       message: `[screenshot] done ${input.task.normalizedUrl}`,
-      meta: { tool: input.result.screenshot.toolName, outputPath: written.outputPath },
+      meta: {
+        tool: input.result.screenshot.toolName,
+        outputPath: written.outputPath,
+        artifactType: 'screenshot',
+        needs: input.task.needs,
+        purpose: input.task.purpose ?? null,
+        diagnostics: input.result.diagnostics,
+      },
     });
   } else {
     if (input.result.structured === undefined) {
@@ -198,7 +212,13 @@ async function recordArtifactResult(input: {
       sitePageId: input.task.sitePageId,
       pageRunId: input.pageRunId,
       message: `[structured] done ${input.task.normalizedUrl}`,
-      meta: { outputPath: written.outputPath },
+      meta: {
+        outputPath: written.outputPath,
+        artifactType: 'structured',
+        needs: input.task.needs,
+        purpose: input.task.purpose ?? null,
+        diagnostics: input.result.diagnostics,
+      },
     });
   }
 
@@ -239,7 +259,12 @@ async function recordArtifactFailure(input: {
     sitePageId: input.task.sitePageId,
     pageRunId: input.pageRunId,
     message: `[${input.artifactType}] FAILED ${input.task.normalizedUrl}: ${input.error.message}`,
-    meta: { stack: input.error.stack ?? null },
+    meta: {
+      artifactType: input.artifactType,
+      needs: input.task.needs,
+      purpose: input.task.purpose ?? null,
+      stack: input.error.stack ?? null,
+    },
   });
 
   await input.sitePageRepository.recordArtifactResult({
@@ -388,6 +413,9 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
       reason: decision.reason ?? null,
       requiredArtifacts: decision.requiredArtifacts,
       title: extracted.title || null,
+      needs: task.needs,
+      purpose: task.purpose ?? null,
+      requestId: deps.runtime.requestId,
       diagnostics: result.diagnostics,
     },
   });
@@ -607,7 +635,11 @@ export function createPageCaptureFailedRequestHandler(deps: {
         url: input.request.url,
         sitePageId: task.sitePageId,
         message: `[base] FAILED ${input.request.url}: ${error.message}`,
-        meta: { stack: error.stack ?? null },
+        meta: {
+          needs: task.needs,
+          purpose: task.purpose ?? null,
+          stack: error.stack ?? null,
+        },
       });
       return;
     }

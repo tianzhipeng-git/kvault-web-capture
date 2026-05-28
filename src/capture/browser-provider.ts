@@ -15,6 +15,7 @@ import type {
   BrowserEngine,
   BrowserProfileMode,
 } from '../domain/types.js';
+import { logger } from '../utils/runtime-logger.js';
 import type { RuntimeContext } from './types.js';
 
 const HAS_SYSTEM_CHROME =
@@ -154,6 +155,37 @@ function assertSupportedBrowserEngine(engine: BrowserEngine): void {
   }
 }
 
+function redactUrl(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.password) {
+      url.password = '***';
+    }
+    if (url.username) {
+      url.username = '***';
+    }
+    return url.toString();
+  } catch {
+    return value.includes('@') ? value.replace(/\/\/[^@]+@/, '//***:***@') : value;
+  }
+}
+
+function browserIdentityLogMeta(identity: BrowserIdentity): Record<string, unknown> {
+  return {
+    siteId: identity.siteId,
+    runId: identity.runId,
+    sessionId: identity.sessionId,
+    proxyKey: redactUrl(identity.proxyKey),
+    engine: identity.engine,
+    profileMode: identity.profileMode,
+    profileKey: identity.profileKey,
+  };
+}
+
 export class PlaywrightBrowserManager implements BrowserManager {
   private readonly browserProcesses = new Map<string, BrowserProcessEntry>();
 
@@ -166,16 +198,29 @@ export class PlaywrightBrowserManager implements BrowserManager {
     url: string;
     runtime: RuntimeContext;
   }): Promise<PageLease> {
+    const startedAt = Date.now();
     assertSupportedBrowserEngine(input.identity.engine);
 
     const session = getRuntimeSession(input.runtime);
     if (session?.isUsable && !session.isUsable()) {
+      logger.warn('Browser page lease rejected unusable session', {
+        requestId: input.runtime.requestId,
+        url: input.url,
+        identity: browserIdentityLogMeta(input.identity),
+        sessionId: session.id ?? null,
+      });
       throw new Error(`Crawlee session ${session.id ?? '(unknown)'} is not usable`);
     }
 
     const context = await this.getContext(input);
     const page = await context.newPage();
     let released = false;
+    logger.info('Browser page lease acquired', {
+      requestId: input.runtime.requestId,
+      url: input.url,
+      identity: browserIdentityLogMeta(input.identity),
+      durationMs: Date.now() - startedAt,
+    });
 
     return {
       page,
@@ -185,8 +230,22 @@ export class PlaywrightBrowserManager implements BrowserManager {
           return;
         }
         released = true;
-        await this.syncCookiesToSession(context, input.url, input.runtime).catch(() => {});
+        const releaseStartedAt = Date.now();
+        await this.syncCookiesToSession(context, input.url, input.runtime).catch((error) => {
+          logger.warn('Browser cookie sync to Crawlee session failed', {
+            requestId: input.runtime.requestId,
+            url: input.url,
+            identity: browserIdentityLogMeta(input.identity),
+            errorMessage: error instanceof Error ? error.message : String(error),
+          });
+        });
         await page.close().catch(() => {});
+        logger.info('Browser page lease released', {
+          requestId: input.runtime.requestId,
+          url: input.url,
+          identity: browserIdentityLogMeta(input.identity),
+          durationMs: Date.now() - releaseStartedAt,
+        });
       },
     };
   }
@@ -195,27 +254,44 @@ export class PlaywrightBrowserManager implements BrowserManager {
     identity: BrowserIdentity;
     runtime: RuntimeContext;
   }): Promise<CdpLease> {
+    const startedAt = Date.now();
     const entry = await this.getBrowserProcess(input.identity);
     if (!entry.cdpHttpUrl || !entry.cdpWebSocketUrl) {
       throw new Error(`CDP endpoint leases are not available for browser engine ${input.identity.engine}`);
     }
 
+    logger.info('Browser CDP lease acquired', {
+      requestId: input.runtime.requestId,
+      identity: browserIdentityLogMeta(input.identity),
+      cdpHttpUrl: entry.cdpHttpUrl,
+      durationMs: Date.now() - startedAt,
+    });
     return {
       cdpHttpUrl: entry.cdpHttpUrl,
       cdpWebSocketUrl: entry.cdpWebSocketUrl,
       identity: input.identity,
-      release: async () => {},
+      release: async () => {
+        logger.info('Browser CDP lease released', {
+          requestId: input.runtime.requestId,
+          identity: browserIdentityLogMeta(input.identity),
+          cdpHttpUrl: entry.cdpHttpUrl,
+        });
+      },
     };
   }
 
   async retireIdentity(identity: BrowserIdentity, reason: string): Promise<void> {
-    void reason;
     const key = contextKey(identity, this.siteConfig?.browser);
     const entry = this.contexts.get(key);
     if (entry) {
       this.contexts.delete(key);
       await entry.context.close().catch(() => {});
     }
+    logger.warn('Browser identity retired', {
+      identity: browserIdentityLogMeta(identity),
+      reason,
+      hadContext: entry !== undefined,
+    });
   }
 
   async close(): Promise<void> {
@@ -246,6 +322,11 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
     const entry = await this.launchBrowserProcess(identity);
     this.browserProcesses.set(key, entry);
+    logger.info('Browser process launched', {
+      identity: browserIdentityLogMeta(identity),
+      processKey: key,
+      cdpHttpUrl: entry.cdpHttpUrl,
+    });
     return entry;
   }
 
@@ -332,6 +413,12 @@ export class PlaywrightBrowserManager implements BrowserManager {
     const context = await browser.newContext(options);
     await this.syncCookiesFromSession(context, input.url, input.runtime);
     this.contexts.set(key, { context, identity: input.identity });
+    logger.info('Browser context created', {
+      requestId: input.runtime.requestId,
+      url: input.url,
+      identity: browserIdentityLogMeta(input.identity),
+      hasProxy: input.identity.proxyKey !== undefined,
+    });
     return context;
   }
 
@@ -352,6 +439,11 @@ export class PlaywrightBrowserManager implements BrowserManager {
     if (playwrightCookies.length > 0) {
       await context.addCookies(playwrightCookies);
     }
+    logger.info('Synced Crawlee session cookies to browser context', {
+      requestId: runtime.requestId,
+      url,
+      cookieCount: playwrightCookies.length,
+    });
   }
 
   private async syncCookiesToSession(
@@ -366,6 +458,11 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
     const cookies = await context.cookies(url);
     await session.setCookies(cookies, url);
+    logger.info('Synced browser context cookies to Crawlee session', {
+      requestId: runtime.requestId,
+      url,
+      cookieCount: cookies.length,
+    });
   }
 }
 

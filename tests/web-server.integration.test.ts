@@ -248,7 +248,7 @@ describe('web server', () => {
 
     const runtimeLogResponse = await webServer.inject({
       method: 'GET',
-      url: `/api/runs/${runId}/runtime-log?tail=20`,
+      url: `/api/runs/${runId}/runtime-log?tail=200`,
       cookies: {
         kvault_session: authCookie.split('=')[1],
       },
