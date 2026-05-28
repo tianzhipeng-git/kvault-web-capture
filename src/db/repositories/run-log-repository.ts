@@ -38,6 +38,221 @@ export class RunLogRepository {
     private readonly clock: Clock,
   ) {}
 
+  // Aggressive sugar: keep event names as method names.
+  runtime_log_ready(crawlRunId: number, relativePath: string): Promise<void> {
+    return this.info(
+      crawlRunId,
+      'runtime_log_ready',
+      `Runtime log available at ${relativePath}`,
+      { meta: { relativePath } },
+    );
+  }
+
+  crawl_started(
+    crawlRunId: number,
+    input: {
+      runType: unknown;
+      updatePolicy: unknown;
+      targetSuccessCount: number | null;
+      siteId: number;
+    },
+  ): Promise<void> {
+    return this.info(
+      crawlRunId,
+      'crawl_started',
+      `Run ${crawlRunId} started (${String(input.runType)}, updatePolicy=${String(input.updatePolicy)})`,
+      {
+        meta: {
+          runType: input.runType,
+          updatePolicy: input.updatePolicy,
+          targetSuccessCount: input.targetSuccessCount,
+          siteId: input.siteId,
+        },
+      },
+    );
+  }
+
+  crawl_finished(crawlRunId: number): Promise<void> {
+    return this.info(crawlRunId, 'crawl_finished', `Run ${crawlRunId} finished successfully`);
+  }
+
+  crawl_error(
+    crawlRunId: number,
+    errorMessage: string,
+    meta?: { stack?: string | null } | null,
+  ): Promise<void> {
+    return this.error(
+      crawlRunId,
+      'crawl_error',
+      `Run ${crawlRunId} failed: ${errorMessage}`,
+      { meta: meta ?? undefined },
+    );
+  }
+
+  feishu_notification_failed(crawlRunId: number, errorMessage: string): Promise<void> {
+    return this.warn(
+      crawlRunId,
+      'feishu_notification_failed',
+      `Feishu notification failed for run ${crawlRunId}: ${errorMessage}`,
+    );
+  }
+
+  sitemap_skipped(
+    crawlRunId: number,
+    sitemapUrl: string,
+    error: { name: string; message: string; stack?: string | null },
+    meta?: Record<string, unknown> | null,
+  ): Promise<void> {
+    return this.warn(
+      crawlRunId,
+      'sitemap_skipped',
+      `[startup] SKIPPED sitemap ${sitemapUrl}: ${error.message}`,
+      {
+        url: sitemapUrl,
+        meta: {
+          reason: 'sitemap_fetch_failed',
+          errorName: error.name,
+          errorMessage: error.message,
+          stack: error.stack ?? null,
+          ...(meta ?? {}),
+        },
+      },
+    );
+  }
+
+  url_plan_skipped(
+    crawlRunId: number,
+    url: string,
+    meta?: Record<string, unknown> | null,
+    options?: { sitePageId?: number | null; pageRunId?: number | null } | null,
+  ): Promise<void> {
+    return this.warn(
+      crawlRunId,
+      'url_plan_skipped',
+      `[plan] SKIPPED invalid URL ${url}`,
+      {
+        url,
+        sitePageId: options?.sitePageId,
+        pageRunId: options?.pageRunId,
+        meta: meta ?? undefined,
+      },
+    );
+  }
+
+  base_page_done(input: {
+    crawlRunId: number;
+    url: string;
+    sitePageId: number;
+    pageRunId: number;
+    outcome: string;
+    meta?: Record<string, unknown> | null;
+  }): Promise<void> {
+    return this.info(
+      input.crawlRunId,
+      'base_page_done',
+      `[base] ${String(input.outcome).toUpperCase()} ${input.url}`,
+      {
+        url: input.url,
+        sitePageId: input.sitePageId,
+        pageRunId: input.pageRunId,
+        meta: input.meta ?? undefined,
+      },
+    );
+  }
+
+  target_success_count_reached(input: {
+    crawlRunId: number;
+    url: string;
+    sitePageId: number;
+    pageRunId: number;
+    targetSuccessCount: number;
+    candidateSuccessCount: number;
+  }): Promise<void> {
+    return this.info(
+      input.crawlRunId,
+      'target_success_count_reached',
+      `Run ${input.crawlRunId} reached targetSuccessCount=${input.targetSuccessCount}`,
+      {
+        url: input.url,
+        sitePageId: input.sitePageId,
+        pageRunId: input.pageRunId,
+        meta: {
+          targetSuccessCount: input.targetSuccessCount,
+          candidateSuccessCount: input.candidateSuccessCount,
+        },
+      },
+    );
+  }
+
+  async info(
+    crawlRunId: number,
+    event: RunLogEvent,
+    message: string,
+    options?: {
+      url?: string | null;
+      sitePageId?: number | null;
+      pageRunId?: number | null;
+      meta?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    return this.log({
+      crawlRunId,
+      level: 'info',
+      event,
+      message,
+      url: options?.url,
+      sitePageId: options?.sitePageId,
+      pageRunId: options?.pageRunId,
+      meta: options?.meta,
+    });
+  }
+
+  async warn(
+    crawlRunId: number,
+    event: RunLogEvent,
+    message: string,
+    options?: {
+      url?: string | null;
+      sitePageId?: number | null;
+      pageRunId?: number | null;
+      meta?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    return this.log({
+      crawlRunId,
+      level: 'warn',
+      event,
+      message,
+      url: options?.url,
+      sitePageId: options?.sitePageId,
+      pageRunId: options?.pageRunId,
+      meta: options?.meta,
+    });
+  }
+
+  async error(
+    crawlRunId: number,
+    event: RunLogEvent,
+    message: string,
+    options?: {
+      url?: string | null;
+      sitePageId?: number | null;
+      pageRunId?: number | null;
+      meta?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    return this.log({
+      crawlRunId,
+      level: 'error',
+      event,
+      message,
+      url: options?.url,
+      sitePageId: options?.sitePageId,
+      pageRunId: options?.pageRunId,
+      meta: options?.meta,
+    });
+  }
+
   async log(input: {
     crawlRunId: number;
     level: RunLogLevel;

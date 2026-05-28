@@ -357,15 +357,7 @@ export class M1App {
       runId,
     });
 
-    await this.runLogs.log({
-      crawlRunId: runId,
-      level: 'info',
-      event: 'runtime_log_ready',
-      message: `Runtime log available at ${runtimeLog.relativePath}`,
-      meta: {
-        relativePath: runtimeLog.relativePath,
-      },
-    });
+    await this.runLogs.runtime_log_ready(runId, runtimeLog.relativePath);
 
     try {
       return await withRuntimeLog(runtimeLog, async () => {
@@ -383,13 +375,11 @@ export class M1App {
         const errorMessage = error instanceof Error ? error.message : String(error);
         await this.runs.refreshCounts(runId);
         await this.runs.finishRun(runId, 'failed', errorMessage);
-        await this.runLogs.log({
-          crawlRunId: runId,
-          level: 'error',
-          event: 'crawl_error',
-          message: `Run ${runId} failed: ${errorMessage}`,
-          meta: { stack: error instanceof Error ? (error.stack ?? null) : null },
-        });
+        await this.runLogs.crawl_error(
+          runId,
+          errorMessage,
+          { stack: error instanceof Error ? (error.stack ?? null) : null },
+        );
         logger.error('Run failed before completion', {
           runId,
           siteId: site.id,
@@ -467,19 +457,7 @@ export class M1App {
             errorMessage: error.message,
             stack: error.stack ?? null,
           });
-          await this.runLogs.log({
-            crawlRunId: runId,
-            level: 'warn',
-            event: 'sitemap_skipped',
-            url: sitemapUrl,
-            message: `[startup] SKIPPED sitemap ${sitemapUrl}: ${error.message}`,
-            meta: {
-              reason: 'sitemap_fetch_failed',
-              errorName: error.name,
-              errorMessage: error.message,
-              stack: error.stack ?? null,
-            },
-          });
+          await this.runLogs.sitemap_skipped(runId, sitemapUrl, error);
         },
       });
     }
@@ -526,18 +504,15 @@ export class M1App {
           discoverySource: candidate.discoverySource,
           errorMessage: error.message,
         });
-        await this.runLogs.log({
-          crawlRunId: runId,
-          level: 'warn',
-          event: 'url_plan_skipped',
-          url: candidate.url,
-          message: `[plan] SKIPPED invalid URL ${candidate.url}`,
-          meta: {
+        await this.runLogs.url_plan_skipped(
+          runId,
+          candidate.url,
+          {
             reason: 'invalid_url',
             discoverySource: candidate.discoverySource,
             errorMessage: error.message,
           },
-        });
+        );
         return null;
       });
 
@@ -661,17 +636,11 @@ export class M1App {
       }),
     });
 
-    await this.runLogs.log({
-      crawlRunId: runId,
-      level: 'info',
-      event: 'crawl_started',
-      message: `Run ${runId} started (${input.runType}, updatePolicy=${input.updatePolicy})`,
-      meta: {
-        runType: input.runType,
-        updatePolicy: input.updatePolicy,
-        targetSuccessCount: input.targetSuccessCount,
-        siteId: site.id,
-      },
+    await this.runLogs.crawl_started(runId, {
+      runType: input.runType,
+      updatePolicy: input.updatePolicy,
+      targetSuccessCount: input.targetSuccessCount,
+      siteId: site.id,
     });
 
     try {
@@ -679,12 +648,7 @@ export class M1App {
 
       await this.runs.refreshCounts(runId);
       await this.runs.finishRun(runId, 'succeeded');
-      await this.runLogs.log({
-        crawlRunId: runId,
-        level: 'info',
-        event: 'crawl_finished',
-        message: `Run ${runId} finished successfully`,
-      });
+      await this.runLogs.crawl_finished(runId);
       await this.notifyRunFinished({
         runId,
         site,
@@ -696,13 +660,11 @@ export class M1App {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await this.runs.refreshCounts(runId);
       await this.runs.finishRun(runId, 'failed', errorMessage);
-      await this.runLogs.log({
-        crawlRunId: runId,
-        level: 'error',
-        event: 'crawl_error',
-        message: `Run ${runId} failed: ${errorMessage}`,
-        meta: { stack: error instanceof Error ? (error.stack ?? null) : null },
-      });
+      await this.runLogs.crawl_error(
+        runId,
+        errorMessage,
+        { stack: error instanceof Error ? (error.stack ?? null) : null },
+      );
       await this.notifyRunFinished({
         runId,
         site,
@@ -779,12 +741,7 @@ export class M1App {
         errorMessage,
       });
       try {
-        await this.runLogs.log({
-          crawlRunId: input.runId,
-          level: 'warn',
-          event: 'feishu_notification_failed',
-          message: `Feishu notification failed for run ${input.runId}: ${errorMessage}`,
-        });
+        await this.runLogs.feishu_notification_failed(input.runId, errorMessage);
       } catch (logError) {
         logger.warn('Failed to record Feishu notification failure', {
           runId: input.runId,

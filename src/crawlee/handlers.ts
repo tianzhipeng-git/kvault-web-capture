@@ -377,14 +377,12 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
     requiredArtifacts: decision.requiredArtifacts,
   });
 
-  await deps.runLog.log({
+  await deps.runLog.base_page_done({
     crawlRunId: task.runId,
-    level: 'info',
-    event: 'base_page_done',
     url: extracted.normalizedUrl,
     sitePageId: task.sitePageId,
     pageRunId,
-    message: `[base] ${decision.pageOutcome.toUpperCase()} ${extracted.normalizedUrl}`,
+    outcome: decision.pageOutcome,
     meta: {
       outcome: decision.pageOutcome,
       reason: decision.reason ?? null,
@@ -410,19 +408,14 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
   if (isTargetSuccessCandidate) {
     const targetState = deps.targetTracker?.recordCandidateSuccess();
 
-    if (targetState?.reachedNow) {
-      await deps.runLog.log({
+    if (targetState?.reachedNow && targetState.target !== null) {
+      await deps.runLog.target_success_count_reached({
         crawlRunId: task.runId,
-        level: 'info',
-        event: 'target_success_count_reached',
         url: extracted.normalizedUrl,
         sitePageId: task.sitePageId,
         pageRunId,
-        message: `Run ${task.runId} reached targetSuccessCount=${targetState.target}`,
-        meta: {
-          targetSuccessCount: targetState.target,
-          candidateSuccessCount: targetState.count,
-        },
+        targetSuccessCount: targetState.target,
+        candidateSuccessCount: targetState.count,
       });
     }
   }
@@ -517,21 +510,17 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
         referrerUrl: extracted.normalizedUrl,
         errorMessage: error.message,
       });
-      await deps.runLog.log({
-        crawlRunId: task.runId,
-        level: 'warn',
-        event: 'url_plan_skipped',
-        url: link,
-        sitePageId: task.sitePageId,
-        pageRunId,
-        message: `[plan] SKIPPED invalid URL ${link}`,
-        meta: {
+      await deps.runLog.url_plan_skipped(
+        task.runId,
+        link,
+        {
           reason: 'invalid_url',
           discoverySource: 'page_link',
           discoveryReferrerUrl: extracted.normalizedUrl,
           errorMessage: error.message,
         },
-      });
+        { sitePageId: task.sitePageId, pageRunId },
+      );
       return null;
     });
 

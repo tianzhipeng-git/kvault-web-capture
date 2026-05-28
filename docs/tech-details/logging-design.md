@@ -107,6 +107,16 @@ logger.warn(message, meta)
 logger.error(message, meta)
 ```
 
+也支持更短的“位置参数”写法（用于减少调用处重复拼 meta）：
+
+```ts
+logger.info(siteId, runId, message, meta)
+logger.warn(siteId, runId, message, meta)
+logger.error(siteId, runId, message, meta)
+```
+
+其中 `siteId/runId` 会自动合并进 `meta`（等价于 `{ siteId, runId, ...meta }`）。
+
 如果当前代码运行在 `withRuntimeLog(...)` 绑定的异步上下文内，这些日志会写入对应 run 的 `runtime.log`；否则会退回到 `console.info/warn/error`。这个退回逻辑让工具函数也能在 CLI、测试或非 run 场景中安全使用。
 
 run 结束时，`executeRun(...)` 的 `finally` 会调用 `runtimeLog.close()`，先 flush destination，再 end destination，避免进程继续运行但文件缓冲未落盘。
@@ -177,8 +187,8 @@ pm2 logs <app-name>
 
 | 场景 | 推荐写法 |
 | --- | --- |
-| 影响用户可见状态、run/page/artifact 生命周期 | 写 `runLogs.log(...)` |
-| 需要 UI 列表中可筛选、可解释的事件 | 写 `runLogs.log(...)` |
+| 影响用户可见状态、run/page/artifact 生命周期 | 写 `runLogs.<event>(...)`（或 `runLogs.info/warn/error(...)`） |
+| 需要 UI 列表中可筛选、可解释的事件 | 写 `runLogs.<event>(...)`（或 `runLogs.info/warn/error(...)`） |
 | 大量调试上下文、外部服务返回、规划过程明细 | 写 `logger.info/warn/error(...)` |
 | Crawlee 底层输出 | 交给 Crawlee bridge 写 runtime log |
 | 顶层运行失败 | 同时写 `crawl_runs.error_message` 和 `crawl_error` |
@@ -186,14 +196,10 @@ pm2 logs <app-name>
 结构化事件名应该保持稳定，避免把动态值放进 `event`。动态信息放在 `message` 或 `meta`：
 
 ```ts
-await runLog.log({
-  crawlRunId,
-  level: 'info',
-  event: 'artifact_done',
+await runLog.info(crawlRunId, 'artifact_done', `[markdown] done ${url}`, {
   url,
   sitePageId,
   pageRunId,
-  message: `[markdown] done ${url}`,
   meta: { tool, outputPath },
 });
 ```

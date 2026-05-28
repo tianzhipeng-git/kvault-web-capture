@@ -544,6 +544,35 @@ function hasRequiredArtifact(requiredArtifacts: string[], kind: ProcessingKind):
   return kind === 'base' || requiredArtifacts.includes(kind);
 }
 
+function toolNameFromMeta(metaJson: string | null, kind?: ProcessingKind): string | null {
+  if (metaJson === null) {
+    return null;
+  }
+
+  const meta = parseJson<Record<string, unknown>>(metaJson);
+  if (typeof meta?.tool === 'string') {
+    return meta.tool;
+  }
+  if (typeof meta?.strategy === 'string') {
+    return meta.strategy;
+  }
+
+  const diagnostics = Array.isArray(meta?.diagnostics) ? meta.diagnostics : [];
+  const diagnostic = diagnostics.find((item): item is { toolName?: unknown; status?: unknown; capabilities?: unknown } => {
+    if (typeof item !== 'object' || item === null) {
+      return false;
+    }
+    const record = item as Record<string, unknown>;
+    return (
+      record.status === 'succeeded' &&
+      Array.isArray(record.capabilities) &&
+      (kind === undefined || record.capabilities.includes(kind))
+    );
+  });
+
+  return typeof diagnostic?.toolName === 'string' ? diagnostic.toolName : null;
+}
+
 function buildProcessingState(input: {
   kind: ProcessingKind;
   shouldRun: boolean;
@@ -555,6 +584,7 @@ function buildProcessingState(input: {
   pendingReason: string | null;
   requiredArtifacts: string[];
   errorMessage?: string | null;
+  toolName?: string | null;
 }): {
   kind: ProcessingKind;
   label: string;
@@ -567,6 +597,7 @@ function buildProcessingState(input: {
   handledAt: string | null;
   outputPath: string | null;
   errorMessage: string | null;
+  toolName: string | null;
 } {
   const succeeded = input.status === 'succeeded';
   const label =
@@ -613,6 +644,7 @@ function buildProcessingState(input: {
     handledAt: input.handledAt,
     outputPath: input.outputPath,
     errorMessage: input.errorMessage ?? null,
+    toolName: input.toolName ?? null,
   };
 }
 
@@ -789,8 +821,9 @@ export class SitePageDetailQuery {
         content: string | null;
         error_message: string | null;
         finished_at: string | null;
+        meta_json: string | null;
       }>(
-        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at
+        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at, meta_json
          FROM artifact_runs
          WHERE site_page_id = ?
          ORDER BY id DESC`,
@@ -820,6 +853,16 @@ export class SitePageDetailQuery {
     const markdownArtifact = latestArtifactByType.get('markdown') ?? null;
     const screenshotArtifact = latestArtifactByType.get('screenshot') ?? null;
     const structuredArtifact = latestArtifactByType.get('structured') ?? null;
+    const latestBaseLog = latestPageRun === null
+      ? null
+      : (await this.db.get<{ meta_json: string | null }>(
+          `SELECT meta_json
+           FROM run_logs
+           WHERE page_run_id = ? AND event = 'base_page_done'
+           ORDER BY id DESC
+           LIMIT 1`,
+          [latestPageRun.id],
+        )) ?? null;
 
     const pageRuns = await this.db.all<{
         id: number;
@@ -972,6 +1015,7 @@ export class SitePageDetailQuery {
         decisionOutcome,
         pendingReason,
         requiredArtifacts,
+        toolName: toolNameFromMeta(latestBaseLog?.meta_json ?? null, 'base'),
       }),
       latestMarkdown: buildProcessingState({
         kind: 'markdown',
@@ -984,6 +1028,7 @@ export class SitePageDetailQuery {
         pendingReason,
         requiredArtifacts,
         errorMessage: markdownArtifact?.error_message ?? null,
+        toolName: toolNameFromMeta(markdownArtifact?.meta_json ?? null, 'markdown'),
       }),
       latestScreenshot: buildProcessingState({
         kind: 'screenshot',
@@ -996,6 +1041,7 @@ export class SitePageDetailQuery {
         pendingReason,
         requiredArtifacts,
         errorMessage: screenshotArtifact?.error_message ?? null,
+        toolName: toolNameFromMeta(screenshotArtifact?.meta_json ?? null, 'screenshot'),
       }),
       latestStructured: buildProcessingState({
         kind: 'structured',
@@ -1008,6 +1054,7 @@ export class SitePageDetailQuery {
         pendingReason,
         requiredArtifacts,
         errorMessage: structuredArtifact?.error_message ?? null,
+        toolName: toolNameFromMeta(structuredArtifact?.meta_json ?? null, 'structured'),
       }),
       latestPageRun:
         latestPageRun === null

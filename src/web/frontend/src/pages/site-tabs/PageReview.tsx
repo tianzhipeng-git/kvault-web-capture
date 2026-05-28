@@ -146,20 +146,21 @@ function ProcessingCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`rounded-lg border bg-muted/20 p-4 space-y-3 text-left transition-colors hover:bg-muted/40 ${active ? "border-primary ring-2 ring-primary/20" : ""}`}
+      className={`rounded-lg border bg-muted/20 p-4 space-y-3 text-left transition-colors hover:bg-muted/40 min-w-0 ${active ? "border-primary ring-2 ring-primary/20" : ""}`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 font-semibold">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 font-semibold">
           <Icon className={state.succeeded ? "w-4 h-4 text-green-600" : state.shouldRun ? "w-4 h-4 text-orange-600" : "w-4 h-4 text-muted-foreground"} />
-          {state.label}
+          <span className="truncate">{state.label}</span>
         </div>
-        <Badge variant={state.succeeded ? "default" : state.shouldRun ? "secondary" : "outline"}>
+        <Badge className="shrink-0" variant={state.succeeded ? "default" : state.shouldRun ? "secondary" : "outline"}>
           {state.shouldRun ? "应该运行" : "不要求运行"}
         </Badge>
       </div>
       <div className="grid gap-2 text-sm text-muted-foreground">
         <div>结果：<span className="text-foreground">{state.statusLabel}</span></div>
         <div>原因：<span className="text-foreground">{state.reason}</span></div>
+        <div>Tool：<span className="text-foreground">{state.toolName ?? "-"}</span></div>
         <div>Run：<span className="text-foreground">{state.runId ?? "-"}</span></div>
         <div>时间：<span className="text-foreground">{formatDate(state.handledAt)}</span></div>
         {state.outputPath && <div className="break-all">输出：<span className="text-foreground">{state.outputPath}</span></div>}
@@ -447,7 +448,7 @@ function PageDetailDialog({
               )}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <ProcessingCard state={detail.latestBase} active={activePreview === "base"} onSelect={() => setActivePreview("base")} />
               <ProcessingCard state={detail.latestMarkdown} active={activePreview === "markdown"} onSelect={() => setActivePreview("markdown")} />
               <ProcessingCard state={detail.latestScreenshot} active={activePreview === "screenshot"} onSelect={() => setActivePreview("screenshot")} />

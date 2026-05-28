@@ -113,35 +113,75 @@ export async function withRuntimeLog<T>(
   );
 }
 
-export const logger = {
-  info(message: string, meta?: Record<string, unknown>): void {
-    const context = runtimeLogContext.getStore();
+function normalizeArgs(
+  arg1: string | number,
+  arg2?: Record<string, unknown> | number,
+  arg3?: string,
+  arg4?: Record<string, unknown>,
+): { message: string; meta?: Record<string, unknown> } {
+  const message = typeof arg1 === 'string' ? arg1 : (arg3 ?? '');
+  const meta =
+    typeof arg1 === 'string'
+      ? (arg2 as Record<string, unknown> | undefined)
+      : ({ siteId: arg1, runId: arg2 as number, ...(arg4 ?? {}) } satisfies Record<string, unknown>);
+  return { message, meta };
+}
 
-    if (!context) {
-      console.info(message, meta ?? '');
-      return;
-    }
+function info(message: string, meta?: Record<string, unknown>): void;
+function info(siteId: number, runId: number, message: string, meta?: Record<string, unknown>): void;
+function info(
+  arg1: string | number,
+  arg2?: Record<string, unknown> | number,
+  arg3?: string,
+  arg4?: Record<string, unknown>,
+): void {
+  const context = runtimeLogContext.getStore();
+  const { message, meta } = normalizeArgs(arg1, arg2, arg3, arg4);
 
-    context.logger.info(meta ?? {}, message);
-  },
-  warn(message: string, meta?: Record<string, unknown>): void {
-    const context = runtimeLogContext.getStore();
+  if (!context) {
+    console.info(message, meta ?? '');
+    return;
+  }
 
-    if (!context) {
-      console.warn(message, meta ?? '');
-      return;
-    }
+  context.logger.info(meta ?? {}, message);
+}
 
-    context.logger.warn(meta ?? {}, message);
-  },
-  error(message: string, meta?: Record<string, unknown>): void {
-    const context = runtimeLogContext.getStore();
+function warn(message: string, meta?: Record<string, unknown>): void;
+function warn(siteId: number, runId: number, message: string, meta?: Record<string, unknown>): void;
+function warn(
+  arg1: string | number,
+  arg2?: Record<string, unknown> | number,
+  arg3?: string,
+  arg4?: Record<string, unknown>,
+): void {
+  const context = runtimeLogContext.getStore();
+  const { message, meta } = normalizeArgs(arg1, arg2, arg3, arg4);
 
-    if (!context) {
-      console.error(message, meta ?? '');
-      return;
-    }
+  if (!context) {
+    console.warn(message, meta ?? '');
+    return;
+  }
 
-    context.logger.error(meta ?? {}, message);
-  },
-};
+  context.logger.warn(meta ?? {}, message);
+}
+
+function error(message: string, meta?: Record<string, unknown>): void;
+function error(siteId: number, runId: number, message: string, meta?: Record<string, unknown>): void;
+function error(
+  arg1: string | number,
+  arg2?: Record<string, unknown> | number,
+  arg3?: string,
+  arg4?: Record<string, unknown>,
+): void {
+  const context = runtimeLogContext.getStore();
+  const { message, meta } = normalizeArgs(arg1, arg2, arg3, arg4);
+
+  if (!context) {
+    console.error(message, meta ?? '');
+    return;
+  }
+
+  context.logger.error(meta ?? {}, message);
+}
+
+export const logger = { info, warn, error };

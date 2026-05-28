@@ -122,6 +122,7 @@ export interface ProcessingState {
   handledAt: string | null;
   outputPath: string | null;
   errorMessage: string | null;
+  toolName: string | null;
 }
 
 export interface SitePageDetail {
