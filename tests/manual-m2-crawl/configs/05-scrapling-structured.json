@@ -1,0 +1,66 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/product-or-doc-page"
+  ],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "structured-page-artifacts",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/product-or-doc-page"
+      ],
+      "artifacts": [
+        "structured",
+        "markdown",
+        "screenshot"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 0,
+    "crawlMaxDepth": 1
+  },
+  "captureProfiles": {
+    "default": {
+      "tools": [
+        "scrapling-page",
+        "crawl4ai-page",
+        "http-base",
+        "defuddle-markdown",
+        "playwright-screenshot"
+      ],
+      "validation": {
+        "structured": {},
+        "markdown": {
+          "minLength": 300
+        },
+        "screenshot": {
+          "minBytes": 20000
+        }
+      }
+    }
+  },
+  "defaultCaptureProfile": "default",
+  "browser": {
+    "engine": "chromium",
+    "profileMode": "ephemeral",
+    "reuse": "run_browser",
+    "contextReuse": "site_session_proxy",
+    "pageReuse": "none",
+    "proxyBinding": "session"
+  }
+}

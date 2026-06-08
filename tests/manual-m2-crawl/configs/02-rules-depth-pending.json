@@ -1,0 +1,70 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/",
+    "http://127.0.0.1:4328/docs",
+    "http://127.0.0.1:4328/login",
+    "http://127.0.0.1:4328/blog"
+  ],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-main-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    },
+    {
+      "name": "deny-auth-admin-assets",
+      "matchType": "url",
+      "listType": "blacklist",
+      "ruleType": "regex",
+      "values": [
+        "127\\.0\\.0\\.1:4328\\/(login|logout|admin|api|static|assets)",
+        "\\.(zip|pdf|png|jpg|jpeg|gif|webp|svg)(\\?|$)"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "docs-url-full-artifacts",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/docs"
+      ],
+      "artifacts": [
+        "markdown",
+        "screenshot"
+      ]
+    },
+    {
+      "name": "blog-url-markdown-only",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/blog"
+      ],
+      "artifacts": [
+        "markdown"
+      ]
+    },
+    {
+      "name": "deny-search-results",
+      "matchType": "url",
+      "listType": "blacklist",
+      "ruleType": "regex",
+      "values": [
+        "127\\.0\\.0\\.1:4328\\/(search|tag|category)(\\?|/)"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 2,
+    "crawlMaxDepth": 3
+  }
+}

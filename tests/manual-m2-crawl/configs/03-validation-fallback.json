@@ -1,0 +1,60 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/docs"
+  ],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "capture-docs-markdown",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/docs"
+      ],
+      "artifacts": [
+        "markdown"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 0,
+    "crawlMaxDepth": 1
+  },
+  "captureProfiles": {
+    "default": {
+      "tools": [
+        "http-base",
+        "jina-markdown",
+        "defuddle-markdown",
+        "lightpanda-markdown"
+      ],
+      "validation": {
+        "markdown": {
+          "minLength": 800,
+          "rejectRegex": [
+            "Access Denied",
+            "Just a moment",
+            "captcha",
+            "verify you are human"
+          ],
+          "requireRegex": [
+            "M2 Mock"
+          ]
+        }
+      }
+    }
+  },
+  "defaultCaptureProfile": "default"
+}

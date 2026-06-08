@@ -1,0 +1,80 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/__manual__/flaky-500-then-200",
+    "http://127.0.0.1:4328/__manual__/always-blocked"
+  ],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "manual-retry-pages",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/__manual__"
+      ],
+      "artifacts": [
+        "markdown",
+        "screenshot"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 0,
+    "crawlMaxDepth": 1
+  },
+  "captureProfiles": {
+    "default": {
+      "tools": [
+        "http-base",
+        "defuddle-markdown",
+        "playwright-screenshot"
+      ],
+      "validation": {
+        "base": {
+          "minLength": 20,
+          "rejectRegex": [
+            "blocked",
+            "captcha",
+            "Access Denied"
+          ]
+        },
+        "markdown": {
+          "minLength": 100,
+          "rejectRegex": [
+            "blocked",
+            "captcha",
+            "Access Denied"
+          ]
+        },
+        "screenshot": {
+          "minBytes": 10000
+        }
+      }
+    }
+  },
+  "defaultCaptureProfile": "default",
+  "browser": {
+    "engine": "chromium",
+    "profileMode": "ephemeral",
+    "reuse": "run_browser",
+    "contextReuse": "site_session_proxy",
+    "pageReuse": "none",
+    "proxyBinding": "session"
+  },
+  "proxyPolicy": {
+    "mode": "retry_on_failure",
+    "provider": "crawlee"
+  }
+}

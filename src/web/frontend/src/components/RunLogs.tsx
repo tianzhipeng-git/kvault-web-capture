@@ -75,6 +75,155 @@ interface RunLogsProps {
 
 type LogView = "events" | "runtime";
 
+type RuntimeLogLine = {
+  lineNumber: number;
+  raw: string;
+  time: string | null;
+  level: string;
+  message: string;
+  fields: Array<[string, unknown]>;
+  parsed: boolean;
+};
+
+function normalizeLevel(level: string): string {
+  const value = level.toLowerCase();
+  if (value === "warning") return "warn";
+  return value;
+}
+
+function formatRuntimeTime(value: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function parseRuntimeLogLines(content: string | undefined): RuntimeLogLine[] {
+  if (!content?.trim()) return [];
+
+  const lines: RuntimeLogLine[] = [];
+
+  content.split(/\r?\n/).forEach((raw, index) => {
+    if (!raw.trim()) return;
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const level = typeof parsed.level === "string" ? parsed.level : "INFO";
+      const message = typeof parsed.msg === "string" ? parsed.msg : raw;
+      const fields = Object.entries(parsed).filter(([key]) => key !== "time" && key !== "level" && key !== "msg");
+
+      lines.push({
+        lineNumber: index + 1,
+        raw,
+        time: typeof parsed.time === "string" ? parsed.time : null,
+        level,
+        message,
+        fields,
+        parsed: true,
+      });
+    } catch {
+      lines.push({
+        lineNumber: index + 1,
+        raw,
+        time: null,
+        level: "RAW",
+        message: raw,
+        fields: [],
+        parsed: false,
+      });
+    }
+  });
+
+  return lines;
+}
+
+function RuntimeFieldValue({ value }: { value: unknown }) {
+  if (typeof value === "object" && value !== null) {
+    return (
+      <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted p-2 text-[11px] leading-5 whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    );
+  }
+
+  return <span className="break-all">{String(value)}</span>;
+}
+
+function RuntimeLogLineItem({ line }: { line: RuntimeLogLine }) {
+  const level = normalizeLevel(line.level);
+  const url = line.fields.find(([key]) => key === "url")?.[1];
+  const summaryFields = line.fields.filter(([key]) => key === "id" || key === "retryCount" || key === "currentConcurrency" || key === "desiredConcurrency");
+  const detailFields = line.fields.filter(([key]) => key !== "url" && !summaryFields.some(([summaryKey]) => summaryKey === key));
+
+  return (
+    <div
+      className={`rounded-md border px-3 py-2 text-sm ${
+        level === "error"
+          ? "border-destructive/20 bg-destructive/5"
+          : level === "warn"
+            ? "border-yellow-500/20 bg-yellow-500/5"
+            : "bg-background"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <LevelIcon level={level} />
+        <span className="mt-0.5 w-16 shrink-0 font-mono text-xs text-muted-foreground">
+          {formatRuntimeTime(line.time)}
+        </span>
+        <Badge
+          variant={level === "error" ? "destructive" : level === "warn" ? "secondary" : "outline"}
+          className="mt-0.5 h-4 shrink-0 px-1.5 py-0 text-[10px]"
+        >
+          {line.level}
+        </Badge>
+        <span className={`min-w-0 flex-1 leading-6 ${level === "error" ? "text-destructive" : ""}`}>
+          {line.message}
+        </span>
+      </div>
+      {typeof url === "string" && (
+        <div className="mt-1 pl-[5.9rem] font-mono text-xs text-muted-foreground break-all">
+          {url}
+        </div>
+      )}
+      {summaryFields.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-2 pl-[5.9rem] text-xs text-muted-foreground">
+          {summaryFields.map(([key, value]) => (
+            <span key={key} className="rounded border bg-muted/40 px-1.5 py-0.5">
+              {key}: <span className="text-foreground">{String(value)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {(detailFields.length > 0 || !line.parsed) && (
+        <details className="mt-2 pl-[5.9rem]">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            查看原始字段
+          </summary>
+          {detailFields.length > 0 ? (
+            <div className="mt-2 grid gap-2">
+              {detailFields.map(([key, value]) => (
+                <div key={key} className="text-xs">
+                  <div className="font-mono text-muted-foreground">{key}</div>
+                  <RuntimeFieldValue value={value} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <pre className="mt-2 overflow-auto rounded bg-muted p-2 text-[11px] leading-5 whitespace-pre-wrap">
+              {line.raw}
+            </pre>
+          )}
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: RunLogsProps) {
   const [logs, setLogs] = useState<RunLogItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -235,8 +384,9 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
     </div>
   );
 
+  const runtimeLogLines = parseRuntimeLogLines(runtimeLog?.content);
   const runtimeLogContent = (
-    <div className="rounded border bg-muted/30 font-mono text-xs">
+    <div className="rounded border bg-muted/30 text-xs">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5 text-muted-foreground">
         <span className="truncate">{runtimeLog?.relativePath ?? `runs/${runId}/runtime.log`}</span>
         {runtimeLog?.truncated && <span className="shrink-0">仅显示末尾 500 行</span>}
@@ -249,10 +399,15 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
       {runtimeLogError && (
         <p className="px-3 py-2 text-destructive">{runtimeLogError}</p>
       )}
-      {!runtimeLogError && (
-        <pre className="whitespace-pre-wrap px-3 py-2">
-          {runtimeLog?.content ?? "日志文件暂无内容。"}
-        </pre>
+      {!runtimeLogLoading && !runtimeLogError && runtimeLogLines.length === 0 && (
+        <p className="px-3 py-4 text-center text-sm text-muted-foreground">日志文件暂无内容。</p>
+      )}
+      {!runtimeLogError && runtimeLogLines.length > 0 && (
+        <div className="space-y-2 p-2">
+          {runtimeLogLines.map((line) => (
+            <RuntimeLogLineItem key={line.lineNumber} line={line} />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -329,7 +484,7 @@ export function RunLogs({ runId, sitePageId, includeRunError = true, inline }: R
             : "结构化事件日志，包含每次页面处理和 artifact 生成的结果。"}
         </CardDescription>
       </CardHeader>
-      <CardContent className="max-h-[520px] overflow-y-auto font-mono text-xs">
+      <CardContent className="max-h-[520px] overflow-y-auto">
         {content}
       </CardContent>
     </Card>

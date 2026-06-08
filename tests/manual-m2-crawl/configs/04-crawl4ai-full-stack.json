@@ -1,0 +1,74 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/docs"
+  ],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "docs-full-stack-artifacts",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328/docs"
+      ],
+      "artifacts": [
+        "markdown",
+        "screenshot",
+        "structured"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 0,
+    "crawlMaxDepth": 1
+  },
+  "captureProfiles": {
+    "default": {
+      "tools": [
+        "crawl4ai-page",
+        "http-base",
+        "defuddle-markdown",
+        "lightpanda-markdown",
+        "jina-markdown",
+        "playwright-screenshot"
+      ],
+      "validation": {
+        "base": {
+          "minLength": 100
+        },
+        "markdown": {
+          "minLength": 500,
+          "rejectRegex": [
+            "Access Denied",
+            "Just a moment",
+            "captcha"
+          ]
+        },
+        "screenshot": {
+          "minBytes": 20000
+        }
+      }
+    }
+  },
+  "defaultCaptureProfile": "default",
+  "browser": {
+    "engine": "chromium",
+    "profileMode": "ephemeral",
+    "reuse": "run_browser",
+    "contextReuse": "site_session_proxy",
+    "pageReuse": "none",
+    "proxyBinding": "session"
+  }
+}

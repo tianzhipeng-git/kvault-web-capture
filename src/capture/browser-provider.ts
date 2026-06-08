@@ -117,6 +117,10 @@ export function browserIdentityFromRuntime(input: {
 }
 
 function processKey(identity: BrowserIdentity, browserConfig?: BrowserConfig): string {
+  if (identity.engine === 'lightpanda' && identity.profileKey?.startsWith('lease:')) {
+    return `${identity.engine}:${identity.profileKey}`;
+  }
+
   if (browserConfig?.reuse === 'site_browser') {
     return `${identity.engine}:site:${identity.siteId}`;
   }
@@ -125,6 +129,10 @@ function processKey(identity: BrowserIdentity, browserConfig?: BrowserConfig): s
 }
 
 function contextKey(identity: BrowserIdentity, browserConfig?: BrowserConfig): string {
+  if (identity.engine === 'lightpanda' && identity.profileKey?.startsWith('lease:')) {
+    return processKey(identity, browserConfig);
+  }
+
   if (browserConfig?.contextReuse === 'site_run') {
     return [
       identity.engine,
@@ -191,6 +199,8 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
   private readonly contexts = new Map<string, BrowserContextEntry>();
 
+  private lightpandaLeaseId = 0;
+
   constructor(private readonly siteConfig?: { browser?: BrowserConfig }) {}
 
   async acquirePage(input: {
@@ -212,8 +222,26 @@ export class PlaywrightBrowserManager implements BrowserManager {
       throw new Error(`Crawlee session ${session.id ?? '(unknown)'} is not usable`);
     }
 
-    const context = await this.getContext(input);
-    const page = await context.newPage();
+    const identity = input.identity.engine === 'lightpanda'
+      ? {
+          ...input.identity,
+          profileKey: `lease:${++this.lightpandaLeaseId}`,
+        }
+      : input.identity;
+    let context: BrowserContext;
+    let page: Page;
+    try {
+      context = await this.getContext({
+        ...input,
+        identity,
+      });
+      page = await context.newPage();
+    } catch (error) {
+      if (identity.engine === 'lightpanda') {
+        await this.retireIdentity(identity, 'lightpanda page lease acquisition failed').catch(() => {});
+      }
+      throw error;
+    }
     let released = false;
     logger.info('Browser page lease acquired', {
       requestId: input.runtime.requestId,
@@ -224,7 +252,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
     return {
       page,
-      identity: input.identity,
+      identity,
       release: async () => {
         if (released) {
           return;
@@ -240,6 +268,9 @@ export class PlaywrightBrowserManager implements BrowserManager {
           });
         });
         await page.close().catch(() => {});
+        if (identity.engine === 'lightpanda') {
+          await this.retireIdentity(identity, 'lightpanda page lease completed').catch(() => {});
+        }
         logger.info('Browser page lease released', {
           requestId: input.runtime.requestId,
           url: input.url,
@@ -286,6 +317,17 @@ export class PlaywrightBrowserManager implements BrowserManager {
     if (entry) {
       this.contexts.delete(key);
       await entry.context.close().catch(() => {});
+    }
+    if (identity.engine === 'lightpanda' && identity.profileKey?.startsWith('lease:')) {
+      const browserKey = processKey(identity, this.siteConfig?.browser);
+      const browserEntry = this.browserProcesses.get(browserKey);
+      if (browserEntry) {
+        this.browserProcesses.delete(browserKey);
+        await browserEntry.browser.close().catch(() => {});
+        if (browserEntry.process && !browserEntry.process.killed) {
+          browserEntry.process.kill('SIGTERM');
+        }
+      }
     }
     logger.warn('Browser identity retired', {
       identity: browserIdentityLogMeta(identity),

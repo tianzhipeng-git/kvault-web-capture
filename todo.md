@@ -42,3 +42,21 @@ multica: 项目的首页再加一个功能，叫链接展开。如果贴的是�
 
 * markdown接口提交后直接得到markdown格式结果返回
 
+<br />
+
+## 更多站点
+
+<br />
+
+andrew提到的Web-Capture升级:
+
+* 电商页
+
+  * 评论(amazon之外的)
+
+* 众筹页+评论
+
+* 论坛(reddit之外的)
+
+* 独立站
+

@@ -1,0 +1,75 @@
+{
+  "seedUrls": [
+    "http://127.0.0.1:4328/",
+    "http://127.0.0.1:4328/docs"
+  ],
+  "sitemaps": [
+    "http://127.0.0.1:4328/sitemap.xml"
+  ],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "scope-site",
+      "matchType": "url",
+      "listType": "scopelist",
+      "ruleType": "prefix",
+      "values": [
+        "127.0.0.1:4328"
+      ]
+    },
+    {
+      "name": "block-auth-and-admin",
+      "matchType": "url",
+      "listType": "blacklist",
+      "ruleType": "regex",
+      "values": [
+        "127\\.0\\.0\\.1:4328\\/(login|logout|admin|account)"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "capture-content-labels",
+      "matchType": "label",
+      "listType": "whitelist",
+      "when": [
+        {
+          "key": "content_type",
+          "op": "any_of",
+          "values": [
+            "docs",
+            "product",
+            "generic"
+          ]
+        }
+      ],
+      "artifacts": [
+        "markdown",
+        "screenshot"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 1,
+    "crawlMaxDepth": 2
+  },
+  "captureProfiles": {
+    "default": {
+      "tools": [
+        "http-base",
+        "defuddle-markdown",
+        "lightpanda-markdown",
+        "jina-markdown",
+        "playwright-screenshot"
+      ]
+    }
+  },
+  "defaultCaptureProfile": "default",
+  "browser": {
+    "engine": "chromium",
+    "profileMode": "ephemeral",
+    "reuse": "run_browser",
+    "contextReuse": "site_session_proxy",
+    "pageReuse": "none",
+    "proxyBinding": "session"
+  }
+}

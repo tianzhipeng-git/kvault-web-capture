@@ -325,6 +325,35 @@ describe('capture stack e2e smoke', () => {
     expect(result.markdown).toContain('Docs content for inventory and crawl testing.');
   });
 
+  it('isolates concurrent lightpanda page leases', async ({ skip }) => {
+    if (!(await engineAvailable('lightpanda'))) {
+      skip();
+    }
+
+    const server = await startTestSiteServer();
+    servers.push(server);
+    const config = browserConfigFor('lightpanda');
+    const manager = new PlaywrightBrowserManager({ browser: config });
+    managers.push(manager);
+    const tool = new LightpandaMarkdownTool(manager);
+
+    const [docs, product] = await Promise.all([
+      tool.capture(makeInput({
+        url: `${server.baseUrl}/docs`,
+        needs: ['markdown'],
+        siteConfig: makeSiteConfig(server.baseUrl, config),
+      })),
+      tool.capture(makeInput({
+        url: `${server.baseUrl}/product`,
+        needs: ['markdown'],
+        siteConfig: makeSiteConfig(server.baseUrl, config),
+      })),
+    ]);
+
+    expect(docs.markdown).toContain('Docs content for inventory and crawl testing.');
+    expect(product.markdown).toContain('Product content for artifact capture.');
+  });
+
   it('captures screenshots with cloakbrowser when cloakbrowser can be launched', async ({ skip }) => {
     if (!(await engineAvailable('cloakbrowser'))) {
       skip();

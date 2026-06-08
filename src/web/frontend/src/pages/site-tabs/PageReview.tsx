@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import type { FormEvent, ReactElement } from "react";
+import type { FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { ProcessingState, ProjectExportArtifact, SitePageDetail, SitePageListRow } from "@/lib/api";
@@ -169,52 +172,47 @@ function ProcessingCard({
   );
 }
 
+const markdownComponents: Components = {
+  h1: ({ children }) => <h1 className="mt-5 first:mt-0 text-xl font-semibold leading-7">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-5 first:mt-0 text-lg font-semibold leading-7">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-4 first:mt-0 text-base font-semibold leading-6">{children}</h3>,
+  h4: ({ children }) => <h4 className="mt-4 first:mt-0 text-sm font-semibold leading-6">{children}</h4>,
+  p: ({ children }) => <p className="my-3 text-sm leading-6">{children}</p>,
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => <ul className="my-3 list-disc space-y-1 pl-6 text-sm leading-6">{children}</ul>,
+  ol: ({ children }) => <ol className="my-3 list-decimal space-y-1 pl-6 text-sm leading-6">{children}</ol>,
+  li: ({ children }) => <li className="pl-1">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-4 border-l-4 border-border pl-4 text-sm text-muted-foreground">{children}</blockquote>
+  ),
+  code: ({ className, children }) => (
+    <code className={className ? className : "rounded bg-muted px-1.5 py-0.5 text-xs"}>{children}</code>
+  ),
+  pre: ({ children }) => <pre className="my-4 overflow-auto rounded-md bg-muted p-3 text-xs leading-5">{children}</pre>,
+  table: ({ children }) => (
+    <div className="my-4 overflow-x-auto rounded-md border">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th className="border-b bg-muted px-3 py-2 text-left font-semibold">{children}</th>,
+  td: ({ children }) => <td className="border-t px-3 py-2 align-top">{children}</td>,
+  hr: () => <hr className="my-5 border-border" />,
+};
+
 function MarkdownPreview({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const blocks: ReactElement[] = [];
-  let index = 0;
-
-  while (index < lines.length) {
-    const line = lines[index];
-
-    if (line.startsWith("```")) {
-      const codeLines: string[] = [];
-      index += 1;
-      while (index < lines.length && !lines[index].startsWith("```")) {
-        codeLines.push(lines[index]);
-        index += 1;
-      }
-      blocks.push(
-        <pre key={index} className="overflow-auto rounded-md bg-muted p-3 text-xs">
-          {codeLines.join("\n")}
-        </pre>,
-      );
-    } else if (line.startsWith("### ")) {
-      blocks.push(<h3 key={index} className="text-sm font-semibold">{line.slice(4)}</h3>);
-    } else if (line.startsWith("## ")) {
-      blocks.push(<h2 key={index} className="text-base font-semibold">{line.slice(3)}</h2>);
-    } else if (line.startsWith("# ")) {
-      blocks.push(<h1 key={index} className="text-lg font-semibold">{line.slice(2)}</h1>);
-    } else if (line.startsWith("- ")) {
-      const items: string[] = [];
-      while (index < lines.length && lines[index].startsWith("- ")) {
-        items.push(lines[index].slice(2));
-        index += 1;
-      }
-      blocks.push(
-        <ul key={index} className="list-disc space-y-1 pl-5 text-sm">
-          {items.map((item) => <li key={item}>{item}</li>)}
-        </ul>,
-      );
-      continue;
-    } else if (line.trim()) {
-      blocks.push(<p key={index} className="text-sm leading-6">{line}</p>);
-    }
-
-    index += 1;
+  if (!content.trim()) {
+    return <div className="text-sm text-muted-foreground">暂无内容。</div>;
   }
 
-  return <div className="space-y-3">{blocks.length > 0 ? blocks : <div className="text-sm text-muted-foreground">暂无内容。</div>}</div>;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
 }
 
 function PreviewPanel({
