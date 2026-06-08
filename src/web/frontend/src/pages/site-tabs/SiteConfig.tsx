@@ -19,6 +19,13 @@ import {
 } from "@/lib/rule-assistant";
 import { RuleListEditor, type Rule, createDefaultRule } from "./RuleEditor";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
+import { CaptureConfigEditor } from "./CaptureConfigEditor";
+import {
+  captureConfigFromApi,
+  captureConfigToApi,
+  type CaptureConfigFormState,
+  type SiteConfigM2Fields,
+} from "@/lib/capture-config-form";
 
 function RulePreviewDialog({
   siteId,
@@ -123,7 +130,7 @@ function RulePreviewDialog({
 }
 
 
-interface SiteConfigShape {
+interface SiteConfigShape extends SiteConfigM2Fields {
   seedUrls: string[];
   sitemaps: string[];
   rulesBeforeBaseEq: Rule[];
@@ -186,6 +193,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantTarget, setAssistantTarget] = useState<AssistantTarget>({ kind: "generic" });
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [captureConfig, setCaptureConfig] = useState<CaptureConfigFormState>(() => captureConfigFromApi({}));
 
   const hydrate = (nextConfig: SiteConfigShape) => {
     setConfig(nextConfig);
@@ -196,6 +204,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     setRulesBeforeStage2Eq((nextConfig.rulesBeforeStage2Eq || []) as Rule[]);
     setSeedMaxDepth(String(nextConfig.runOptions.seedMaxDepth));
     setCrawlMaxDepth(String(nextConfig.runOptions.crawlMaxDepth));
+    setCaptureConfig(captureConfigFromApi(nextConfig));
   };
 
   const loadConfig = () => {
@@ -224,6 +233,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
       seedMaxDepth: Number(seedMaxDepth),
       crawlMaxDepth: Number(crawlMaxDepth),
     },
+    ...captureConfigToApi(captureConfig),
   });
 
   const saveConfig = async (nextConfig: SiteConfigShape) => {
@@ -347,9 +357,9 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     <div className="space-y-6">
       <Card>
         <CardHeader className="flex flex-row items-baseline gap-2 space-y-0">
-          <CardTitle>规则配置</CardTitle>
+          <CardTitle>站点配置</CardTitle>
           <CardDescription>
-            表单模式覆盖常用配置，JSON 模式保留完整逃生口；保存时统一走后端 SiteConfig 校验。
+            表单模式覆盖规则与 M2 抓取策略，JSON 模式保留完整逃生口；保存时统一走后端 SiteConfig 校验。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -437,7 +447,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <div className="flex items-baseline gap-2">
                 <CardTitle>深度爬取规则</CardTitle>
-                <CardDescription>用于指定是否爬取Markdown/截图，支持 URL 匹配和 HTML 标签匹配。</CardDescription>
+                <CardDescription>用于指定是否爬取Markdown/截图/结构化数据，支持 URL 匹配和 HTML 标签匹配。</CardDescription>
               </div>
               <Button
                 variant="outline"
@@ -458,6 +468,8 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               />
             </CardContent>
           </Card>
+
+          <CaptureConfigEditor value={captureConfig} onChange={setCaptureConfig} />
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" className="gap-2" onClick={() => setPreviewOpen(true)}>

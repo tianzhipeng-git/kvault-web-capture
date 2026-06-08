@@ -48,7 +48,11 @@ function postgresSql(sql: string): string {
 
 function postgresRunSql(sql: string): string {
   const converted = postgresSql(sql);
-  if (/^\s*INSERT\b/i.test(converted) && !/\bRETURNING\b/i.test(converted)) {
+  if (
+    /^\s*INSERT\b/i.test(converted) &&
+    !/\bRETURNING\b/i.test(converted) &&
+    !/\bON\s+CONFLICT\b/i.test(converted)
+  ) {
     return `${converted.replace(/;\s*$/, '')} RETURNING id`;
   }
   return converted;
