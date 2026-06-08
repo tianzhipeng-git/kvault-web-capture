@@ -45,7 +45,7 @@ Browser process 是实际浏览器进程，例如 Chromium、CloakBrowser、Ligh
 - 可以承载多个 context 或多个 CDP client。
 - 崩溃会影响其下所有 context/page。
 
-当前项目的默认 `PlaywrightBrowserProvider` 是每次截图都启动一个新 browser process，用完就关闭。
+当前项目的 `PlaywrightBrowserManager` 会按 `browser.reuse` 复用 browser process。默认 `run_browser` 表示一次 run 内按 engine 复用 browser process，并在 run 结束时关闭。
 
 ### 3.2 BrowserContext
 
@@ -136,11 +136,11 @@ Crawlee session 是 Crawlee 的请求身份和健康状态单元。
 - 与 proxy 策略配合。
 - 在请求之间携带 cookie jar 或 session 状态。
 
-在当前项目里，Crawlee session **已经启用**。`src/crawlee/capture-runtime.ts` 创建的是 `BasicCrawler`，当前安装的 Crawlee 3.16 中 `BasicCrawler` 默认 `useSessionPool = true`；
+在当前项目里，Crawlee session **已经启用**。`src/crawlee/capture-runtime.ts` 创建的是 `BasicCrawler`，当前安装的 Crawlee 3.13.x 中 `BasicCrawler` 默认 `useSessionPool = true`；
 
-因此运行时会打开 Crawlee `SessionPool`，每个 Crawlee request handler 会拿到一个 `context.session`。项目随后把它透传到runtime.
+因此运行时会打开 Crawlee `SessionPool`，每个 Crawlee request handler 会拿到一个 `context.session`。项目随后把它透传到 `RuntimeContext`。
 
-也就是说，当前项目不是“未来可能启用 session”，而是“Crawlee 调度层已经有 session，只是浏览器层还没有消费它”。
+也就是说，当前项目不是“未来可能启用 session”，而是“Crawlee 调度层已经有 session，浏览器层也会把它作为 browser identity、cookie 同步和健康检查的输入”。
 
 Crawlee `Session` 本身可以保存和维护这些信息：
 
@@ -154,14 +154,15 @@ Crawlee `Session` 本身可以保存和维护这些信息：
 
 当前 `RuntimeContext.sendRequest` 是基于 Crawlee `context.sendRequest` 包装的。Crawlee 的 `sendRequest` 会把当前 session 的 cookie jar 接进 HTTP 请求，并使用当前 crawling context 的 proxy URL。因此 `HttpBaseTool`、部分 markdown tool、Kickstarter adapter 这类使用 `runtime.sendRequest` 的工具，已经间接受 Crawlee session cookie 影响。
 
-但当前 `PlaywrightBrowserProvider` 没有读取 `runtime.session`：
+当前 `PlaywrightBrowserManager` 已经读取 `runtime.session`：
 
-- 不会把 Crawlee session cookie 注入 BrowserContext。
-- 不会把浏览器产生的新 cookie 回写 Crawlee session。
-- 不会把 `session.id` 用作 context/profile 复用 key。
-- 不会根据浏览器侧 403/captcha 等结果 retire Crawlee session。
+- 创建 context 时会尝试把 Crawlee session cookie 注入 BrowserContext。
+- page release 时会把浏览器 cookie 回写 Crawlee session。
+- 默认 `contextReuse: site_session_proxy` 会把 `session.id` 作为 context key 的一部分。
+- `acquirePage` 前会检查 `session.isUsable()`，不可用时直接抛错。
+- 不会根据浏览器侧 403/captcha 等结果主动 retire Crawlee session。
 
-所以当前状态是：**HTTP 层有 Crawlee session，浏览器层没有 Crawlee session 身份连续性。**
+所以当前状态是：**HTTP 层和浏览器层已经共享 Crawlee session 信号，但封禁识别后的主动 retire 策略尚未落地。**
 
 在新方案里，Crawlee session 的定位应该是“身份与健康信号输入”，而不是完整浏览器状态的唯一真相源：
 
@@ -226,7 +227,7 @@ interface BrowserIdentity {
   sessionId?: string;
   proxyKey?: string;
   engine: 'chromium' | 'cloakbrowser' | 'lightpanda';
-  profileMode: 'ephemeral' | 'persistent';
+  profileMode: 'ephemeral' | 'persistent' | 'storage_state';
 }
 ```
 
@@ -418,7 +419,7 @@ profileKey = siteId + accountId + proxyKey + engine
 | proxy | 通知 Crawlee/session/proxy 策略 retire |
 | browser process | 关闭并重建 |
 
-BrowserManager 应暴露类似接口：
+未来如果要把封禁淘汰做成显式策略，BrowserManager 可以暴露类似接口：
 
 ```ts
 retireIdentity(identity, reason)
@@ -452,7 +453,7 @@ persistent profile active context = 1
 
 ## 10. 配置建议
 
-未来可以把浏览器策略放到 `SiteConfig`：
+浏览器策略已经放到 `SiteConfig.browser`：
 
 ```json
 {
@@ -495,34 +496,17 @@ capture profile 仍负责 tool 顺序：
 - `captureProfiles` 决定“用什么工具抓”。
 - `browser` 决定“这些工具使用什么浏览器身份”。
 
-## 11. 实施顺序
+## 11. 已落地与后续方向
 
-### 阶段一：只复用 browser process
+### 已落地
 
 - 保留 page 短租短还。
-- 一个 run 内按 engine 复用 browser process。
-- 截图 tool 使用 BrowserManager。
+- 一个 run 内按 engine 复用 browser process，支持 `run_browser` / `site_browser` key。
+- context 默认按 site + session + proxy + profile 复用，也支持 `site_run`。
+- 截图 tool、Lightpanda markdown、Crawl4AI / Scrapling bridge 使用 BrowserManager。
+- BrowserManager 暴露 `acquirePage(...)` 和 `acquireCdpEndpoint(...)`。
 
-收益最大，风险较低。
-
-### 阶段二：context 绑定 Crawlee session/proxy
-
-- 从 `RuntimeContext.session` 提取 session id。
-- 从 `RuntimeContext.proxyInfo` 提取 proxy key。
-- `contextKey = siteId + sessionId + proxyKey`。
-- context 内创建 page lease。
-
-解决 HTTP 与浏览器身份断裂问题。
-
-### 阶段三：CDP endpoint 给 Python tools
-
-- BrowserManager 暴露 `acquireCdpEndpoint(...)`。
-- Python bridge 将 `cdp_url` 传给 Crawl4AI / Scrapling。
-- tool 返回结果后 release lease。
-
-解决 TS/Python browser 分裂问题。
-
-### 阶段四：persistent profile / storageState
+### 后续方向：persistent profile / storageState
 
 - 增加 profile registry。
 - profile 与 site/account/proxy 绑定。
@@ -534,9 +518,9 @@ capture profile 仍负责 tool 顺序：
 
 | 目标 | 优先查看 |
 |------|----------|
-| 当前 BrowserProvider | `src/capture/browser-provider.ts` |
+| 当前 BrowserManager | `src/capture/browser-provider.ts` |
 | 当前截图 tool | `src/capture/captools/playwright-screenshot-tool.ts` |
 | RuntimeContext session/proxy 来源 | `src/crawlee/capture-runtime.ts` |
-| Python bridge | `src/capture/python-bridge.ts`、`src/capture/captools/python-tools.ts` |
+| Python bridge | `src/capture/python-bridge.ts`、`src/capture/captools/crawl4ai-tool.ts`、`src/capture/captools/scrapling-tool.ts` |
 | Capture profile | `src/capture/profile-resolver.ts`、`src/domain/types.ts` |
 | 站点配置解析 | `src/config/site-config.ts` |

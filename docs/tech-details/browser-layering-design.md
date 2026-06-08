@@ -22,18 +22,19 @@
 
 | 文件 | 作用 |
 |------|------|
-| `src/capture/browser-provider.ts` | 定义 `BrowserProvider`，默认每次 `chromium.launch()` 并创建一个 page |
-| `src/capture/captools/playwright-screenshot-tool.ts` | 通过 `BrowserProvider` 获取 page，导航后截图 |
-| `src/capture/captools/python-tools.ts` | 调用 Python tool，间接使用 Crawl4AI / Scrapling |
+| `src/capture/browser-provider.ts` | 定义 `BrowserManager` / `PlaywrightBrowserManager`，统一管理 browser process、context、page lease 和 CDP lease |
+| `src/capture/captools/playwright-screenshot-tool.ts` | 通过 `BrowserManager` 获取 page，导航后截图 |
+| `src/capture/captools/markdown-tool.ts` | `LightpandaMarkdownTool` 通过 `BrowserManager` 获取 Lightpanda page 并调用 `LP.getMarkdown` |
+| `src/capture/captools/crawl4ai-tool.ts` / `src/capture/captools/scrapling-tool.ts` | 通过 `PythonBridge` 调用 Python tool，并优先使用 `BrowserManager` 提供的 CDP lease |
 | `src/crawlee/capture-runtime.ts` | 使用 Crawlee `BasicCrawler` 调度任务，并传入 `RuntimeContext` |
 
 当前实现的特点：
 
 - Crawlee 主要承担 run 内队列调度、并发、重试、session/proxy 信息承载。
-- Playwright 只被本项目截图 tool 直接使用。
-- Crawl4AI / Scrapling 作为 Python tool 独立执行，浏览器生命周期不由项目统一管理。
-- Lightpanda 目前是 markdown CLI fallback，不是项目统一浏览器选项。
-- `RuntimeContext.session` 和 `RuntimeContext.proxyInfo` 已经传到 capture 层，但默认 `PlaywrightBrowserProvider` 没有使用它们。
+- Playwright 是 BrowserManager 的主要控制协议，用于 Chromium / CloakBrowser / Lightpanda 的 page lease 和 CDP lease。
+- Crawl4AI / Scrapling 作为 Python bridge tool 执行；如果 BrowserManager 能提供 CDP endpoint，会优先连接项目管理的浏览器身份，否则回退到各自默认方式。
+- Lightpanda 已经是 `browser.engine` 的可选值，并由 `LightpandaMarkdownTool` 强制使用 Lightpanda engine。
+- `RuntimeContext.session` 和 `RuntimeContext.proxyInfo` 会参与 `BrowserIdentity` 构造；BrowserManager 会尝试同步 Crawlee session cookie，并按 `browser.proxyBinding` 绑定或忽略 runtime proxy。
 
 ## 3. 三层模型
 
@@ -104,13 +105,13 @@ Playwright 作为桥是合理的，原因是：
 - Playwright 不知道本项目的 `siteId`、`runId`、`PageCaptureTask`、`CaptureProfile`。
 - Playwright 不负责决定一个 context 应该绑定哪个 proxy/session/profile。
 - Playwright 不负责跨 TS/Python tool 的 CDP endpoint 生命周期协调。
-- Playwright 不负责持久业务状态，项目的真相源仍是 SQLite 和 artifact 文件。
+- Playwright 不负责持久业务状态，项目的真相源仍是业务数据库和 artifact 文件。
 
 因此项目内部需要一层比 Playwright 更靠近业务的抽象。
 
-## 5. 推荐目标架构
+## 5. 当前 BrowserManager 架构
 
-推荐新增 BrowserManager / BrowserRuntime 层：
+当前已经落地 BrowserManager / BrowserRuntime 层：
 
 ```mermaid
 flowchart TD
@@ -123,7 +124,7 @@ flowchart TD
   Lease --> PyTool["Python tool via cdp_url"]
 ```
 
-核心接口可以朝这个方向演进：
+核心接口：
 
 ```ts
 interface BrowserIdentity {
@@ -132,7 +133,7 @@ interface BrowserIdentity {
   sessionId?: string;
   proxyKey?: string;
   engine: 'chromium' | 'cloakbrowser' | 'lightpanda';
-  profileMode: 'ephemeral' | 'persistent';
+  profileMode: 'ephemeral' | 'persistent' | 'storage_state';
 }
 
 interface BrowserManager {
@@ -147,7 +148,6 @@ interface BrowserManager {
     runtime: RuntimeContext;
   }): Promise<CdpLease>;
 
-  retireIdentity(identity: BrowserIdentity, reason: string): Promise<void>;
   close(): Promise<void>;
 }
 ```
@@ -157,7 +157,7 @@ interface BrowserManager {
 - `PageLease` 面向 TS Playwright tool。
 - `CdpLease` 面向 Crawl4AI、Scrapling、Lightpanda TS/CDP 客户端。
 - `BrowserIdentity` 用于把站点、运行、代理、session、profile 绑定成一个自洽浏览器身份。
-- `retireIdentity` 用于某个身份被封禁、崩溃、污染后主动淘汰。
+- 当前接口没有单独的 `retireIdentity`；租约释放、context 引用计数和 run 结束关闭由 `PlaywrightBrowserManager` 管理。
 
 ## 6. 上层工具定位
 
@@ -166,7 +166,7 @@ interface BrowserManager {
 | 本项目 Playwright screenshot tool | 原生 TS consumer | BrowserManager 返回 `PageLease` |
 | Crawl4AI | Python consumer | BrowserManager 提供 `cdp_url`，Crawl4AI 使用 `BrowserConfig.cdp_url` |
 | Scrapling | Python consumer | 优先通过 CDP 连接项目管理的浏览器 |
-| Lightpanda markdown | 先保留 CLI fallback，后续升级为 engine 或 CDP browser option | BrowserManager 管理 Lightpanda process/CDP endpoint |
+| Lightpanda markdown | 浏览器 Markdown consumer | BrowserManager 管理 Lightpanda process/CDP endpoint |
 | CloakBrowser | BrowserEngine | BrowserManager 用 CloakBrowser launch 或 CDP server 创建身份 |
 | Chromium | BrowserEngine | BrowserManager 用 Playwright 原生 launch 或 CDP 连接 |
 

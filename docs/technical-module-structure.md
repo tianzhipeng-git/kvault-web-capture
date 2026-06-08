@@ -25,7 +25,7 @@ Kvault Web Capture 是一个本地运行的可交互网页采集系统。核心�
 - 数据库：默认 SQLite `node:sqlite`，可通过 `KVAULT_DATABASE_URL` 使用 PostgreSQL
 - Web 后端：Fastify
 - Web 鉴权：内存 Session + HTTP-only Cookie
-- 前端：React 18 + Vite + React Router v6 + Tailwind CSS + shadcn/ui/Radix + Framer Motion
+- 前端：React 19 + Vite + React Router v7 + Tailwind CSS + shadcn/Radix/Base UI + Framer Motion
 - 测试：Vitest
 
 ### 1.3 顶层模块地图
@@ -66,7 +66,7 @@ flowchart TD
 - 接入层：CLI 和 Web API。
 - 编排层：`CaptureApp`，负责把配置、数据库、队列和 crawler 串起来。
 - 执行层：Planner、Rules、Crawlee handlers、各种 capture adapter。
-- 状态层：SQLite 业务状态 + Crawlee storage 执行状态 + 文件系统 artifact。
+- 状态层：业务数据库 + run 内 Crawlee 执行状态 + 文件系统 artifact。
 
 ## 2. 核心领域模型
 
@@ -159,11 +159,11 @@ Artifact 类型目前包括：
 
 规则判定实现在 `src/rules/rule-decision.ts`。如果后续要增加规则类型、条件操作符或 artifact 选择策略，优先从这个文件和 `SiteConfig` 类型开始。
 
-规则 JSON 的编写方式见 [规则格式编写指南](./rule-format-guide.md)。
+规则 JSON 的编写方式见 [规则格式编写指南](./user-guide/site-config-rule-format-guide.md)。
 
 ## 3. 运行时架构
 
-运行时的主链路由 `RunService` 编排，`CaptureApp` 负责应用装配和统一入口。Crawlee 负责单队列调度和底层 HTTP 能力，`PageCaptureExecutor` 负责调用具体 `CaptureTool`，SQLite 负责业务状态，文件系统负责保存实际 artifact。
+运行时的主链路由 `RunService` 编排，`CaptureApp` 负责应用装配和统一入口。Crawlee 负责单队列调度和底层 HTTP 能力，`PageCaptureExecutor` 负责调用具体 `CaptureTool`，业务数据库负责业务状态，文件系统负责保存实际 artifact。
 
 ### 3.1 主链路图
 

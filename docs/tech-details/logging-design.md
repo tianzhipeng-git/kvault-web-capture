@@ -143,7 +143,7 @@ Crawlee 自己有一套 `log` 输出。项目在 `openRuntimeLog(...)` 中调用
 
 | 类型 | 写入位置 | 说明 |
 | --- | --- | --- |
-| SQLite 数据库 | 配置的 database path | `run_logs`、`crawl_runs` 等业务状态会进入数据库文件 |
+| 业务数据库 | `KVAULT_DB_PATH` / `.local/state.db`，或 `KVAULT_DATABASE_URL` 指向的 PostgreSQL | `run_logs`、`crawl_runs` 等业务状态会进入数据库 |
 | base capture | `artifacts/run-{runId}/page-{sitePageId}/base.md` | 页面基础提取结果，不是日志 |
 | markdown artifact | `artifacts/run-{runId}/page-{sitePageId}/markdown.md` | markdown 采集结果，不是日志 |
 | screenshot artifact | `artifacts/run-{runId}/page-{sitePageId}/screenshot.png` | 截图结果，不是日志 |
