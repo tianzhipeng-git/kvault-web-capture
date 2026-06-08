@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { CaptureTool } from '../src/capture/types.js';
 import { PageCaptureExecutor } from '../src/capture/executor.js';
 import type { CaptureResult, RuntimeContext } from '../src/capture/types.js';
 import { FakeClassifier } from '../src/classification/fake-classifier.js';
@@ -35,6 +36,7 @@ const runtime: RuntimeContext = {
 };
 
 const siteConfig = createDefaultSiteConfig('https://example.com');
+const defaultTestCaptureTools: CaptureTool[] = [];
 
 function makeExtractedPage(overrides?: Partial<ExtractedPage>): ExtractedPage {
   return {
@@ -213,6 +215,7 @@ describe('createPageCaptureRequestHandler – base task', () => {
       pageRunRepository,
       sitePageRepository,
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog,
     });
 
@@ -248,6 +251,7 @@ describe('createPageCaptureRequestHandler – base task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository: makeSitePageRepository(),
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog: noopRunLog,
     });
 
@@ -262,6 +266,56 @@ describe('createPageCaptureRequestHandler – base task', () => {
     for (const req of artifactRequests) {
       expect(req.userData.needs).toHaveLength(1);
     }
+  });
+
+  it('persists eager artifacts from a combined base task without enqueueing artifact tasks', async () => {
+    const executorCaptureCalls: unknown[] = [];
+    const executor = {
+      capture: async (input: unknown) => {
+        executorCaptureCalls.push(input);
+        return {
+          ...makeSuccessBaseCaptureResult(),
+          markdown: { content: '# Docs\n', toolName: 'full-capture' },
+        };
+      },
+    } as unknown as PageCaptureExecutor;
+
+    const { queue, calls: enqueueCalls } = makeNoopRequestQueue();
+    const { writer } = makeArtifactWriter();
+    const artifactRunRepository = makeArtifactRunRepository();
+    const artifactCreateCalls: unknown[] = [];
+    artifactRunRepository.create = async (input: unknown) => {
+      artifactCreateCalls.push(input);
+      return 501;
+    };
+
+    const handler = createPageCaptureRequestHandler({
+      executor,
+      classifier: new FakeClassifier(),
+      siteConfig,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      pageCaptureQueue: queue,
+      artifactWriter: writer,
+      artifactRunRepository,
+      pageRunRepository: makePageRunRepository(),
+      sitePageRepository: makeSitePageRepository(),
+      runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
+      runLog: noopRunLog,
+    });
+
+    await handler({
+      task: makeBaseTask({ needs: ['base', 'markdown'] }),
+      runtime,
+    });
+
+    expect(executorCaptureCalls).toHaveLength(1);
+    expect((executorCaptureCalls[0] as { needs: string[] }).needs).toEqual(['base', 'markdown']);
+    expect(enqueueCalls).toHaveLength(0);
+    expect(artifactCreateCalls).toHaveLength(1);
+    expect((artifactCreateCalls[0] as { artifactType: string }).artifactType).toBe('markdown');
   });
 
   it('skips enqueuing artifact tasks for seed_run', async () => {
@@ -285,6 +339,7 @@ describe('createPageCaptureRequestHandler – base task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository: makeSitePageRepository(),
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog: noopRunLog,
     });
 
@@ -320,6 +375,7 @@ describe('createPageCaptureRequestHandler – base task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository: makeSitePageRepository(),
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog,
       targetTracker: {
         isReached: () => true,
@@ -375,6 +431,7 @@ describe('createPageCaptureRequestHandler – artifact-only task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository,
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog: noopRunLog,
     });
 
@@ -422,6 +479,7 @@ describe('createPageCaptureRequestHandler – artifact-only task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository,
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog: noopRunLog,
     });
 
@@ -462,6 +520,7 @@ describe('createPageCaptureRequestHandler – artifact-only task', () => {
       pageRunRepository: makePageRunRepository(),
       sitePageRepository: makeSitePageRepository(),
       runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
       runLog: noopRunLog,
     });
 

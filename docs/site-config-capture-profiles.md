@@ -30,6 +30,8 @@
 
 `base` 用于页面基础抓取、链接发现和分类。`markdown`、`screenshot`、`structured` 是第二阶段 artifact 能力，是否需要这些能力仍由 `rulesBeforeStage2Eq` 的规则结果决定。
 
+若 profile 中存在**一体化工具**（同时支持 `base` 和 artifact，如 `scrapling-page`、`crawl4ai-page`），入队 base task 时可能把 artifact 一并写入 `needs`，让工具一次调用抓完。拆分链（`http-base` + 独立 markdown / screenshot 工具）不会合并 needs，仍走 base → 单独 artifact task 路径。详见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)。
+
 ## 2. 配置格式
 
 ```json
@@ -69,6 +71,14 @@ Executor 会按 profile 中的 `tools` 顺序尝试工具，但每个工具只�
 一个工具失败，或产物被 validator 拒绝时，系统会继续尝试后续工具。所有需要的能力都满足后，本页抓取结束；如果工具链执行完仍缺少能力，本页抓取失败。
 
 可用工具的名称、能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
+
+## 5. 一体化工具与 Eager Capture
+
+`crawl4ai-page` 和 `scrapling-page` 等工具可在一次 fetch 中按 `needs` 返回 base + 多种 artifact。当它们出现在 profile 工具链中时，系统会在入队 base task 时尝试把可能需要的 artifact 合并进 `needs`，减少同一页面的重复工具调用。
+
+这与 profile 内的 fallback 顺序正交：eager capture 决定「一次请求哪些能力」，fallback 决定「第一个工具失败时换谁」。
+
+完整算法、update policy 交互和设计边界见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)。
 
 ## 4. 示例：优先使用 Python 工具
 

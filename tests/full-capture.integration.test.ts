@@ -173,6 +173,7 @@ describe('full page-capture task integration', () => {
       pageRunRepository: pageRuns,
       sitePageRepository: sitePages,
       runPlanner: makeNoopPlanner(),
+      captureTools: [tool],
       runLog: runLogs,
     });
 

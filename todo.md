@@ -14,8 +14,6 @@
 
 <br />
 
-<br />
-
 比较一下在 python 和 TS 里的单纯 HTML 转换 Markdown的几个库的效果, 比如defuddle, markitdown, readability markdownify, 然后对应配置上
 
 <br />

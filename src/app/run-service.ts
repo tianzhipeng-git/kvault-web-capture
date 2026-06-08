@@ -46,6 +46,7 @@ import {
   createPageCaptureRequestHandler,
 } from '../crawlee/handlers.js';
 import { RunPlanner } from '../planner/run-planner.js';
+import { resolveBaseTaskNeeds } from '../planner/base-task-needs.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
@@ -281,6 +282,18 @@ export class RunService {
       candidateCount: startupCandidates.length,
     });
 
+    const browserManager = new PlaywrightBrowserManager(effectiveConfig);
+    const captureTools = this.captureTools ?? [
+      new HttpBaseTool(),
+      new DefuddleMarkdownTool(),
+      new LightpandaMarkdownTool(browserManager),
+      new JinaMarkdownTool(),
+      new PlaywrightScreenshotTool(browserManager),
+      new Crawl4AITool(browserManager),
+      new ScraplingTool(browserManager),
+      new KickstarterCommentsAdapter(),
+    ];
+
     let firstSitePageId = 0;
     let firstNormalizedUrl = '';
     let plannedEnqueueCount = 0;
@@ -374,6 +387,18 @@ export class RunService {
         continue;
       }
 
+      const history = await this.sitePages.getHistoricalState(site.id, planned.normalizedUrl);
+      const captureNeeds = resolveBaseTaskNeeds({
+        url: planned.normalizedUrl,
+        siteConfig: effectiveConfig,
+        runType: input.runType,
+        updatePolicy: input.updatePolicy,
+        history,
+        staleAfterMs: input.staleAfterMs,
+        nowIsoString: new Date().toISOString(),
+        captureTools,
+      });
+
       await pageCaptureQueue.addRequest({
         url: candidate.url,
         uniqueKey: `base:${runId}:${planned.sitePageId}`,
@@ -385,7 +410,7 @@ export class RunService {
           normalizedUrl: planned.normalizedUrl,
           url: candidate.url,
           depth: 0,
-          needs: ['base'],
+          needs: captureNeeds,
           purpose: 'discovery',
         } satisfies PageCaptureTask,
       });
@@ -406,17 +431,6 @@ export class RunService {
         ? new LLMClassifier(labelDefinitions)
         : new FakeClassifier());
 
-    const browserManager = new PlaywrightBrowserManager(effectiveConfig);
-    const captureTools = this.captureTools ?? [
-      new HttpBaseTool(),
-      new DefuddleMarkdownTool(),
-      new LightpandaMarkdownTool(browserManager),
-      new JinaMarkdownTool(),
-      new PlaywrightScreenshotTool(browserManager),
-      new Crawl4AITool(browserManager),
-      new ScraplingTool(browserManager),
-      new KickstarterCommentsAdapter(),
-    ];
     const toolRegistry = new CaptureToolRegistry(captureTools);
     const executor = new PageCaptureExecutor(toolRegistry, {
       profileResolver: new CaptureProfileResolver(toolRegistry, this.defaultCaptureToolChain),
@@ -440,6 +454,7 @@ export class RunService {
         sitePageRepository: this.sitePages,
         runPlanner: this.planner,
         runLog: this.runLogs,
+        captureTools,
         targetTracker,
       }),
       failedRequestHandler: createPageCaptureFailedRequestHandler({

@@ -74,6 +74,8 @@ kickstarter-comments
 
 两者优先连接 BrowserManager 提供的 CDP endpoint，与 TS 侧浏览器身份一致；CDP 不可用时回退到各自默认浏览器启动方式。安装与 venv 拆分见 [Python 抓取工具安装](./tech-details/pytools-install.md)。
 
+当 profile 以这类工具为主时，系统会在入队 base task 时合并 artifact needs，尽量一次调用抓完；见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)。
+
 ### 4.4 站点适配器
 
 **`kickstarter-comments`** — 实现 `SiteAutomationAdapter`：Executor 会先调用 `matches()`，不匹配则跳过（不会报错）。从页面内嵌 JSON 抽取评论列表，同时产出 structured 与 markdown。
@@ -87,5 +89,6 @@ kickstarter-comments
 | [Python 抓取工具安装](./tech-details/pytools-install.md) | crawl4ai-page / scrapling-page 环境 |
 | [技术与模块结构说明](./technical-module-structure.md) | CaptureTool 架构、Bridge、BrowserManager |
 | [Retry / Fallback / Validator](./tech-details/retry-fallback-and-validator.md) | 工具链 fallback 与 Crawlee retry |
+| [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md) | 入队 needs 计算、一体化工具一次抓完 |
 
 实现入口：`src/capture/captools/`；默认注册：`src/app/capture-app.ts`。

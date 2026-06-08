@@ -248,7 +248,7 @@ URL 归一化由 `normalizeUrl` 提供，主要处理：
 `crawl_run` 用于正式产出 Markdown、截图和结构化 JSON。
 
 - 启动候选 = seed + sitemap + 已知 inventory
-- 启动候选先入队 `needs = ['base']`
+- 启动候选入队前由 `resolveBaseTaskNeeds(...)` 计算 `needs`：默认含 `base`；若 profile 中存在一体化工具，还会合并可能需要的 artifact（详见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)）
 - base handler 根据规则和 update policy 决定是否接受同 task 已产出的 artifact，或继续加入 artifact-only task
 - artifact-only task 通过同一个 page capture queue 执行，`needs` 可以是 `markdown`、`screenshot` 或 `structured`
 - 页面链接递归深度受 `runOptions.crawlMaxDepth` 控制
@@ -278,8 +278,8 @@ URL 归一化由 `normalizeUrl` 提供，主要处理：
 - `['base']`：基础抓取、链接发现、分类和 stage2 规则。
 - `['markdown']` / `['screenshot']`：为已存在 `pageRunId` 补抓 artifact。
 - `['structured']`：为已存在 `pageRunId` 补抓结构化 JSON artifact。
-- `['base', 'markdown', 'screenshot']`：允许 executor 一次性抓取多种能力，但 handler 仍会先执行 base 决策，再决定是否接受 artifact。
-- `['base', 'markdown', 'screenshot', 'structured']`：一体化工具可以同次产出 base 和多个 artifact；业务 handler 仍不会绕过 stage2 决策。
+- `['base', 'markdown', 'screenshot']` 等组合：允许 executor 一次性抓取多种能力；入队时是否合并 artifact 由 `resolveBaseTaskNeeds` 决定（见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)）。
+- handler 仍会先执行 base 决策，再决定是否接受 artifact；不会绕过 stage2 规则。
 
 `src/crawlee/capture-runtime.ts` 用 `BasicCrawler` 调度该队列，并把 Crawlee 的 `sendRequest`、session、proxyInfo、abort signal 包装成项目内的 `RuntimeContext`。当前 runtime 只使用 Crawlee 的队列、并发、retry、blocked retry、same-domain delay、`sendRequest`、SessionPool 和 ProxyConfiguration 信号；不再使用 `CheerioCrawler`、`LinkeDOMCrawler`、`PlaywrightCrawler` 或 Crawlee `BrowserPool` 作为业务抓取边界。
 

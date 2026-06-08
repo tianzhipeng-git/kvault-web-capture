@@ -2,7 +2,7 @@ import type { RequestQueue } from 'crawlee';
 
 import type { PageCaptureExecutor } from '../capture/executor.js';
 import { formatToolFallbackSummary } from '../capture/diagnostics-utils.js';
-import type { CaptureResult, RuntimeContext } from '../capture/types.js';
+import type { CaptureResult, CaptureTool, RuntimeContext } from '../capture/types.js';
 import type { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
 import type {
@@ -20,6 +20,7 @@ import {
   SitePageRepository,
 } from '../db/repositories/index.js';
 import { RunPlanner } from '../planner/run-planner.js';
+import { resolveBaseTaskNeeds } from '../planner/base-task-needs.js';
 import type { RunTargetTracker } from '../planner/run-target-tracker.js';
 import { shouldEnqueueArtifactByUpdatePolicy } from '../planner/update-policy.js';
 import { buildStage2EnqueueDecision } from '../rules/rule-decision.js';
@@ -343,6 +344,7 @@ interface PageCaptureHandlerDeps {
   sitePageRepository: SitePageRepository;
   runPlanner: RunPlanner;
   runLog: RunLogRepository;
+  captureTools: CaptureTool[];
   targetTracker?: RunTargetTracker;
 }
 
@@ -525,6 +527,16 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
         continue;
       }
 
+      if (!shouldEnqueueArtifactByUpdatePolicy({
+        policy: deps.updatePolicy,
+        history: historyBeforeCapture,
+        artifactType,
+        nowIsoString: new Date().toISOString(),
+        staleAfterMs: deps.staleAfterMs,
+      })) {
+        continue;
+      }
+
       await recordArtifactResult({
         result,
         artifactType,
@@ -618,6 +630,21 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
       continue;
     }
 
+    const history = await deps.sitePageRepository.getHistoricalState(
+      task.siteId,
+      plannedRequest.normalizedUrl,
+    );
+    const captureNeeds = resolveBaseTaskNeeds({
+      url: plannedRequest.normalizedUrl,
+      siteConfig: deps.siteConfig,
+      runType: deps.runType,
+      updatePolicy: deps.updatePolicy,
+      history,
+      staleAfterMs: deps.staleAfterMs,
+      nowIsoString: new Date().toISOString(),
+      captureTools: deps.captureTools,
+    });
+
     await deps.pageCaptureQueue.addRequest({
       url: link,
       uniqueKey: `base:${task.runId}:${plannedRequest.sitePageId}`,
@@ -628,7 +655,7 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
         normalizedUrl: plannedRequest.normalizedUrl,
         url: link,
         depth: task.depth + 1,
-        needs: ['base'],
+        needs: captureNeeds,
         purpose: 'discovery',
       }),
     });
