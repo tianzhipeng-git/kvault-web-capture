@@ -1129,6 +1129,109 @@ export class SitePageDetailQuery {
 export class RunSummaryQuery {
   constructor(private readonly db: DbClient) { }
 
+  async getRunPageIds(runId: number): Promise<{
+    runId: number;
+    siteId: number;
+    pageIds: number[];
+  }> {
+    const run = await this.db.get<{ site_id: number }>(
+      'SELECT site_id FROM crawl_runs WHERE id = ?',
+      [runId],
+    );
+
+    if (!run) {
+      throw new Error(`Run ${runId} not found`);
+    }
+
+    const rows = await this.db.all<{ site_page_id: number }>(
+        `SELECT site_page_id
+         FROM (
+           SELECT DISTINCT site_page_id
+           FROM page_runs
+           WHERE crawl_run_id = ?
+           UNION
+           SELECT DISTINCT site_page_id
+           FROM artifact_runs
+           WHERE crawl_run_id = ?
+         ) run_pages
+         ORDER BY site_page_id`,
+      [runId, runId],
+    );
+
+    return {
+      runId,
+      siteId: run.site_id,
+      pageIds: rows.map((row) => Number(row.site_page_id)),
+    };
+  }
+
+  async getRunMarkdown(runId: number): Promise<{
+    runId: number;
+    siteId: number;
+    markdown: string;
+    pageCount: number;
+  }> {
+    const run = await this.db.get<{ site_id: number }>(
+      'SELECT site_id FROM crawl_runs WHERE id = ?',
+      [runId],
+    );
+
+    if (!run) {
+      throw new Error(`Run ${runId} not found`);
+    }
+
+    const rows = await this.db.all<{
+        site_page_id: number;
+        normalized_url: string;
+        title: string | null;
+        output_path: string | null;
+        content: string | null;
+      }>(
+        `SELECT
+           ar.site_page_id,
+           sp.normalized_url,
+           COALESCE(sp.latest_title, pr.title) AS title,
+           ar.output_path,
+           ar.content
+         FROM artifact_runs ar
+         INNER JOIN site_pages sp ON sp.id = ar.site_page_id
+         LEFT JOIN page_runs pr ON pr.id = ar.page_run_id
+         WHERE ar.crawl_run_id = ?
+           AND ar.artifact_type = 'markdown'
+           AND ar.status = 'succeeded'
+         ORDER BY ar.site_page_id, ar.id`,
+      [runId],
+    );
+
+    const parts: string[] = [];
+    for (const row of rows) {
+      const content = row.content ?? await readTextFile(row.output_path);
+
+      if (!content?.trim()) {
+        continue;
+      }
+
+      parts.push([
+        `# ${row.title ?? row.normalized_url}`,
+        '',
+        row.normalized_url,
+        '',
+        content.trim(),
+      ].join('\n'));
+    }
+
+    if (parts.length === 0) {
+      throw new Error('本次运行没有成功 Markdown 产物。');
+    }
+
+    return {
+      runId,
+      siteId: run.site_id,
+      markdown: parts.join('\n\n---\n\n'),
+      pageCount: parts.length,
+    };
+  }
+
   async listSiteRuns(siteId: number): Promise<Array<{
     runId: number;
     runType: string;

@@ -5,3 +5,4 @@ export * from './site-page-repository.js';
 export * from './page-run-repository.js';
 export * from './artifact-run-repository.js';
 export * from './run-log-repository.js';
+export * from './system-setting-repository.js';

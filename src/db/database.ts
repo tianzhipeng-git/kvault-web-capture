@@ -283,6 +283,12 @@ const baseTablesSchema = `
     created_at TEXT NOT NULL,
     FOREIGN KEY (crawl_run_id) REFERENCES crawl_runs(id)
   );
+
+  CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `;
 
 const indexesSchema = `

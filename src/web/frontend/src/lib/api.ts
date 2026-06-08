@@ -85,6 +85,15 @@ export interface PreparedProjectExport {
   downloadUrl: string;
 }
 
+export interface DefaultSiteSetting {
+  defaultSite: {
+    siteId: number;
+    siteName: string;
+    projectId: number;
+    baseUrl: string;
+  } | null;
+}
+
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
@@ -301,6 +310,18 @@ export const api = {
       downloadUrl: `${baseUrl}/api/projects/${projectId}/export/download/${encodeURIComponent(result.token)}`,
     };
   },
+
+  getDefaultSite: (): Promise<DefaultSiteSetting> => fetchApi('/api/system/default-site'),
+  setDefaultSite: (siteId: number | null): Promise<DefaultSiteSetting & { status: string }> => fetchApi('/api/system/default-site', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteId }),
+  }),
+  submitSimpleCapture: (url: string): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, updatePolicy: 'force_recrawl_all' }),
+  }),
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),
   createSite: (data: any) => fetchApi('/api/sites', {
@@ -334,6 +355,14 @@ export const api = {
   
   getSiteRuns: (siteId: number) => fetchApi(`/api/sites/${siteId}/runs`),
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
+  getRunPageIds: (runId: number): Promise<{ runId: number; siteId: number; pageIds: number[] }> =>
+    fetchApi(`/api/runs/${runId}/page-ids`),
+  exportRunPages: (runId: number, options?: { artifacts?: ProjectExportArtifact[] }): Promise<{ blob: Blob; filename: string }> =>
+    fetchBlobApi(`/api/runs/${runId}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options ?? {}),
+    }),
   
   getSitePages: (siteId: number, params: SitePageListParams) => {
     const q = buildQueryString(params);

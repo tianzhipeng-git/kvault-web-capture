@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { SiteRunListItem } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,8 @@ function formatDate(value: string | null): string {
 }
 
 export function SiteCrawl({ siteId }: { siteId: number }) {
+  const [searchParams] = useSearchParams();
+  const queryRunId = Number(searchParams.get("runId") ?? "");
   const [isStarting, setIsStarting] = useState(false);
   const [runs, setRuns] = useState<SiteRunListItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -29,13 +32,18 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
     api.getSiteRuns(siteId).then((data) => {
       const crawlRuns = (data.items || []).filter((run: SiteRunListItem) => run.runType === "crawl_run");
       setRuns(crawlRuns);
-      setSelectedRunId((current) => current ?? crawlRuns[0]?.runId ?? null);
+      setSelectedRunId((current) => {
+        if (Number.isInteger(queryRunId) && crawlRuns.some((run: SiteRunListItem) => run.runId === queryRunId)) {
+          return queryRunId;
+        }
+        return current ?? crawlRuns[0]?.runId ?? null;
+      });
     });
   };
 
   useEffect(() => {
     loadRuns();
-  }, [siteId]);
+  }, [queryRunId, siteId]);
 
   const startCrawl = async () => {
     setIsStarting(true);
@@ -163,6 +171,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
               crawlRunId={selectedRunId}
               title={`Run #${selectedRunId} 页面复核`}
               description="检查本次运行爬取的页面情况"
+              enableExport
             />
           </TabsContent>
           <TabsContent value="logs">

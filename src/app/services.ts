@@ -27,6 +27,7 @@ import {
   RunRepository,
   SitePageRepository,
   SiteRepository,
+  SystemSettingRepository,
   type InventoryPageRow,
   type InventorySummary,
   type SampleCaptureRow,
@@ -113,6 +114,8 @@ export class M1App {
 
   private runLogs!: RunLogRepository;
 
+  private systemSettings!: SystemSettingRepository;
+
   private planner!: RunPlanner;
 
   private projectExporter!: ProjectExporter;
@@ -145,6 +148,7 @@ export class M1App {
     app.pageRuns = new PageRunRepository(app.db, app.clock);
     app.artifactRuns = new ArtifactRunRepository(app.db, app.clock);
     app.runLogs = new RunLogRepository(app.db, app.clock);
+    app.systemSettings = new SystemSettingRepository(app.db, app.clock);
     app.planner = new RunPlanner(app.sitePages, app.clock);
     app.projectExporter = new ProjectExporter(app.db, app.clock);
     await initializeSchema(app.db);
@@ -248,6 +252,45 @@ export class M1App {
     await this.sites.updateConfig(siteId, parseSiteConfig(config));
   }
 
+  async getDefaultSite(): Promise<{
+    siteId: number;
+    siteName: string;
+    projectId: number;
+    baseUrl: string;
+  } | null> {
+    const siteId = await this.systemSettings.getDefaultSiteId();
+
+    if (siteId === null) {
+      return null;
+    }
+
+    const site = await this.sites.getById(siteId);
+
+    if (!site) {
+      await this.systemSettings.setDefaultSiteId(null);
+      return null;
+    }
+
+    return {
+      siteId: site.id,
+      siteName: site.name,
+      projectId: site.projectId,
+      baseUrl: site.baseUrl,
+    };
+  }
+
+  async setDefaultSite(siteId: number | null): Promise<void> {
+    if (siteId !== null) {
+      const site = await this.sites.getById(siteId);
+
+      if (!site) {
+        throw new Error(`Site ${siteId} not found`);
+      }
+    }
+
+    await this.systemSettings.setDefaultSiteId(siteId);
+  }
+
   async runSeed(input: number | {
     siteId: number;
     targetSuccessCount: number | null;
@@ -325,6 +368,13 @@ export class M1App {
 
   exportSitePagesByIds(input: SitePageIdExportInput): Promise<SitePageIdExportResult> {
     return this.projectExporter.exportSitePagesByIds(input);
+  }
+
+  exportRunPages(
+    runId: number,
+    artifacts?: ProjectExportOptions['artifacts'],
+  ): Promise<SitePageIdExportResult & { runId: number }> {
+    return this.projectExporter.exportRunPages({ runId, artifacts });
   }
 
   private async executeRun(input: {

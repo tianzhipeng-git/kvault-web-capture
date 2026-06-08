@@ -128,6 +128,12 @@ export interface SitePageIdExportResult {
   artifactFileCount: number;
 }
 
+export interface RunPageIdExportInput {
+  runId: number;
+  outputPath?: string;
+  artifacts?: ProjectExportArtifact[];
+}
+
 function parseJson<T>(value: string | null): T | null {
   if (value === null) {
     return null;
@@ -833,6 +839,26 @@ export class ProjectExporter {
     };
   }
 
+  async exportRunPages(input: RunPageIdExportInput): Promise<SitePageIdExportResult & { runId: number }> {
+    const runPages = await this.listRunPageIds(input.runId);
+
+    if (!runPages) {
+      throw new Error(`Run ${input.runId} not found`);
+    }
+
+    const result = await this.exportSitePagesByIds({
+      siteId: runPages.siteId,
+      pageIds: runPages.pageIds,
+      outputPath: input.outputPath,
+      artifacts: input.artifacts,
+    });
+
+    return {
+      ...result,
+      runId: input.runId,
+    };
+  }
+
   private async countProjectPages(
     projectId: number,
     siteIds?: number[],
@@ -957,6 +983,37 @@ export class ProjectExporter {
          ORDER BY sp.id`,
       [siteId, ...pageIds],
     );
+  }
+
+  private async listRunPageIds(runId: number): Promise<{ siteId: number; pageIds: number[] } | null> {
+    const run = await this.db.get<{ site_id: number }>(
+      'SELECT site_id FROM crawl_runs WHERE id = ?',
+      [runId],
+    );
+
+    if (!run) {
+      return null;
+    }
+
+    const rows = await this.db.all<{ site_page_id: number }>(
+        `SELECT site_page_id
+         FROM (
+           SELECT DISTINCT site_page_id
+           FROM page_runs
+           WHERE crawl_run_id = ?
+           UNION
+           SELECT DISTINCT site_page_id
+           FROM artifact_runs
+           WHERE crawl_run_id = ?
+         ) run_pages
+         ORDER BY site_page_id`,
+      [runId, runId],
+    );
+
+    return {
+      siteId: run.site_id,
+      pageIds: rows.map((row) => Number(row.site_page_id)),
+    };
   }
 
   private async listLatestSuccessfulArtifacts(siteId: number): Promise<ArtifactExportRow[]> {

@@ -6,6 +6,7 @@ import { Projects } from "./pages/Projects";
 import { ProjectDetails } from "./pages/ProjectDetails";
 import { SiteDashboard } from "./pages/SiteDashboard";
 import { Login } from "./pages/Login";
+import { Settings as SettingsPage } from "./pages/Settings";
 import { Button } from "./components/ui/button";
 
 export default function App() {
@@ -122,6 +123,7 @@ export default function App() {
         <div className="p-8 max-w-7xl mx-auto min-h-full">
           <Routes>
             <Route path="/" element={<Projects />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetails />} />
             <Route path="/sites/:siteId/*" element={<SiteDashboard />} />
           </Routes>

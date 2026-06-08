@@ -1,21 +1,27 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Folder } from "lucide-react";
+import { Plus, Folder, Loader2, Send } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function Projects() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<any[]>([]);
+  const [defaultSite, setDefaultSite] = useState<any>(null);
+  const [quickUrl, setQuickUrl] = useState("");
+  const [isSubmittingQuickUrl, setIsSubmittingQuickUrl] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const loadProjects = () => {
     api.getProjects().then(data => setProjects(data.items || []));
+    api.getDefaultSite().then(data => setDefaultSite(data.defaultSite));
   };
 
   useEffect(() => {
@@ -28,6 +34,21 @@ export function Projects() {
     setIsDialogOpen(false);
     setNewProjectName("");
     loadProjects();
+  };
+
+  const submitQuickUrl = async () => {
+    if (!quickUrl.trim()) return;
+    setIsSubmittingQuickUrl(true);
+    try {
+      const result = await api.submitSimpleCapture(quickUrl.trim());
+      setQuickUrl("");
+      toast.success(`已提交 Run #${result.runId}。`);
+      navigate(`/sites/${result.siteId}/crawl?runId=${result.runId}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "提交失败。");
+    } finally {
+      setIsSubmittingQuickUrl(false);
+    }
   };
 
   return (
@@ -67,6 +88,36 @@ export function Projects() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card>
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle>简易提交</CardTitle>
+            <CardDescription>
+              {defaultSite
+                ? `默认站点：${defaultSite.siteName} · ${defaultSite.baseUrl}`
+                : "请先在系统设置里配置默认站点。"}
+            </CardDescription>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <Input
+              placeholder="粘贴要采集的 URL"
+              value={quickUrl}
+              onChange={(event) => setQuickUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  submitQuickUrl();
+                }
+              }}
+              disabled={!defaultSite || isSubmittingQuickUrl}
+            />
+            <Button className="gap-2" onClick={submitQuickUrl} disabled={!defaultSite || !quickUrl.trim() || isSubmittingQuickUrl}>
+              {isSubmittingQuickUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              提交
+            </Button>
+          </div>
+        </CardHeader>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map((project, i) => (

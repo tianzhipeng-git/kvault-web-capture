@@ -566,6 +566,7 @@ export function PageReview({
   const [pageIdExportOpen, setPageIdExportOpen] = useState(false);
   const [pageIdExportInput, setPageIdExportInput] = useState("");
   const [isExportingPageIds, setIsExportingPageIds] = useState(false);
+  const [isPreparingRunExport, setIsPreparingRunExport] = useState(false);
   const [selectedPageIdExportArtifacts, setSelectedPageIdExportArtifacts] = useState<Set<ProjectExportArtifact>>(
     new Set(["base", "markdown", "screenshot", "structured"]),
   );
@@ -723,6 +724,24 @@ export function PageReview({
     }
   };
 
+  const openRunPageIdExport = async () => {
+    if (!crawlRunId) return;
+    setIsPreparingRunExport(true);
+    try {
+      const result = await api.getRunPageIds(crawlRunId);
+      if (result.pageIds.length === 0) {
+        toast.error("本次运行没有可导出的 page ID。");
+        return;
+      }
+      setPageIdExportInput(result.pageIds.join("\n"));
+      setPageIdExportOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "读取 page ID 失败。");
+    } finally {
+      setIsPreparingRunExport(false);
+    }
+  };
+
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
   const selectedStatusLabel = statusFilterLabel(statuses);
 
@@ -782,6 +801,18 @@ export function PageReview({
             {crawlRunId && <Badge variant="secondary">Run #{crawlRunId}</Badge>}
             {enableExport && (
               <>
+                {crawlRunId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={openRunPageIdExport}
+                    disabled={isPreparingRunExport}
+                  >
+                    {isPreparingRunExport ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    导出本次运行ZIP
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

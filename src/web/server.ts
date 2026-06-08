@@ -6,7 +6,7 @@ import { dirname, extname, join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 
 import { M1App } from '../app/services.js';
 import type { ProjectExportArtifact, ProjectExportOptions } from '../export/project-exporter.js';
@@ -300,16 +300,39 @@ async function waitForLatestRun(
   runQuery: RunSummaryQuery,
   siteId: number,
   runType: 'seed_run' | 'crawl_run',
+  minRunIdExclusive = 0,
 ) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const latestRun = await runQuery.getLatestRunForSite(siteId, runType);
-    if (latestRun) {
+    if (latestRun && latestRun.runId > minRunIdExclusive) {
       return latestRun;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
   return null;
+}
+
+function parseOptionalSiteId(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const siteId = typeof value === 'number' ? value : Number(value);
+
+  if (!Number.isInteger(siteId) || siteId <= 0) {
+    throw new Error('siteId 无效。');
+  }
+
+  return siteId;
+}
+
+function parseSimpleCaptureUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error('URL 不能为空。');
+  }
+
+  return value.trim();
 }
 
 export interface WebServerOptions {
@@ -373,6 +396,44 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     });
 
     return token;
+  };
+
+  const sendZipFile = async (
+    reply: FastifyReply,
+    result: { outputPath: string; fileName: string },
+  ) => {
+    const fileStat = await stat(result.outputPath);
+    return reply
+      .type('application/zip')
+      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
+      .header('Content-Length', fileStat.size)
+      .send(createReadStream(result.outputPath));
+  };
+
+  const requireDefaultSite = async () => {
+    const defaultSite = await app.getDefaultSite();
+
+    if (!defaultSite) {
+      throw new Error('系统还没有配置默认站点。');
+    }
+
+    return defaultSite;
+  };
+
+  const buildSimpleCaptureInput = async (body: Record<string, unknown>) => {
+    const defaultSite = await requireDefaultSite();
+    const runInput = mapRunForm(body);
+    return {
+      defaultSite,
+      runInput: {
+        siteId: defaultSite.siteId,
+        updatePolicy: runInput.updatePolicy,
+        targetSuccessCount: runInput.targetSuccessCount,
+        staleAfterMs: runInput.staleAfterMs,
+        initialUrls: [parseSimpleCaptureUrl(body.url)],
+        crawlMaxDepthOverride: 0,
+      },
+    };
   };
 
   await auth.register(server);
@@ -482,6 +543,73 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return {
       content,
     };
+  });
+
+  server.get('/api/system/default-site', async () => ({
+    defaultSite: await app.getDefaultSite(),
+  }));
+
+  server.put('/api/system/default-site', async (request) => {
+    const body = (request.body ?? {}) as { siteId?: unknown };
+    await app.setDefaultSite(parseOptionalSiteId(body.siteId));
+    return {
+      status: 'ok',
+      defaultSite: await app.getDefaultSite(),
+    };
+  });
+
+  server.post('/api/simple-capture/runs', async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { defaultSite, runInput } = await buildSimpleCaptureInput(body);
+    const latestBefore = await runQuery.getLatestRunForSite(defaultSite.siteId, 'crawl_run');
+    void coordinator.startCrawl(app, runInput).catch(() => { });
+    const latestRun = await waitForLatestRun(
+      runQuery,
+      defaultSite.siteId,
+      'crawl_run',
+      latestBefore?.runId ?? 0,
+    );
+
+    if (!latestRun) {
+      reply.code(500);
+      throw new Error('未能创建简易采集任务。');
+    }
+
+    return {
+      runId: latestRun.runId,
+      siteId: defaultSite.siteId,
+      statusLabel: latestRun.statusLabel,
+    };
+  });
+
+  server.get('/api/simple-capture/runs/:runId', async (request) => {
+    const params = request.params as { runId: string };
+    return runQuery.getRunSummary(parseRunId(params.runId));
+  });
+
+  server.get('/api/simple-capture/runs/:runId/download', async (request, reply) => {
+    const params = request.params as { runId: string };
+    return sendZipFile(reply, await app.exportRunPages(parseRunId(params.runId)));
+  });
+
+  server.post('/api/simple-capture/submit-and-download', async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { runInput } = await buildSimpleCaptureInput(body);
+    const summary = await coordinator.startCrawl(app, runInput);
+    return sendZipFile(reply, await app.exportRunPages(summary.runId));
+  });
+
+  server.post('/api/simple-capture/submit-markdown', async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { runInput } = await buildSimpleCaptureInput(body);
+    const summary = await coordinator.startCrawl(app, runInput);
+    const result = await runQuery.getRunMarkdown(summary.runId);
+    return reply
+      .type('text/markdown; charset=utf-8')
+      .header('X-Kvault-Run-Id', String(result.runId))
+      .header('X-Kvault-Site-Id', String(result.siteId))
+      .header('X-Kvault-Page-Count', String(result.pageCount))
+      .send(result.markdown);
   });
 
   server.get('/api/projects', async () => ({
@@ -675,11 +803,12 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const siteId = parseSiteId(params.siteId);
     const input = mapRunForm((request.body ?? {}) as Record<string, unknown>);
+    const latestBefore = await runQuery.getLatestRunForSite(siteId, 'seed_run');
     void coordinator.startSeed(app, {
       siteId,
       targetSuccessCount: input.targetSuccessCount,
     }).catch(() => { });
-    const latestRun = await waitForLatestRun(runQuery, siteId, 'seed_run');
+    const latestRun = await waitForLatestRun(runQuery, siteId, 'seed_run', latestBefore?.runId ?? 0);
 
     if (!latestRun) {
       reply.code(500);
@@ -696,11 +825,12 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { siteId: string };
     const siteId = parseSiteId(params.siteId);
     const input = mapRunForm((request.body ?? {}) as Record<string, unknown>);
+    const latestBefore = await runQuery.getLatestRunForSite(siteId, 'crawl_run');
     void coordinator.startCrawl(app, {
       siteId,
       ...input,
     }).catch(() => { });
-    const latestRun = await waitForLatestRun(runQuery, siteId, 'crawl_run');
+    const latestRun = await waitForLatestRun(runQuery, siteId, 'crawl_run', latestBefore?.runId ?? 0);
 
     if (!latestRun) {
       reply.code(500);
@@ -723,6 +853,20 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/runs/:runId', async (request) => {
     const params = request.params as { runId: string };
     return runQuery.getRunSummary(parseRunId(params.runId));
+  });
+
+  server.get('/api/runs/:runId/page-ids', async (request) => {
+    const params = request.params as { runId: string };
+    return runQuery.getRunPageIds(parseRunId(params.runId));
+  });
+
+  server.post('/api/runs/:runId/export', async (request, reply) => {
+    const params = request.params as { runId: string };
+    const body = (request.body ?? {}) as { artifacts?: unknown };
+    return sendZipFile(
+      reply,
+      await app.exportRunPages(parseRunId(params.runId), parseExportArtifacts(body.artifacts)),
+    );
   });
 
   server.get('/api/runs/:runId/logs', async (request) => {
