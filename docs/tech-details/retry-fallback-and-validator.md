@@ -115,7 +115,7 @@ const ANTI_BLOCKING_OPTIONS = {
 } as const;
 ```
 
-未覆盖的 Crawlee 默认值（3.16）：
+未覆盖的 Crawlee 默认值（当前依赖为 Crawlee 3.13.x）：
 
 | 选项 | 默认值 | 含义 |
 |------|--------|------|
@@ -155,7 +155,7 @@ const ANTI_BLOCKING_OPTIONS = {
 
 ### 5.3 `retryOnBlocked: true` 的副作用
 
-项目设置了 `retryOnBlocked: true`。在 Crawlee 3.16 中，若未同时传入 `sessionPoolOptions.blockedStatusCodes`，会将 `blockedStatusCodes` 置为 `[]`，从而**禁用** SessionPool 默认的 401/403/429 retire 逻辑。当前 HTTP 抓取路径主要依赖工具抛错 + handler 失败后的 `markBad`，而非 blocked status code 自动 retire。
+项目设置了 `retryOnBlocked: true`。当前 HTTP 抓取路径主要依赖工具抛错 + handler 失败后的 `markBad`，而非在项目层显式配置 blocked status code 后主动 retire。
 
 ### 5.4 浏览器层与 Crawlee Session
 
@@ -165,7 +165,7 @@ const ANTI_BLOCKING_OPTIONS = {
 - `acquirePage` 前检查 `session.isUsable()`，不可用则抛错。
 - 支持 cookie 与 Crawlee session 双向同步。
 
-**不会**在浏览器侧 403/captcha 时主动调用 `session.markBad()` / `session.retire()`。`retireIdentity()` 用于清理浏览器 context/process（尤其 Lightpanda 的 `lease:*` 短生命周期），不是 Crawlee session 轮换。
+**不会**在浏览器侧 403/captcha 时主动调用 `session.markBad()` / `session.retire()`。当前 BrowserManager 负责 page/context/process 租约释放和 run 结束清理，不承担 Crawlee session 轮换策略。
 
 详见 [浏览器复用策略](./browser-reuse-strategy.md) 第 3.7 节。
 

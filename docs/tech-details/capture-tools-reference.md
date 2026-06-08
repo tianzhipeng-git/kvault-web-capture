@@ -1,6 +1,6 @@
 # Capture Tools 参考
 
-本文是项目内所有 `CaptureTool` 的集中说明，供配置 `captureProfiles` 时查阅。Profile 的配置方式见 [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md)；Python 工具的安装见 [Python 抓取工具安装](./tech-details/pytools-install.md)。
+本文是项目内所有 `CaptureTool` 的集中说明，供配置 `captureProfiles` 时查阅。Profile 的配置方式见 [SiteConfig 抓取 Profile 配置](../user-guide/site-config-capture-profiles.md)；Python 工具的安装见 [Python 抓取工具安装](./pytools-install.md)。
 
 ## 1. 能力类型
 
@@ -72,9 +72,9 @@ kickstarter-comments
 | `screenshot` | CrawlerRunConfig `screenshot=true` | StealthyFetcher `page_action` + Playwright screenshot |
 | `structured` | 基础 structured 摘要 | title / meta / contentLength 等摘要 |
 
-两者优先连接 BrowserManager 提供的 CDP endpoint，与 TS 侧浏览器身份一致；CDP 不可用时回退到各自默认浏览器启动方式。安装与 venv 拆分见 [Python 抓取工具安装](./tech-details/pytools-install.md)。
+两者优先连接 BrowserManager 提供的 CDP endpoint，与 TS 侧浏览器身份一致；CDP 不可用时回退到各自默认浏览器启动方式。安装与 venv 拆分见 [Python 抓取工具安装](./pytools-install.md)。
 
-当 profile 以这类工具为主时，系统会在入队 base task 时合并 artifact needs，尽量一次调用抓完；见 [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md)。
+当 profile 以这类工具为主时，系统会在入队 base task 时合并 artifact needs，尽量一次调用抓完；见 [Base Task Needs 与 Eager Capture](./base-task-needs-and-eager-capture.md)。
 
 ### 4.4 站点适配器
 
@@ -84,11 +84,11 @@ kickstarter-comments
 
 | 文档 | 内容 |
 | --- | --- |
-| [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md) | profile 字段、执行规则、配置示例 |
-| [SiteConfig 抓取结果校验](./site-config-validation.md) | validator 规则 |
-| [Python 抓取工具安装](./tech-details/pytools-install.md) | crawl4ai-page / scrapling-page 环境 |
-| [技术与模块结构说明](./technical-module-structure.md) | CaptureTool 架构、Bridge、BrowserManager |
-| [Retry / Fallback / Validator](./tech-details/retry-fallback-and-validator.md) | 工具链 fallback 与 Crawlee retry |
-| [Base Task Needs 与 Eager Capture](./tech-details/base-task-needs-and-eager-capture.md) | 入队 needs 计算、一体化工具一次抓完 |
+| [SiteConfig 抓取 Profile 配置](../user-guide/site-config-capture-profiles.md) | profile 字段、执行规则、配置示例 |
+| [SiteConfig 抓取结果校验](../user-guide/site-config-validation.md) | validator 规则 |
+| [Python 抓取工具安装](./pytools-install.md) | crawl4ai-page / scrapling-page 环境 |
+| [技术与模块结构说明](../technical-module-structure.md) | CaptureTool 架构、Bridge、BrowserManager |
+| [Retry / Fallback / Validator](./retry-fallback-and-validator.md) | 工具链 fallback 与 Crawlee retry |
+| [Base Task Needs 与 Eager Capture](./base-task-needs-and-eager-capture.md) | 入队 needs 计算、一体化工具一次抓完 |
 
 实现入口：`src/capture/captools/`；默认注册：`src/app/capture-app.ts`。

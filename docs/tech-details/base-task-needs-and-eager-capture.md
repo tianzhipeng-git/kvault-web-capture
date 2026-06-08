@@ -12,8 +12,8 @@
 
 上下游文档：
 
-- 规则如何决定「要不要抓、要哪些 artifact」：[规则格式指南](../rule-format-guide.md)
-- capture profile 如何决定工具链：[SiteConfig 抓取 Profile](../site-config-capture-profiles.md)
+- 规则如何决定「要不要抓、要哪些 artifact」：[规则格式指南](../user-guide/site-config-rule-format-guide.md)
+- capture profile 如何决定工具链：[SiteConfig 抓取 Profile](../user-guide/site-config-capture-profiles.md)
 - executor fallback 与 validator：[Retry、Fallback 与 Validator](./retry-fallback-and-validator.md)
 - 总体模块关系：[技术与模块结构说明](../technical-module-structure.md)
 
@@ -200,7 +200,7 @@ http-base.capture({ needs: ['base'] })
 
 ## 7. 配置示例
 
-以 [default-simple-capture-site-config.json](../default-simple-capture-site-config.json) 为例：
+以 [default-simple-capture-site-config.json](../user-guide/default-simple-capture-site-config.json) 为例：
 
 - URL 规则：`.*` → `artifacts: [markdown, screenshot, structured]`
 - Profile：`scrapling-page` → `crawl4ai-page` → `jina-markdown`

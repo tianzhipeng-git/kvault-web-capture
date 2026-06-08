@@ -77,9 +77,6 @@
     },
     "screenshot": {
       "minBytes": 20000
-    },
-    "structured": {
-      "minLength": 2
     }
   },
   "browser": {

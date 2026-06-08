@@ -80,7 +80,7 @@ export KVAULT_PYTHON=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capt
 
 ## 4. 启用 capture profile
 
-完整配置说明见 [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md)。工具能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
+完整配置说明见 [SiteConfig 抓取 Profile 配置](../user-guide/site-config-capture-profiles.md)。工具能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
 
 默认站点仍使用内置 Node 工具链：
 
