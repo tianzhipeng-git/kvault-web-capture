@@ -82,3 +82,13 @@ def write_output(payload, output_fd=None):
         os.write(output_fd, content.encode("utf-8"))
     finally:
         os.close(output_fd)
+
+
+def html_to_markdown(html):
+    try:
+        from markdownify import markdownify
+    except Exception as exc:
+        raise RuntimeError(f"markdownify is not installed or failed to import: {exc}") from exc
+
+    markdown = markdownify(html or "", heading_style="ATX")
+    return markdown.strip()

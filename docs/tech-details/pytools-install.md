@@ -80,7 +80,7 @@ export KVAULT_PYTHON=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capt
 
 ## 4. 启用 capture profile
 
-完整配置说明见 [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md)。
+完整配置说明见 [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md)。工具能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
 
 默认站点仍使用内置 Node 工具链：
 
@@ -120,7 +120,7 @@ export KVAULT_PYTHON=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capt
 }
 ```
 
-`crawl4ai-page` 优先覆盖 `base`、`markdown`、`screenshot`、`structured`；`scrapling-page` 优先覆盖 `base`、`structured`。如果 BrowserManager 提供 CDP endpoint，Python bridge 会把 `cdpUrl` 传给 Python 工具，让 Crawl4AI / Scrapling 连接项目管理的浏览器身份；否则它们回退到各自默认启动方式。Executor 会按 profile 顺序尝试工具，validator 拒绝或工具失败后继续 fallback。
+`crawl4ai-page` 优先覆盖 `base`、`markdown`、`screenshot`、`structured`；`scrapling-page` 同样覆盖这四类能力。如果 BrowserManager 提供 CDP endpoint，Python bridge 会把 `cdpUrl` 传给 Python 工具，让 Crawl4AI / Scrapling 连接项目管理的浏览器身份；否则它们回退到各自默认启动方式。Executor 会按 profile 顺序尝试工具，validator 拒绝或工具失败后继续 fallback。
 
 ## 5. 构建产物
 

@@ -61,8 +61,8 @@ const TOOL_SCENARIOS: ToolScenario[] = [
   {
     toolName: 'scrapling-page',
     moduleName: 'scrapling',
-    localNeeds: ['base', 'structured'],
-    benchmarkNeeds: ['base', 'structured'],
+    localNeeds: ['base', 'markdown', 'screenshot', 'structured'],
+    benchmarkNeeds: ['base', 'markdown', 'screenshot', 'structured'],
     create: (manager) => new ScraplingTool(manager),
   },
 ];

@@ -4,6 +4,8 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 
 技术架构见[technical-module-structure](docs/technical-module-structure.md)
 
+外部系统对接简易采集入口见[简易采集 API 对接文档](docs/simple-capture-api.md)。
+
 ## 核心业务概念
 
 - 项目：顶层管理单元，用于把多个站点归在一起。

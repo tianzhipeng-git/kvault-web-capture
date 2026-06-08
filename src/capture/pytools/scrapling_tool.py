@@ -1,14 +1,27 @@
 import asyncio
+import base64
 import contextlib
 import os
 import sys
 
-from common import extract_page, read_input, redirect_process_stdout_to_stderr, write_output
+from common import extract_page, html_to_markdown, read_input, redirect_process_stdout_to_stderr, write_output
+
+
+def build_page_action(needs_screenshot):
+    if not needs_screenshot:
+        return None, None
+
+    capture_state = {}
+
+    async def page_action(page):
+        capture_state["screenshot"] = await page.screenshot(type="png", full_page=True)
+
+    return page_action, capture_state
 
 
 async def run(payload):
     try:
-        from scrapling import StealthyFetcher
+        from scrapling.fetchers import StealthyFetcher
     except Exception as exc:
         raise RuntimeError(f"scrapling is not installed or failed to import: {exc}") from exc
 
@@ -18,29 +31,36 @@ async def run(payload):
     cdp_url = payload.get("cdpWebSocketUrl") or None
     fetch_kwargs = {
         "timeout": 120000,
-        "network_idle": True,
-        "solve_cloudflare": True,
     }
 
     if cdp_url:
         fetch_kwargs["cdp_url"] = cdp_url
-        fetch = StealthyFetcher.async_fetch
+        fetch_kwargs["network_idle"] = False
+        fetch_kwargs["solve_cloudflare"] = False
     else:
         fetch_kwargs["headless"] = True
+        fetch_kwargs["network_idle"] = True
+        fetch_kwargs["solve_cloudflare"] = True
         if proxy_url:
             fetch_kwargs["proxy"] = proxy_url
-        fetch = StealthyFetcher.async_fetch
+
+    page_action, capture_state = build_page_action("screenshot" in needs)
+    if page_action is not None:
+        fetch_kwargs["page_action"] = page_action
 
     with contextlib.redirect_stdout(sys.stderr):
-        response = await fetch(
+        response = await StealthyFetcher.async_fetch(
             url,
             **fetch_kwargs,
         )
 
     html = getattr(response, "html_content", "") or getattr(response, "text", "") or ""
+    if not isinstance(html, str):
+        html = str(html)
     final_url = getattr(response, "url", None) or url
     status_code = getattr(response, "status", None) or getattr(response, "status_code", None)
     extracted = extract_page(html, final_url)
+    screenshot_bytes = capture_state.get("screenshot") if capture_state else None
 
     return {
         "toolName": "scrapling-page",
@@ -48,6 +68,10 @@ async def run(payload):
         "statusCode": status_code,
         "html": html,
         **extracted,
+        "markdown": html_to_markdown(html) if "markdown" in needs else None,
+        "screenshotBase64": base64.b64encode(screenshot_bytes).decode("ascii")
+        if screenshot_bytes
+        else None,
         "structured": {
             "statusCode": status_code,
             "finalUrl": final_url,
@@ -58,6 +82,8 @@ async def run(payload):
         "diagnostics": {
             "source": "scrapling",
             "cdpUrlUsed": bool(cdp_url),
+            "markdownSource": "markdownify" if "markdown" in needs else None,
+            "screenshotSource": "page_action" if screenshot_bytes else None,
         },
     }
 

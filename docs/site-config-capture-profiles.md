@@ -26,6 +26,8 @@
 | `jina-markdown` | `markdown` |
 | `playwright-screenshot` | `screenshot` |
 
+各工具的详细说明见 [Capture Tools 参考](./capture-tools-reference.md)。
+
 `base` 用于页面基础抓取、链接发现和分类。`markdown`、`screenshot`、`structured` 是第二阶段 artifact 能力，是否需要这些能力仍由 `rulesBeforeStage2Eq` 的规则结果决定。
 
 ## 2. 配置格式
@@ -66,24 +68,9 @@ Executor 会按 profile 中的 `tools` 顺序尝试工具，但每个工具只�
 
 一个工具失败，或产物被 validator 拒绝时，系统会继续尝试后续工具。所有需要的能力都满足后，本页抓取结束；如果工具链执行完仍缺少能力，本页抓取失败。
 
-## 4. 可用工具
+可用工具的名称、能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
 
-当前应用默认注册这些工具：
-
-| 工具名 | 能力 | 说明 |
-| --- | --- | --- |
-| `http-base` | `base` | 使用 Crawlee runtime 的 HTTP 能力抓取页面基础内容 |
-| `defuddle-markdown` | `markdown` | 从页面 HTML 生成 Markdown |
-| `lightpanda-markdown` | `markdown` | 使用浏览器能力生成 Markdown |
-| `jina-markdown` | `markdown` | 使用 Jina Reader 风格的 Markdown 抓取 |
-| `playwright-screenshot` | `screenshot` | 使用项目 BrowserManager 截图 |
-| `crawl4ai-page` | `base`, `markdown`, `screenshot`, `structured` | Python Crawl4AI 工具，需要安装 pytools 依赖 |
-| `scrapling-page` | `base`, `structured` | Python Scrapling 工具，需要安装 pytools 依赖 |
-| `kickstarter-comments` | `structured`, `markdown` | Kickstarter 评论页适配器，只在匹配站点时执行 |
-
-如果 profile 中写了未注册的工具名，运行时会报 `Unknown capture tool`。
-
-## 5. 示例：优先使用 Python 工具
+## 4. 示例：优先使用 Python 工具
 
 ```json
 {
@@ -113,4 +100,4 @@ Executor 会按 profile 中的 `tools` 顺序尝试工具，但每个工具只�
 }
 ```
 
-这个配置会先尝试 Crawl4AI 和 Scrapling；如果它们失败、缺能力或产物未通过校验，再回退到内置 Node 工具链。Python 工具安装方式见 [Python 抓取工具安装](./pytools-install.md)。
+这个配置会先尝试 Crawl4AI 和 Scrapling；如果它们失败、缺能力或产物未通过校验，再回退到内置 Node 工具链。Python 工具安装方式见 [Python 抓取工具安装](./tech-details/pytools-install.md)；各工具能力说明见 [Capture Tools 参考](./capture-tools-reference.md)。

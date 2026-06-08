@@ -1,0 +1,93 @@
+{
+  "seedUrls": [],
+  "sitemaps": [],
+  "rulesBeforeBaseEq": [
+    {
+      "name": "allow-all-urls-before-base",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "regex",
+      "values": [
+        ".*"
+      ]
+    }
+  ],
+  "rulesBeforeStage2Eq": [
+    {
+      "name": "capture-all-pages-with-all-artifacts",
+      "matchType": "url",
+      "listType": "whitelist",
+      "ruleType": "regex",
+      "values": [
+        ".*"
+      ],
+      "artifacts": [
+        "markdown",
+        "screenshot",
+        "structured"
+      ]
+    }
+  ],
+  "runOptions": {
+    "seedMaxDepth": 0,
+    "crawlMaxDepth": 0
+  },
+  "captureProfiles": {
+    "default-simple-capture": {
+      "tools": [
+        "scrapling-page",
+        "crawl4ai-page",
+        "jina-markdown"
+      ]
+    }
+  },
+  "defaultCaptureProfile": "default-simple-capture",
+  "validation": {
+    "base": {
+      "minLength": 80,
+      "rejectRegex": [
+        "Access Denied",
+        "Access to this page has been denied",
+        "Just a moment",
+        "verify you are human",
+        "Please enable JavaScript",
+        "Checking your browser",
+        "Attention Required",
+        "captcha",
+        "blocked by security",
+        "403 Forbidden",
+        "Request blocked"
+      ]
+    },
+    "markdown": {
+      "minLength": 120,
+      "rejectRegex": [
+        "Access Denied",
+        "Access to this page has been denied",
+        "Just a moment",
+        "verify you are human",
+        "Please enable JavaScript",
+        "Checking your browser",
+        "Attention Required",
+        "captcha",
+        "blocked by security",
+        "403 Forbidden",
+        "Request blocked"
+      ]
+    },
+    "screenshot": {
+      "minBytes": 20000
+    },
+    "structured": {
+      "minLength": 2
+    }
+  },
+  "browser": {
+    "engine": "cloakbrowser",
+    "profileMode": "ephemeral",
+    "reuse": "run_browser",
+    "contextReuse": "site_session_proxy",
+    "pageReuse": "none",
+    "proxyBinding": "session"
+  }
+}

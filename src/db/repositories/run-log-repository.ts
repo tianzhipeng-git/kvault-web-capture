@@ -17,7 +17,8 @@ export type RunLogEvent =
   | 'base_page_skipped_target_reached'
   | 'target_success_count_reached'
   | 'artifact_done'
-  | 'artifact_failed';
+  | 'artifact_failed'
+  | 'tool_fallback';
 
 export interface RunLogRecord {
   id: number;
@@ -156,6 +157,36 @@ export class RunLogRepository {
         sitePageId: input.sitePageId,
         pageRunId: input.pageRunId,
         meta: input.meta ?? undefined,
+      },
+    );
+  }
+
+  tool_fallback(input: {
+    crawlRunId: number;
+    url: string;
+    sitePageId: number;
+    pageRunId: number;
+    purpose: 'base' | 'artifact';
+    artifactType?: string | null;
+    summary: string;
+    meta?: Record<string, unknown> | null;
+  }): Promise<void> {
+    const label = input.purpose === 'artifact' && input.artifactType
+      ? `[${input.artifactType}]`
+      : '[base]';
+    return this.warn(
+      input.crawlRunId,
+      'tool_fallback',
+      `${label} tool fallback ${input.url}: ${input.summary}`,
+      {
+        url: input.url,
+        sitePageId: input.sitePageId,
+        pageRunId: input.pageRunId,
+        meta: {
+          purpose: input.purpose,
+          artifactType: input.artifactType ?? null,
+          ...(input.meta ?? {}),
+        },
       },
     );
   }

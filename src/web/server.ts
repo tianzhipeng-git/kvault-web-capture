@@ -6,7 +6,7 @@ import { dirname, extname, join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 import { M1App } from '../app/services.js';
 import type { ProjectExportArtifact, ProjectExportOptions } from '../export/project-exporter.js';
@@ -343,6 +343,7 @@ export interface WebServerOptions {
   host?: string;
   maxConcurrentRuns?: number;
   sessionTtlMs?: number;
+  apiKey?: string;
   eventLoopDelayMonitorIntervalMs?: number;
   eventLoopDelayWarningThresholdMs?: number;
 }
@@ -353,7 +354,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
   const app = await M1App.create({ dbPath: options.dbPath, databaseUrl: options.databaseUrl });
   const queryDb = await openDatabase({ path: options.dbPath, url: options.databaseUrl });
-  const auth = new SessionAuth(options.adminPassword, options.sessionTtlMs ?? 1000 * 60 * 60 * 8);
+  const auth = new SessionAuth(
+    options.adminPassword,
+    options.sessionTtlMs ?? 1000 * 60 * 60 * 8,
+    options.apiKey ?? process.env.KVAULT_API_KEY ?? null,
+  );
   const coordinator = new RunCoordinator(options.maxConcurrentRuns ?? 2);
   const projectQuery = new ProjectListQuery(queryDb);
   const siteOverviewQuery = new SiteOverviewQuery(queryDb);
@@ -434,6 +439,16 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
         crawlMaxDepthOverride: 0,
       },
     };
+  };
+
+  const requireSessionAuth = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    if (request.authSource !== 'session') {
+      reply.code(403);
+      throw new Error('该接口仅允许 Web UI 登录态访问。');
+    }
   };
 
   await auth.register(server);
@@ -545,11 +560,15 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
   });
 
-  server.get('/api/system/default-site', async () => ({
-    defaultSite: await app.getDefaultSite(),
-  }));
+  server.get('/api/system/default-site', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    return {
+      defaultSite: await app.getDefaultSite(),
+    };
+  });
 
-  server.put('/api/system/default-site', async (request) => {
+  server.put('/api/system/default-site', async (request, reply) => {
+    requireSessionAuth(request, reply);
     const body = (request.body ?? {}) as { siteId?: unknown };
     await app.setDefaultSite(parseOptionalSiteId(body.siteId));
     return {
@@ -1026,10 +1045,12 @@ async function main(): Promise<void> {
   const dbPath = process.env.KVAULT_DB_PATH ?? '.local/state.db';
   const databaseUrl = process.env.KVAULT_DATABASE_URL;
   const adminPassword = process.env.KVAULT_ADMIN_PASSWORD ?? 'kvault-dev';
+  const apiKey = process.env.KVAULT_API_KEY;
   const server = await createWebServer({
     dbPath,
     databaseUrl,
     adminPassword,
+    apiKey,
     host,
     port,
   });

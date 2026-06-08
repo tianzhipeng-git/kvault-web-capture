@@ -15,6 +15,7 @@ export class SessionAuth {
   constructor(
     private readonly adminPassword: string,
     private readonly sessionTtlMs: number,
+    private readonly apiKey: string | null = null,
   ) {}
 
   async register(server: FastifyInstance): Promise<void> {
@@ -35,9 +36,9 @@ export class SessionAuth {
         return;
       }
 
-      if (!this.attachSession(request)) {
+      if (!this.attachSession(request) && !this.attachApiKey(request)) {
         return reply.code(401).send({
-          message: '登录已过期，请重新输入管理密码。',
+          message: '登录已过期或 API Key 无效。',
         });
       }
     });
@@ -80,7 +81,6 @@ export class SessionAuth {
     const sessionId = request.cookies[SESSION_COOKIE];
 
     if (!sessionId) {
-      request.isAuthenticated = false;
       return false;
     }
 
@@ -88,11 +88,34 @@ export class SessionAuth {
 
     if (!session || Date.now() - session.createdAt > this.sessionTtlMs) {
       this.sessions.delete(sessionId);
-      request.isAuthenticated = false;
       return false;
     }
 
     request.isAuthenticated = true;
+    request.authSource = 'session';
+    return true;
+  }
+
+  private attachApiKey(request: FastifyRequest): boolean {
+    if (!this.apiKey) {
+      return false;
+    }
+
+    const headerKey = request.headers['x-api-key'];
+    const authorization = request.headers.authorization;
+    const providedKey =
+      typeof headerKey === 'string'
+        ? headerKey
+        : authorization?.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length)
+          : null;
+
+    if (providedKey !== this.apiKey) {
+      return false;
+    }
+
+    request.isAuthenticated = true;
+    request.authSource = 'api_key';
     return true;
   }
 }
@@ -100,5 +123,6 @@ export class SessionAuth {
 declare module 'fastify' {
   interface FastifyRequest {
     isAuthenticated: boolean;
+    authSource?: 'session' | 'api_key';
   }
 }

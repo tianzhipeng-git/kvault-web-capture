@@ -450,6 +450,7 @@ describe('web server', () => {
       dbPath,
       adminPassword: 'secret',
       maxConcurrentRuns: 2,
+      apiKey: 'external-secret',
     });
     servers.push(webServer);
     const authCookie = await login(webServer);
@@ -569,6 +570,18 @@ describe('web server', () => {
     const setDefaultResponse = await webServer.inject({
       method: 'PUT',
       url: '/api/system/default-site',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: {
+        siteId: site.lastInsertId,
+      },
+    });
+    expect(setDefaultResponse.statusCode).toBe(403);
+
+    const sessionSetDefaultResponse = await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-site',
       cookies: {
         kvault_session: authCookie.split('=')[1],
       },
@@ -576,15 +589,15 @@ describe('web server', () => {
         siteId: site.lastInsertId,
       },
     });
-    expect(setDefaultResponse.statusCode).toBe(200);
-    expect((setDefaultResponse.json() as { defaultSite: { siteId: number } }).defaultSite.siteId)
+    expect(sessionSetDefaultResponse.statusCode).toBe(200);
+    expect((sessionSetDefaultResponse.json() as { defaultSite: { siteId: number } }).defaultSite.siteId)
       .toBe(site.lastInsertId);
 
     const pageIdsResponse = await webServer.inject({
       method: 'GET',
       url: `/api/runs/${run.lastInsertId}/page-ids`,
-      cookies: {
-        kvault_session: authCookie.split('=')[1],
+      headers: {
+        'x-api-key': 'external-secret',
       },
     });
     expect(pageIdsResponse.statusCode).toBe(200);
@@ -593,8 +606,8 @@ describe('web server', () => {
     const runExportResponse = await webServer.inject({
       method: 'POST',
       url: `/api/runs/${run.lastInsertId}/export`,
-      cookies: {
-        kvault_session: authCookie.split('=')[1],
+      headers: {
+        authorization: 'Bearer external-secret',
       },
       payload: {
         artifacts: ['markdown'],
@@ -607,8 +620,8 @@ describe('web server', () => {
     const simpleDownloadResponse = await webServer.inject({
       method: 'GET',
       url: `/api/simple-capture/runs/${run.lastInsertId}/download`,
-      cookies: {
-        kvault_session: authCookie.split('=')[1],
+      headers: {
+        'x-api-key': 'external-secret',
       },
     });
     expect(simpleDownloadResponse.statusCode).toBe(200);

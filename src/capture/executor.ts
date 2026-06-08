@@ -1,4 +1,5 @@
 import type { CaptureCapability } from '../domain/types.js';
+import { formatToolFallbackSummary } from './diagnostics-utils.js';
 import { logger } from '../utils/runtime-logger.js';
 import { toolCoversAnyNeed } from './capability-utils.js';
 import { CaptureProfileResolver } from './profile-resolver.js';
@@ -295,6 +296,20 @@ export class PageCaptureExecutor {
       diagnostics: result.diagnostics,
       durationMs: Date.now() - captureStartedAt,
     });
+    const fallbackSummary = formatToolFallbackSummary(result.diagnostics);
+    if (fallbackSummary) {
+      logger.warn('Page capture executor used tool fallback', {
+        runId: input.runId,
+        siteId: input.siteId,
+        requestId: input.runtime.requestId,
+        url: input.normalizedUrl,
+        needs: input.needs,
+        profile: resolvedProfile.name,
+        summary: fallbackSummary,
+        diagnostics: result.diagnostics,
+        durationMs: Date.now() - captureStartedAt,
+      });
+    }
     return result;
   }
 }

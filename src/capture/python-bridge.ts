@@ -7,6 +7,7 @@ import {
   type BrowserManager,
   type CdpLease,
 } from './browser-provider.js';
+import { PYTHON_BRIDGE_TIMEOUT_MS } from './python-bridge-config.js';
 import type { CaptureInput, CaptureToolResult } from './types.js';
 import { logger } from '../utils/runtime-logger.js';
 
@@ -36,6 +37,7 @@ export interface PythonBridgeOptions {
     args: string[];
     stdin: string;
     timeoutMs: number;
+    abortSignal?: AbortSignal;
   }) => Promise<{ stdout: string; stderr: string }>;
 }
 
@@ -108,7 +110,7 @@ export class PythonBridge {
       needs: input.needs,
       hasProxy: input.runtime.proxyInfo?.url !== undefined,
       hasCdpLease: cdpLease !== null,
-      timeoutMs: this.options.timeoutMs ?? 90_000,
+      timeoutMs: this.options.timeoutMs ?? PYTHON_BRIDGE_TIMEOUT_MS,
     });
 
     let stdout: string;
@@ -118,15 +120,24 @@ export class PythonBridge {
         command,
         args: [this.options.scriptPath],
         stdin: payload,
-        timeoutMs: this.options.timeoutMs ?? 90_000,
+        timeoutMs: this.options.timeoutMs ?? PYTHON_BRIDGE_TIMEOUT_MS,
+        abortSignal: input.runtime.abortSignal,
       });
       stdout = result.stdout;
       stderr = result.stderr;
     } catch (error) {
-      const maybe = error as { code?: unknown; signal?: unknown; stderr?: unknown; killed?: unknown };
-      const reason = maybe.killed
-        ? 'timed out'
-        : maybe.signal
+      const maybe = error as {
+        code?: unknown;
+        signal?: unknown;
+        stderr?: unknown;
+        killed?: unknown;
+        aborted?: unknown;
+      };
+      const reason = maybe.aborted
+        ? 'aborted'
+        : maybe.killed
+          ? 'timed out'
+          : maybe.signal
           ? `signal ${String(maybe.signal)}`
           : maybe.code
             ? `exit code ${String(maybe.code)}`
@@ -273,6 +284,7 @@ async function runProcess(input: {
   args: string[];
   stdin: string;
   timeoutMs: number;
+  abortSignal?: AbortSignal;
 }): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(input.command, input.args, {
@@ -281,34 +293,69 @@ async function runProcess(input: {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
+    let aborted = false;
+    let settled = false;
+
+    const finish = (
+      handler: typeof resolve | typeof reject,
+      value: { stdout: string; stderr: string } | Error,
+    ) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      input.abortSignal?.removeEventListener('abort', onAbort);
+      if (value instanceof Error) {
+        reject(value);
+        return;
+      }
+      handler(value);
+    };
+
+    const killChild = (reason: 'timed out' | 'aborted') => {
+      if (reason === 'timed out') {
+        timedOut = true;
+      } else {
+        aborted = true;
+      }
       child.kill('SIGTERM');
-    }, input.timeoutMs);
+    };
+
+    const timer = setTimeout(() => killChild('timed out'), input.timeoutMs);
+
+    const onAbort = () => {
+      killChild('aborted');
+    };
+    if (input.abortSignal?.aborted) {
+      killChild('aborted');
+    } else {
+      input.abortSignal?.addEventListener('abort', onAbort, { once: true });
+    }
 
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
     child.stdin.on('error', () => {});
     child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
+      finish(reject, error);
     });
     child.on('close', (code, signal) => {
-      clearTimeout(timer);
       const stdoutText = Buffer.concat(stdout).toString('utf8');
       const stderrText = Buffer.concat(stderr).toString('utf8');
       if (code === 0) {
-        resolve({ stdout: stdoutText, stderr: stderrText });
+        finish(resolve, { stdout: stdoutText, stderr: stderrText });
         return;
       }
-      const error = new Error(timedOut ? 'timed out' : `exit code ${code ?? 'null'}`);
+      const message = aborted ? 'aborted' : timedOut ? 'timed out' : `exit code ${code ?? 'null'}`;
+      const error = new Error(message);
       Object.assign(error, {
         code,
         signal,
         stderr: stderrText,
         killed: timedOut,
+        aborted,
       });
-      reject(error);
+      finish(reject, error);
     });
 
     child.stdin.end(input.stdin);

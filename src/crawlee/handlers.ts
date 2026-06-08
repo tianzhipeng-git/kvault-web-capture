@@ -1,6 +1,7 @@
 import type { RequestQueue } from 'crawlee';
 
 import type { PageCaptureExecutor } from '../capture/executor.js';
+import { formatToolFallbackSummary } from '../capture/diagnostics-utils.js';
 import type { CaptureResult, RuntimeContext } from '../capture/types.js';
 import type { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
@@ -84,6 +85,35 @@ function buildTask(input: {
   };
 }
 
+async function logToolFallbackIfNeeded(input: {
+  result: CaptureResult;
+  task: PageCaptureTask;
+  pageRunId: number;
+  runLog: RunLogRepository;
+  purpose: 'base' | 'artifact';
+  artifactType?: ArtifactType;
+}): Promise<void> {
+  const summary = formatToolFallbackSummary(input.result.diagnostics);
+  if (!summary) {
+    return;
+  }
+
+  await input.runLog.tool_fallback({
+    crawlRunId: input.task.runId,
+    url: input.task.normalizedUrl,
+    sitePageId: input.task.sitePageId,
+    pageRunId: input.pageRunId,
+    purpose: input.purpose,
+    artifactType: input.artifactType ?? null,
+    summary,
+    meta: {
+      diagnostics: input.result.diagnostics,
+      needs: input.task.needs,
+      purpose: input.task.purpose ?? null,
+    },
+  });
+}
+
 async function recordArtifactResult(input: {
   result: CaptureResult;
   artifactType: ArtifactType;
@@ -136,6 +166,14 @@ async function recordArtifactResult(input: {
         diagnostics: input.result.diagnostics,
       },
     });
+    await logToolFallbackIfNeeded({
+      result: input.result,
+      task: input.task,
+      pageRunId: input.pageRunId,
+      runLog: input.runLog,
+      purpose: 'artifact',
+      artifactType: 'markdown',
+    });
   } else if (input.artifactType === 'screenshot') {
     if (!input.result.screenshot) {
       throw new Error(`Screenshot result missing for ${input.task.normalizedUrl}`);
@@ -178,6 +216,14 @@ async function recordArtifactResult(input: {
         diagnostics: input.result.diagnostics,
       },
     });
+    await logToolFallbackIfNeeded({
+      result: input.result,
+      task: input.task,
+      pageRunId: input.pageRunId,
+      runLog: input.runLog,
+      purpose: 'artifact',
+      artifactType: 'screenshot',
+    });
   } else {
     if (input.result.structured === undefined) {
       throw new Error(`Structured result missing for ${input.task.normalizedUrl}`);
@@ -219,6 +265,14 @@ async function recordArtifactResult(input: {
         purpose: input.task.purpose ?? null,
         diagnostics: input.result.diagnostics,
       },
+    });
+    await logToolFallbackIfNeeded({
+      result: input.result,
+      task: input.task,
+      pageRunId: input.pageRunId,
+      runLog: input.runLog,
+      purpose: 'artifact',
+      artifactType: 'structured',
     });
   }
 
@@ -418,6 +472,14 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
       requestId: deps.runtime.requestId,
       diagnostics: result.diagnostics,
     },
+  });
+
+  await logToolFallbackIfNeeded({
+    result,
+    task,
+    pageRunId,
+    runLog: deps.runLog,
+    purpose: 'base',
   });
 
   await deps.sitePageRepository.recordBaseCapture({

@@ -1,5 +1,6 @@
 import { BasicCrawler, type Configuration, type RequestQueue } from 'crawlee';
 
+import { REQUEST_HANDLER_TIMEOUT_SECS } from '../capture/python-bridge-config.js';
 import type { RuntimeContext } from '../capture/types.js';
 import type { PageCaptureTask } from '../domain/types.js';
 
@@ -33,7 +34,7 @@ export class CrawleeCaptureRuntime {
   private readonly crawler: BasicCrawler;
 
   constructor(options: CrawleeCaptureRuntimeOptions) {
-    const handlerTimeoutSecs = options.requestHandlerTimeoutSecs ?? 60;
+    const handlerTimeoutSecs = options.requestHandlerTimeoutSecs ?? REQUEST_HANDLER_TIMEOUT_SECS;
 
     this.crawler = new BasicCrawler(
       {

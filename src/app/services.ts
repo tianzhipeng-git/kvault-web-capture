@@ -57,6 +57,7 @@ import { CaptureProfileResolver } from '../capture/profile-resolver.js';
 import { CaptureToolRegistry } from '../capture/tool-registry.js';
 import { RunTargetTracker } from '../planner/run-target-tracker.js';
 import { CrawleeCaptureRuntime } from '../crawlee/capture-runtime.js';
+import { REQUEST_HANDLER_TIMEOUT_SECS } from '../capture/python-bridge-config.js';
 import {
   createPageCaptureFailedRequestHandler,
   createPageCaptureRequestHandler,
@@ -662,6 +663,7 @@ export class M1App {
     const runtime = new CrawleeCaptureRuntime({
       requestQueue: pageCaptureQueue,
       configuration,
+      requestHandlerTimeoutSecs: REQUEST_HANDLER_TIMEOUT_SECS,
       requestHandler: createPageCaptureRequestHandler({
         executor,
         classifier,
