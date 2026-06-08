@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
-import { M1App } from '../app/services.js';
+import { CaptureApp } from '../app/capture-app.js';
 import type { ProjectExportArtifact, ProjectExportOptions } from '../export/project-exporter.js';
 import { openDatabase } from '../db/database.js';
 import { chatCompletion, type ChatCompletionMessageParam } from '../utils/llm_chat.js';
@@ -352,7 +352,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   const server = Fastify({
     logger: false,
   });
-  const app = await M1App.create({ dbPath: options.dbPath, databaseUrl: options.databaseUrl });
+  const app = await CaptureApp.create({ dbPath: options.dbPath, databaseUrl: options.databaseUrl });
   const queryDb = await openDatabase({ path: options.dbPath, url: options.databaseUrl });
   const auth = new SessionAuth(
     options.adminPassword,

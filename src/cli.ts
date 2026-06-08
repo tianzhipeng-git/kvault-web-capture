@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { resolve } from 'node:path';
 
-import { M1App } from './app/services.js';
+import { CaptureApp } from './app/capture-app.js';
 import type { UpdatePolicy } from './domain/types.js';
 
 function getArg(flag: string, fallback?: string): string | undefined {
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const app = await M1App.create({ dbPath, databaseUrl: process.env.KVAULT_DATABASE_URL });
+  const app = await CaptureApp.create({ dbPath, databaseUrl: process.env.KVAULT_DATABASE_URL });
 
   try {
     switch (command) {

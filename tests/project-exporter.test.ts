@@ -5,7 +5,7 @@ import ExcelJS from 'exceljs';
 import { afterEach, describe, expect, it } from 'vitest';
 import yauzl from 'yauzl';
 
-import { M1App } from '../src/app/services.js';
+import { CaptureApp } from '../src/app/capture-app.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
@@ -244,7 +244,7 @@ describe('project export', () => {
       urlRuleDecision: 'deny',
     });
 
-    const app = await M1App.create({ dbPath });
+    const app = await CaptureApp.create({ dbPath });
     openHandles.push(app);
     const outputPath = join(dir, 'export.zip');
     const result = await app.exportProject(project.id, outputPath);

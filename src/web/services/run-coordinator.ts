@@ -1,4 +1,4 @@
-import type { M1App } from '../../app/services.js';
+import type { CaptureApp } from '../../app/capture-app.js';
 import type { RunSummary, UpdatePolicy } from '../../domain/types.js';
 
 interface ActiveRun {
@@ -26,7 +26,7 @@ export class RunCoordinator {
   }
 
   startSeed(
-    app: M1App,
+    app: CaptureApp,
     input: {
       siteId: number;
       targetSuccessCount: number | null;
@@ -36,7 +36,7 @@ export class RunCoordinator {
   }
 
   startCrawl(
-    app: M1App,
+    app: CaptureApp,
     input: {
       siteId: number;
       updatePolicy: UpdatePolicy;

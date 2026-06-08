@@ -3,23 +3,11 @@ import { mkdir } from 'node:fs/promises';
 import { Configuration } from 'crawlee';
 
 import { FileArtifactWriter } from '../export/file-artifact-writer.js';
-import {
-  ProjectExporter,
-  type ProjectExportOptions,
-  type ProjectExportResult,
-  type SitePageIdExportInput,
-  type SitePageIdExportResult,
-  type SitePageListExportInput,
-  type SitePageListExportResult,
-} from '../export/project-exporter.js';
 import type { Classifier } from '../classification/classifier.js';
 import { FakeClassifier } from '../classification/fake-classifier.js';
 import { LLMClassifier } from '../classification/llm-classifier.js';
 import { extractLabelDefinitionCores } from '../classification/label-definitions.js';
-import { createDefaultSiteConfig, loadSiteConfig, parseSiteConfig } from '../config/site-config.js';
-
-import { initializeSchema, openDatabase, type DbClient } from '../db/database.js';
-import {
+import type {
   ArtifactRunRepository,
   PageRunRepository,
   ProjectRepository,
@@ -27,16 +15,11 @@ import {
   RunRepository,
   SitePageRepository,
   SiteRepository,
-  SystemSettingRepository,
-  type InventoryPageRow,
-  type InventorySummary,
-  type SampleCaptureRow,
 } from '../db/repositories/index.js';
 import type {
   PageCaptureTask,
   RunType,
   RunSummary,
-  SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
@@ -65,13 +48,11 @@ import {
 import { RunPlanner } from '../planner/run-planner.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 
-import { SystemClock } from '../utils/clock.js';
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
 import { isInvalidUrlError } from '../utils/url.js';
-import { buildPathTree, type PathTreeResult } from '../utils/path-tree.js';
 
-interface RunNotificationBot {
+export interface RunNotificationBot {
   sendPost(title: string, content: FeishuPostContent, lang?: string): Promise<unknown>;
 }
 
@@ -88,39 +69,13 @@ interface RunNotificationInput {
   errorMessage?: string;
 }
 
-export interface M1AppOptions {
-  dbPath: string;
-  databaseUrl?: string;
+export interface RunServiceOptions {
   classifier?: Classifier;
   captureTools?: CaptureTool[];
   feishuBot?: RunNotificationBot | null;
 }
 
-export class M1App {
-  private db!: DbClient;
-
-  private readonly clock;
-
-  private projects!: ProjectRepository;
-
-  private sites!: SiteRepository;
-
-  private runs!: RunRepository;
-
-  private sitePages!: SitePageRepository;
-
-  private pageRuns!: PageRunRepository;
-
-  private artifactRuns!: ArtifactRunRepository;
-
-  private runLogs!: RunLogRepository;
-
-  private systemSettings!: SystemSettingRepository;
-
-  private planner!: RunPlanner;
-
-  private projectExporter!: ProjectExporter;
-
+export class RunService {
   private readonly classifier: Classifier | null;
 
   private readonly captureTools: CaptureTool[] | null;
@@ -129,167 +84,23 @@ export class M1App {
 
   private runNotificationBot: RunNotificationBot | null | undefined;
 
-  private constructor(private readonly options: M1AppOptions) {
-    this.clock = new SystemClock();
+  constructor(
+    private readonly projects: ProjectRepository,
+    private readonly sites: SiteRepository,
+    private readonly runs: RunRepository,
+    private readonly sitePages: SitePageRepository,
+    private readonly pageRuns: PageRunRepository,
+    private readonly artifactRuns: ArtifactRunRepository,
+    private readonly runLogs: RunLogRepository,
+    private readonly planner: RunPlanner,
+    options: RunServiceOptions,
+  ) {
     this.classifier = options.classifier ?? null;
     this.captureTools = options.captureTools ?? null;
     this.defaultCaptureToolChain = options.captureTools
       ? options.captureTools.map((tool) => tool.name)
       : ['http-base', 'defuddle-markdown', 'lightpanda-markdown', 'jina-markdown', 'playwright-screenshot'];
     this.runNotificationBot = options.feishuBot;
-  }
-
-  static async create(options: M1AppOptions): Promise<M1App> {
-    const app = new M1App(options);
-    app.db = await openDatabase({ path: options.dbPath, url: options.databaseUrl });
-    app.projects = new ProjectRepository(app.db, app.clock);
-    app.sites = new SiteRepository(app.db, app.clock);
-    app.runs = new RunRepository(app.db, app.clock);
-    app.sitePages = new SitePageRepository(app.db, app.clock);
-    app.pageRuns = new PageRunRepository(app.db, app.clock);
-    app.artifactRuns = new ArtifactRunRepository(app.db, app.clock);
-    app.runLogs = new RunLogRepository(app.db, app.clock);
-    app.systemSettings = new SystemSettingRepository(app.db, app.clock);
-    app.planner = new RunPlanner(app.sitePages, app.clock);
-    app.projectExporter = new ProjectExporter(app.db, app.clock);
-    await initializeSchema(app.db);
-    return app;
-  }
-
-  async close(): Promise<void> {
-    await this.db.close();
-  }
-
-  async createProject(name: string): Promise<{ id: number; slug: string }> {
-    const project = await this.projects.create(name);
-    return {
-      id: project.id,
-      slug: project.slug,
-    };
-  }
-
-  async getProjectLabelDefinitions(projectId: number): Promise<unknown> {
-    const project = await this.projects.getById(projectId);
-
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
-    }
-
-    return project.labelDefinitions;
-  }
-
-  async updateProjectLabelDefinitions(projectId: number, labelDefinitions: unknown): Promise<void> {
-    const project = await this.projects.getById(projectId);
-
-    if (!project) {
-      throw new Error(`Project ${projectId} not found`);
-    }
-
-    await this.projects.updateLabelDefinitions(projectId, labelDefinitions);
-  }
-
-  async createSite(input: {
-    projectId?: number;
-    projectSlug?: string;
-    name: string;
-    baseUrl: string;
-    storageRoot: string;
-  }): Promise<{ id: number; name: string }> {
-    const project = input.projectId != null
-      ? await this.projects.getById(input.projectId)
-      : input.projectSlug != null
-        ? await this.projects.getBySlug(input.projectSlug)
-        : null;
-
-    if (!project) {
-      throw new Error(`Project not found`);
-    }
-
-    const site = await this.sites.create({
-      projectId: project.id,
-      name: input.name,
-      baseUrl: input.baseUrl,
-      storageRoot: input.storageRoot,
-      config: createDefaultSiteConfig(input.baseUrl),
-    });
-
-    return {
-      id: site.id,
-      name: site.name,
-    };
-  }
-
-  async importSiteConfig(siteId: number, configPath: string): Promise<void> {
-    const site = await this.sites.getById(siteId);
-
-    if (!site) {
-      throw new Error(`Site ${siteId} not found`);
-    }
-
-    await this.sites.updateConfig(siteId, loadSiteConfig(configPath));
-  }
-
-  async cloneSiteConfig(sourceSiteId: number, targetSiteId: number): Promise<void> {
-    await this.sites.cloneConfig(sourceSiteId, targetSiteId);
-  }
-
-  async getSiteConfig(siteId: number): Promise<SiteConfig> {
-    const site = await this.sites.getById(siteId);
-
-    if (!site) {
-      throw new Error(`Site ${siteId} not found`);
-    }
-
-    return site.config;
-  }
-
-  async updateSiteConfig(siteId: number, config: SiteConfig): Promise<void> {
-    const site = await this.sites.getById(siteId);
-
-    if (!site) {
-      throw new Error(`Site ${siteId} not found`);
-    }
-
-    await this.sites.updateConfig(siteId, parseSiteConfig(config));
-  }
-
-  async getDefaultSite(): Promise<{
-    siteId: number;
-    siteName: string;
-    projectId: number;
-    baseUrl: string;
-  } | null> {
-    const siteId = await this.systemSettings.getDefaultSiteId();
-
-    if (siteId === null) {
-      return null;
-    }
-
-    const site = await this.sites.getById(siteId);
-
-    if (!site) {
-      await this.systemSettings.setDefaultSiteId(null);
-      return null;
-    }
-
-    return {
-      siteId: site.id,
-      siteName: site.name,
-      projectId: site.projectId,
-      baseUrl: site.baseUrl,
-    };
-  }
-
-  async setDefaultSite(siteId: number | null): Promise<void> {
-    if (siteId !== null) {
-      const site = await this.sites.getById(siteId);
-
-      if (!site) {
-        throw new Error(`Site ${siteId} not found`);
-      }
-    }
-
-    await this.systemSettings.setDefaultSiteId(siteId);
   }
 
   async runSeed(input: number | {
@@ -327,55 +138,6 @@ export class M1App {
       initialUrls: input.initialUrls ?? null,
       crawlMaxDepthOverride: input.crawlMaxDepthOverride ?? null,
     });
-  }
-
-  async getInventorySummary(siteId: number): Promise<InventorySummary> {
-    return this.sitePages.summarizeInventory(siteId);
-  }
-
-  async listPendingPages(siteId: number): Promise<InventoryPageRow[]> {
-    return this.sitePages.listByInventoryStatus(siteId, 'stage2_pending');
-  }
-
-  async listDeniedPages(siteId: number): Promise<InventoryPageRow[]> {
-    return this.sitePages.listByInventoryStatus(siteId, 'url_rule_denied');
-  }
-
-  async getSitePathTree(siteId: number): Promise<PathTreeResult> {
-    const site = await this.sites.getById(siteId);
-
-    if (!site) {
-      throw new Error(`Site ${siteId} not found`);
-    }
-
-    return buildPathTree((await this.sitePages.listKnownUrls(siteId)).map((row) => row.normalizedUrl));
-  }
-
-  async listSampleCaptures(siteId: number, limit: number): Promise<SampleCaptureRow[]> {
-    return this.pageRuns.listSampleCaptures(siteId, limit);
-  }
-
-  exportProject(
-    projectId: number,
-    outputPath?: string,
-    options?: ProjectExportOptions,
-  ): Promise<ProjectExportResult> {
-    return this.projectExporter.exportProject({ projectId, outputPath, options });
-  }
-
-  exportSitePageList(input: SitePageListExportInput): Promise<SitePageListExportResult> {
-    return this.projectExporter.exportSitePageList(input);
-  }
-
-  exportSitePagesByIds(input: SitePageIdExportInput): Promise<SitePageIdExportResult> {
-    return this.projectExporter.exportSitePagesByIds(input);
-  }
-
-  exportRunPages(
-    runId: number,
-    artifacts?: ProjectExportOptions['artifacts'],
-  ): Promise<SitePageIdExportResult & { runId: number }> {
-    return this.projectExporter.exportRunPages({ runId, artifacts });
   }
 
   private async executeRun(input: {

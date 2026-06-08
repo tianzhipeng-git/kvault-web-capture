@@ -1,12 +1,12 @@
 # 异步与并发设计
 
-本文说明项目里和异步并发相关的主要设计，重点覆盖主入口 `src/app/services.ts`、crawler 创建与 handler 执行、Web server 的事件循环观测、以及 SQLite 写入模型。
+本文说明项目里和异步并发相关的主要设计，重点覆盖主入口 `src/app/capture-app.ts`、crawler 创建与 handler 执行、Web server 的事件循环观测、以及 SQLite 写入模型。
 
 ## 1. 总体模型
 
 项目的并发模型可以概括为：
 
-- 运行批次由 `M1App` 串行编排。
+- 运行批次由 `RunService` 串行编排。
 - 每个 Crawlee crawler 内部按 `maxConcurrency` 并发处理请求。
 - `base -> markdown -> screenshot` 三个阶段按顺序运行，不同时并行。
 - SQLite 默认使用 `node:sqlite` 的 `DatabaseSync`，repository 暴露 `async` 方法，但 SQLite 调用本身是同步执行。
@@ -17,9 +17,9 @@
 
 ## 2. 主入口编排
 
-`M1App.create(...)` 会打开数据库、初始化 schema，并构造所有 repository、planner 和 exporter。后续 CLI 和 Web 后端都通过同一个 `M1App` 进入业务写路径。
+`CaptureApp.create(...)` 会打开数据库、初始化 schema，并构造 repositories、业务 services、planner 和 exporter。后续 CLI 和 Web 后端都通过同一个 `CaptureApp` 进入业务写路径，运行调用由它转发给 `RunService`。
 
-一次 run 的入口是：
+`RunService` 中一次 run 的入口是：
 
 - `runSeed(...)`
 - `runCrawl(...)`
@@ -128,7 +128,7 @@ markdown 和 screenshot handler 的模式类似：
 
 ## 6. `targetSuccessCount` 是软上限
 
-`RunTargetTracker` 只在单个 `M1App` 进程、单次 run 内生效。它记录 base 阶段中满足“成功候选”的页面数量：
+`RunTargetTracker` 只在单个进程、单次 run 内生效。它记录 base 阶段中满足“成功候选”的页面数量：
 
 - `crawl_run` 中 stage2 outcome 为 `allow`
 - `seed_run` 中 pending reason 为 `seed_run`

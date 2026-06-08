@@ -6,7 +6,7 @@
 
 - [Crawlee 耦合分析](./crawlee-coupling.md)
 - [浏览器复用策略](./browser-reuse-strategy.md)
-- [M2 技术设计](../m2-tech-design.md) 第 8–10 节（capture profile、validator、proxy 目标模型）
+- [技术与模块结构说明](../technical-module-structure.md)（capture profile、validator、proxy / browser 边界）
 
 ## 1. 结论摘要
 
@@ -91,7 +91,7 @@ if (statusCode !== undefined && statusCode >= 400) {
 
 `CaptureProfileResolver` 按站点配置的 tool 名列表解析 tool 实例，并过滤掉不覆盖当前 `needs` 的 tool。Fallback 顺序完全由 profile 中的 `tools` 数组决定，默认链见 `DEFAULT_CAPTURE_TOOL_CHAIN`（`src/capture/profile-resolver.ts`）。
 
-设计意图见 `docs/m2-tech-design.md` 第 8 节：规则决定「要不要抓、要哪些 artifact」；capture profile 决定「用哪些 tool、失败后按什么顺序降级」。
+设计意图见 `docs/technical-module-structure.md`：规则决定「要不要抓、要哪些 artifact」；capture profile 决定「用哪些 tool、失败后按什么顺序降级」。
 
 ## 4. Crawlee Request 级重试
 
@@ -207,7 +207,7 @@ Validator 拒绝 ≠ 立即触发 Crawlee 重试
 
 站点配置支持 `proxyPolicy`（`off` / `always` / `retry_on_failure`），但**当前未接入** Crawlee `ProxyConfiguration`。唯一实现是：tool 抛错时，在 diagnostic message 中附加 `proxyPolicy=...` 提示文案（`src/capture/executor.ts`）。
 
-目标模型见 `docs/m2-tech-design.md` 第 10 节：runtime 提供 proxy/session，失败后切换 proxy、标记 session bad、retire browser identity、尝试下一 tool。该模型尚未完全落地。
+目标边界见 `docs/technical-module-structure.md`：runtime 提供 proxy/session 信号，BrowserManager 用这些信号构造浏览器身份；失败升级和主动切换 proxy 的策略尚未完全落地。
 
 ## 8. 失败落库边界
 
@@ -216,7 +216,7 @@ Validator 拒绝 ≠ 立即触发 Crawlee 重试
 | Executor 内单 tool 失败 | `CaptureResult.diagnostics`；最终由 handler 写入 `run_logs.meta` |
 | Crawlee 重试耗尽 | `failedRequestHandler`：`page_runs`（base）或 `artifact_runs`（artifact-only task）记 failed；`run_logs` 记 `base_page_failed` / `artifact_failed` |
 
-Tool 层不直接写 repository；状态写入在 `handlers.ts` 完成。见 `docs/m2-tech-design.md` 第 14 节。
+Tool 层不直接写 repository；状态写入在 `handlers.ts` 完成。见 `docs/technical-module-structure.md`。
 
 ## 9. 修改时的导航
 

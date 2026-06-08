@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { M1App } from '../src/app/services.js';
+import { CaptureApp } from '../src/app/capture-app.js';
 import { openDatabase } from '../src/db/database.js';
 import type { ArtifactType, BrowserEngine } from '../src/domain/types.js';
 import {
@@ -126,7 +126,7 @@ async function runBenchmarkAppScenario(input: {
   const dir = createTempDir(`kvault-benchmark-${input.scenario.name}-`);
   const dbPath = join(dir, 'state.db');
   const storageRoot = join(dir, 'storage');
-  const app = await M1App.create({ dbPath });
+  const app = await CaptureApp.create({ dbPath });
 
   try {
     const project = await app.createProject(`benchmark-${input.scenario.name}`);
@@ -244,7 +244,7 @@ describe('app benchmark e2e capture', () => {
     expect(reportPaths.every((path) => path.includes('.tmp/e2e-capture-reports'))).toBe(true);
   });
 
-  it('runs BENCHMARK_URLS from M1App with a crawl4ai-first capture profile over chromium', async () => {
+  it('runs BENCHMARK_URLS from CaptureApp with a crawl4ai-first capture profile over chromium', async () => {
     const scenario: AppBenchmarkScenario = {
       name: 'crawl4ai-first-chromium',
       browserEngine: 'chromium',
@@ -276,7 +276,7 @@ describe('app benchmark e2e capture', () => {
     expect(reports.some((report) => report.basePageDone && report.baseDiagnostics.length > 0)).toBe(true);
   }, 360_000);
 
-  it('runs BENCHMARK_URLS from M1App with a scrapling-first capture profile over lightpanda', async () => {
+  it('runs BENCHMARK_URLS from CaptureApp with a scrapling-first capture profile over lightpanda', async () => {
     const scenario: AppBenchmarkScenario = {
       name: 'scrapling-first-lightpanda',
       browserEngine: 'lightpanda',

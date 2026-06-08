@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { M1App } from '../src/app/services.js';
+import { CaptureApp } from '../src/app/capture-app.js';
 import { HttpBaseTool } from '../src/capture/captools/index.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../src/capture/types.js';
 import { openDatabase } from '../src/db/database.js';
@@ -118,10 +118,10 @@ async function createConfiguredApp(input: {
   captureTools?: CaptureTool[];
   docsArtifacts?: ArtifactType[];
   productArtifacts?: ArtifactType[];
-}): Promise<{ app: M1App; siteId: number; dbPath: string; configPath: string }> {
+}): Promise<{ app: CaptureApp; siteId: number; dbPath: string; configPath: string }> {
   const dbPath = join(input.dir, 'state.db');
   const storageRoot = join(input.dir, 'storage');
-  const app = await M1App.create({
+  const app = await CaptureApp.create({
     dbPath,
     captureTools: input.captureTools ?? [
       new HttpBaseTool(),
@@ -155,7 +155,7 @@ async function createConfiguredApp(input: {
 
 describe('crawl history planning', () => {
   const servers: TestSiteServer[] = [];
-  const apps: M1App[] = [];
+  const apps: CaptureApp[] = [];
 
   afterEach(async () => {
     while (apps.length > 0) {

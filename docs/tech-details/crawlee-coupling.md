@@ -11,7 +11,7 @@
 | 数据与查询 | **很低** | Web、导出、库存查询只读业务数据库，不读 Crawlee storage |
 | 可替换性 | **中等** | 主要重写 `src/crawlee/` 与 `services.ts` 中的 run 编排；约九成业务代码可保留 |
 
-**一句话**：Crawlee 被当作**单次 run 内的临时调度器 + HTTP/浏览器执行引擎**；业务数据库、Planner、规则、导出、Web 等模块**不直接 import `crawlee`**。`src/app/services.ts` 是编排入口，不把核心业务逻辑写进 Crawlee API。
+**一句话**：Crawlee 被当作**单次 run 内的临时调度器 + HTTP/浏览器执行引擎**；业务数据库、Planner、规则、导出、Web 等模块**不直接 import `crawlee`**。`src/app/capture-app.ts` 是编排入口，不把核心业务逻辑写进 Crawlee API。
 
 ## 2. 职责分工
 
@@ -43,7 +43,7 @@ flowchart LR
 | `src/crawlee/crawler-factory.ts` | 创建 `CheerioCrawler`、`PlaywrightCrawler`、`BasicCrawler` |
 | `src/crawlee/handlers.ts` | `RequestQueue`、`CheerioCrawlingContext`、三阶段 request handler |
 | `src/crawlee/queue-factory.ts` | 按 run 打开命名 `RequestQueue` |
-| `src/app/services.ts` | `Configuration`；创建队列与 crawler 并调用 `run()` |
+| `src/app/run-service.ts` | `Configuration`；创建队列与 crawler 并调用 `run()` |
 | `src/utils/runtime-logger.ts` | `LoggerJson` 桥接，将 Crawlee 日志写入当前 run 的 `runtime.log` |
 
 **无 Crawlee 依赖的模块**（举例）：`planner/`（包含 `RunTargetTracker` 运行目标计数）、`db/`、`domain/`、`rules/`、`export/`、`web/`、`classification/`、`markdown/`、`screenshot/`、`config/`、`extract/`。
@@ -51,12 +51,14 @@ flowchart LR
 ### 体量（约数）
 
 - `src/crawlee/*.ts`：约 **936 行**（handlers + factory + queue）
-- `src/app/services.ts`：约 **786 行**，其中与 Crawlee 强相关主要为 `executeRunWithRuntime`（约 250 行量级），其余为项目管理、通知、导出等
+- `src/app/capture-app.ts`：应用生命周期、依赖装配和统一入口
+- `src/app/run-service.ts`：运行编排和通知
+- `src/app/project-service.ts`、`src/app/site-service.ts`：项目与站点管理
 - 占 `src/` 下 TypeScript（不含 `frontend`）总量约 **10%** 量级
 
-## 4. `services.ts` 与 Crawlee 的边界
+## 4. `RunService` 与 Crawlee 的边界
 
-`M1App` 的公开能力大量与 Crawlee 无关（站点/项目 CRUD、导出、库存、配置解析等）。与 Crawlee 的交汇集中在私有方法 `executeRunWithRuntime`：
+`CaptureApp` 对外提供统一入口，运行操作委托给 `RunService`。与 Crawlee 的交汇集中在 `RunService` 的私有方法 `executeRunWithRuntime`：
 
 1. 创建 `Configuration`（内存队列，不持久化 Crawlee storage）
 2. `openRunQueue` 打开 base / markdown / screenshot 三条队列
@@ -78,7 +80,7 @@ const configuration = new Configuration({
 });
 ```
 
-见 `src/app/services.ts` 中 `executeRunWithRuntime`。
+见 `src/app/run-service.ts` 中 `executeRunWithRuntime`。
 
 ## 5. 执行层接缝：`src/crawlee/`
 
@@ -137,7 +139,7 @@ Handler 签名仍绑定 Crawlee 类型（如 `CheerioCrawlingContext`、`Request
 |------|----------|
 | 改抓取/发现/入队流程 | `src/crawlee/handlers.ts` |
 | 改并发、重试、HTTP/浏览器选项 | `src/crawlee/crawler-factory.ts` |
-| 改 run 启动、队列生命周期、阶段顺序 | `src/app/services.ts` → `executeRunWithRuntime` |
+| 改 run 启动、队列生命周期、阶段顺序 | `src/app/run-service.ts` → `executeRunWithRuntime` |
 | 改「要不要爬」 | `src/planner/`、`src/rules/`（Crawlee 之前） |
 | 改查询/UI | `src/web/queries/`、repositories（无 Crawlee） |
 | 评估替换 Crawlee | 本文第 6 节 + 重写 `src/crawlee/` 与 `services.ts` 编排 |

@@ -9,7 +9,7 @@
 
 ## 1. 总体链路
 
-一次 run 创建后，`M1App.executeRun(...)` 会先创建 `crawl_runs` 记录，再调用 `openRuntimeLog(...)` 打开本次运行的文件日志：
+一次 run 创建后，`RunService.executeRun(...)` 会先创建 `crawl_runs` 记录，再调用 `openRuntimeLog(...)` 打开本次运行的文件日志：
 
 ```text
 site.storageRoot/

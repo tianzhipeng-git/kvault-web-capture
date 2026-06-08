@@ -20,7 +20,7 @@ This document should be read together with:
 
 ```mermaid
 flowchart LR
-    CLI["src/cli.ts\nCLI commands"] --> APP["src/app/services.ts\nM1App"]
+    CLI["src/cli.ts\nCLI commands"] --> APP["src/app/capture-app.ts\nCaptureApp"]
 
     APP --> CFG["src/config/site-config.ts\nconfig load / validation"]
     APP --> DB["src/db/database.ts\nschema bootstrap"]
@@ -47,8 +47,8 @@ flowchart LR
 ### CLI and application service
 
 - `src/cli.ts` only parses commands and flags.
-- `src/app/services.ts` is the orchestration entry point for all operator workflows.
-- `M1App` owns:
+- `src/app/capture-app.ts` is the orchestration entry point for all operator workflows.
+- `CaptureApp` owns:
   - DB open / schema init
   - repository construction
   - run creation
@@ -102,7 +102,7 @@ flowchart TD
     end
 
     subgraph AppLayer
-      APP["M1App"]
+      APP["CaptureApp"]
     end
 
     subgraph Planning
@@ -171,7 +171,7 @@ flowchart TD
 
 ## Runtime Flow: Seed Run
 
-Current implementation uses `M1App.runSeed(siteId)`.
+Current implementation uses `CaptureApp.runSeed(siteId)`.
 
 Key behavior:
 
@@ -183,7 +183,7 @@ Key behavior:
 
 ```mermaid
 flowchart TD
-    A["CLI: run:seed"] --> B["M1App.executeRun(runType=seed_run)"]
+    A["CLI: run:seed"] --> B["CaptureApp.executeRun(runType=seed_run)"]
     B --> C["load site config"]
     C --> D["create crawl_runs row"]
     D --> E["expand startup URLs\nseedUrls + recursive sitemap page URLs"]
@@ -205,7 +205,7 @@ flowchart TD
 
 ## Runtime Flow: Crawl Run
 
-Current implementation uses `M1App.runCrawl(...)`.
+Current implementation uses `CaptureApp.runCrawl(...)`.
 
 Key behavior:
 
@@ -222,7 +222,7 @@ Key behavior:
 
 ```mermaid
 flowchart TD
-    A["CLI: run:crawl"] --> B["M1App.executeRun(runType=crawl_run)"]
+    A["CLI: run:crawl"] --> B["CaptureApp.executeRun(runType=crawl_run)"]
     B --> C["create crawl_runs row with config snapshot"]
     C --> D["startup URLs = seeds + sitemaps + known inventory"]
     D --> E["RunPlanner.planRequest"]
@@ -310,7 +310,7 @@ erDiagram
 ```mermaid
 sequenceDiagram
     participant CLI
-    participant App as M1App
+    participant App as CaptureApp
     participant Planner as RunPlanner
     participant Base as BaseHandler
     participant Rules as RuleDecision
@@ -363,7 +363,7 @@ sequenceDiagram
 If you want to understand the code quickly, read in this order:
 
 1. `src/cli.ts`
-2. `src/app/services.ts`
+2. `src/app/capture-app.ts`
 3. `src/planner/run-planner.ts`
 4. `src/rules/rule-decision.ts`
 5. `src/crawlee/handlers.ts`

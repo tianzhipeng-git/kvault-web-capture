@@ -15,7 +15,7 @@ Executor 按 profile 中的 `tools` 顺序尝试工具；每个工具只在它**
 
 ## 2. 默认注册顺序
 
-`M1App` 启动时按以下顺序注册工具（与内置默认 profile 工具链一致，另含 Python 工具与站点适配器）：
+`RunService` 启动 run 时按以下顺序注册工具（与内置默认 profile 工具链一致，另含 Python 工具与站点适配器）：
 
 ```text
 http-base
@@ -85,7 +85,7 @@ kickstarter-comments
 | [SiteConfig 抓取 Profile 配置](./site-config-capture-profiles.md) | profile 字段、执行规则、配置示例 |
 | [SiteConfig 抓取结果校验](./site-config-validation.md) | validator 规则 |
 | [Python 抓取工具安装](./tech-details/pytools-install.md) | crawl4ai-page / scrapling-page 环境 |
-| [M2 技术设计](./m2-tech-design.md) | CaptureTool 架构、Bridge、BrowserManager |
+| [技术与模块结构说明](./technical-module-structure.md) | CaptureTool 架构、Bridge、BrowserManager |
 | [Retry / Fallback / Validator](./tech-details/retry-fallback-and-validator.md) | 工具链 fallback 与 Crawlee retry |
 
-实现入口：`src/capture/captools/`；默认注册：`src/app/services.ts`。
+实现入口：`src/capture/captools/`；默认注册：`src/app/capture-app.ts`。

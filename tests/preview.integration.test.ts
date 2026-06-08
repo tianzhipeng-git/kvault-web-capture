@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { M1App } from '../src/app/services.js';
+import { CaptureApp } from '../src/app/capture-app.js';
 import { openDatabase } from '../src/db/database.js';
 import type { FeishuPostContent } from '../src/utils/feishu-simple-bot.js';
 import { createTempDir } from './helpers/tmp.js';
@@ -12,7 +12,7 @@ import { startTestSiteServer, type TestSiteServer } from './helpers/site-server.
 
 describe('seed run', () => {
   const servers: TestSiteServer[] = [];
-  const apps: M1App[] = [];
+  const apps: CaptureApp[] = [];
 
   afterEach(async () => {
     while (apps.length > 0) {
@@ -31,7 +31,7 @@ describe('seed run', () => {
 
     const dbPath = join(dir, 'state.db');
     const storageRoot = join(dir, 'storage');
-    const app = await M1App.create({ dbPath });
+    const app = await CaptureApp.create({ dbPath });
     apps.push(app);
 
     const project = await app.createProject('Seed Project');
@@ -165,7 +165,7 @@ describe('seed run', () => {
         }),
     });
 
-    const app = await M1App.create({ dbPath: join(dir, 'state.db') });
+    const app = await CaptureApp.create({ dbPath: join(dir, 'state.db') });
     apps.push(app);
     const project = await app.createProject('Seed Target Project');
     const site = await app.createSite({
@@ -227,7 +227,7 @@ describe('seed run', () => {
   it('skips invalid startup URLs without failing the run', async () => {
     const dir = createTempDir('kvault-planning-failure-');
     const dbPath = join(dir, 'state.db');
-    const app = await M1App.create({ dbPath });
+    const app = await CaptureApp.create({ dbPath });
     apps.push(app);
 
     const project = await app.createProject('Planning Failure Project');
@@ -280,7 +280,7 @@ describe('seed run', () => {
     servers.push(server);
 
     const sentMessages: Array<{ title: string; content: FeishuPostContent; lang?: string }> = [];
-    const app = await M1App.create({
+    const app = await CaptureApp.create({
       dbPath: join(dir, 'state.db'),
       feishuBot: {
         async sendPost(title, content, lang) {
