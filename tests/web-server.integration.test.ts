@@ -442,4 +442,177 @@ describe('web server', () => {
     expect(response.rawPayload).toEqual(pngBytes);
     await db.close();
   });
+
+  it('stores a default site and exports pages by run id', async () => {
+    const dir = createTempDir('kvault-web-simple-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 2,
+    });
+    servers.push(webServer);
+    const authCookie = await login(webServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const config = {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: {
+        seedMaxDepth: 1,
+        crawlMaxDepth: 0,
+      },
+    };
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Simple Project', 'simple-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'simple-site',
+        'https://example.com',
+        join(dir, 'storage'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+    const run = await db.run(
+      `INSERT INTO crawl_runs (
+        site_id, run_type, update_policy, config_snapshot_json, status, started_at, finished_at,
+        successful_page_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        site.lastInsertId,
+        'crawl_run',
+        'force_recrawl_all',
+        JSON.stringify(config),
+        'succeeded',
+        now,
+        now,
+        1,
+      ],
+    );
+    const page = await db.run(
+      `INSERT INTO site_pages (
+        site_id, discovered_url, normalized_url, inventory_status, discovery_source,
+        last_base_status, last_base_run_id, last_base_at,
+        last_markdown_status, last_markdown_run_id, last_markdown_at,
+        latest_title, first_discovered_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        site.lastInsertId,
+        'https://example.com/page',
+        'https://example.com/page',
+        'stage2_captured',
+        'inventory',
+        'succeeded',
+        run.lastInsertId,
+        now,
+        'succeeded',
+        run.lastInsertId,
+        now,
+        'Simple page',
+        now,
+        now,
+        now,
+      ],
+    );
+    const pageRun = await db.run(
+      `INSERT INTO page_runs (
+        crawl_run_id, site_page_id, started_at, finished_at, base_capture_status,
+        title, meta_description, body_text, classification_labels_json, rule_outcome,
+        decision_outcome, required_artifacts_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.lastInsertId,
+        page.lastInsertId,
+        now,
+        now,
+        'succeeded',
+        'Simple page',
+        '',
+        'Base body',
+        '{}',
+        'allow',
+        'allow',
+        '["markdown"]',
+      ],
+    );
+    await db.run(
+      `INSERT INTO artifact_runs (
+        crawl_run_id, page_run_id, site_page_id, artifact_type, status,
+        started_at, finished_at, output_path, content, error_message, meta_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.lastInsertId,
+        pageRun.lastInsertId,
+        page.lastInsertId,
+        'markdown',
+        'succeeded',
+        now,
+        now,
+        null,
+        '# Simple page\n\nMarkdown body',
+        null,
+        '{"tool":"test"}',
+      ],
+    );
+
+    const setDefaultResponse = await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-site',
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: {
+        siteId: site.lastInsertId,
+      },
+    });
+    expect(setDefaultResponse.statusCode).toBe(200);
+    expect((setDefaultResponse.json() as { defaultSite: { siteId: number } }).defaultSite.siteId)
+      .toBe(site.lastInsertId);
+
+    const pageIdsResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/runs/${run.lastInsertId}/page-ids`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(pageIdsResponse.statusCode).toBe(200);
+    expect((pageIdsResponse.json() as { pageIds: number[] }).pageIds).toEqual([page.lastInsertId]);
+
+    const runExportResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/runs/${run.lastInsertId}/export`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: {
+        artifacts: ['markdown'],
+      },
+    });
+    expect(runExportResponse.statusCode).toBe(200);
+    expect(runExportResponse.headers['content-type']).toContain('application/zip');
+    expect(runExportResponse.rawPayload.length).toBeGreaterThan(0);
+
+    const simpleDownloadResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/simple-capture/runs/${run.lastInsertId}/download`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(simpleDownloadResponse.statusCode).toBe(200);
+    expect(simpleDownloadResponse.headers['content-type']).toContain('application/zip');
+    await db.close();
+  });
 });
