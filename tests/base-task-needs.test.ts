@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CaptureTool } from '../src/capture/types.js';
+import type { SiteConfig } from '../src/domain/types.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
 import {
   filterIntegratedEagerArtifacts,
@@ -35,14 +36,14 @@ const splitTools: CaptureTool[] = [
 
 describe('base task needs', () => {
   it('includes URL rule artifacts for crawl_run when profile has integrated tools', () => {
-    const siteConfig = {
+    const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
       rulesBeforeStage2Eq: [
         {
           name: 'capture-all',
-          matchType: 'url' as const,
-          listType: 'whitelist' as const,
-          ruleType: 'regex' as const,
+          matchType: 'url',
+          listType: 'whitelist',
+          ruleType: 'regex',
           values: ['.*'],
           artifacts: ['markdown', 'screenshot', 'structured'],
         },
@@ -72,14 +73,14 @@ describe('base task needs', () => {
   });
 
   it('does not eager-fetch artifacts for split tool chains', () => {
-    const siteConfig = {
+    const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
       rulesBeforeStage2Eq: [
         {
           name: 'capture-all',
-          matchType: 'url' as const,
-          listType: 'whitelist' as const,
-          ruleType: 'regex' as const,
+          matchType: 'url',
+          listType: 'whitelist',
+          ruleType: 'regex',
           values: ['.*'],
           artifacts: ['markdown', 'screenshot'],
         },
@@ -105,7 +106,7 @@ describe('base task needs', () => {
   });
 
   it('includes label whitelist artifacts when integrated tools cover them', () => {
-    const siteConfig = {
+    const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
       captureProfiles: {
         default: {
@@ -127,14 +128,14 @@ describe('base task needs', () => {
   });
 
   it('returns only base for seed_run', () => {
-    const siteConfig = {
+    const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
       rulesBeforeStage2Eq: [
         {
           name: 'capture-all',
-          matchType: 'url' as const,
-          listType: 'whitelist' as const,
-          ruleType: 'regex' as const,
+          matchType: 'url',
+          listType: 'whitelist',
+          ruleType: 'regex',
           values: ['.*'],
           artifacts: ['markdown', 'screenshot'],
         },
@@ -154,7 +155,7 @@ describe('base task needs', () => {
   });
 
   it('respects update policy when deciding eager artifact needs', () => {
-    const siteConfig = {
+    const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
       captureProfiles: {
         default: {
