@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -23,6 +23,24 @@ async function login(server: Awaited<ReturnType<typeof createWebServer>>): Promi
   }
 
   return `${cookie.name}=${cookie.value}`;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForFileToBeRemoved(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (!await fileExists(path)) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 describe('web server', () => {
@@ -105,6 +123,8 @@ describe('web server', () => {
     const preparedExport = preparedExportResponse.json() as { token: string; fileName: string };
     expect(preparedExport.token).toBeTruthy();
     expect(preparedExport.fileName).toMatch(/\.zip$/);
+    const preparedExportPath = join('.local', 'exports', preparedExport.fileName);
+    expect(await fileExists(preparedExportPath)).toBe(true);
 
     const preparedDownloadResponse = await webServer.inject({
       method: 'GET',
@@ -117,6 +137,17 @@ describe('web server', () => {
     expect(preparedDownloadResponse.headers['content-type']).toContain('application/zip');
     expect(preparedDownloadResponse.headers['content-disposition']).toContain(preparedExport.fileName);
     expect(preparedDownloadResponse.rawPayload.length).toBeGreaterThan(0);
+    await waitForFileToBeRemoved(preparedExportPath);
+    expect(await fileExists(preparedExportPath)).toBe(false);
+
+    const repeatedPreparedDownloadResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/projects/${projectId}/export/download/${preparedExport.token}`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(repeatedPreparedDownloadResponse.statusCode).toBe(404);
 
     const siteResponse = await webServer.inject({
       method: 'POST',

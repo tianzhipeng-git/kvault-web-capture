@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type ReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -384,15 +384,48 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
   const preparedExports = new Map<string, PreparedExport>();
 
-  const rememberPreparedExport = (result: { outputPath: string; fileName: string }): string => {
-    const token = randomUUID();
-    const now = Date.now();
+  const removeExportFile = async (outputPath: string) => {
+    try {
+      await rm(outputPath, { force: true });
+    } catch {
+      // Export cleanup is best-effort; a failed delete must not fail the download response.
+    }
+  };
+
+  const cleanupExpiredPreparedExports = async (now = Date.now()) => {
+    const expiredPaths: string[] = [];
 
     for (const [key, value] of preparedExports) {
       if (value.expiresAt <= now) {
         preparedExports.delete(key);
+        expiredPaths.push(value.outputPath);
       }
     }
+
+    await Promise.all(expiredPaths.map(removeExportFile));
+  };
+
+  const deleteAfterReply = (reply: FastifyReply, outputPath: string, stream: ReadStream) => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      void removeExportFile(outputPath);
+    };
+
+    reply.raw.once('finish', cleanup);
+    reply.raw.once('close', cleanup);
+    stream.once('close', cleanup);
+    stream.once('error', cleanup);
+  };
+
+  const rememberPreparedExport = (result: { outputPath: string; fileName: string }): string => {
+    const token = randomUUID();
+    const now = Date.now();
+
+    void cleanupExpiredPreparedExports(now);
 
     preparedExports.set(token, {
       outputPath: result.outputPath,
@@ -408,11 +441,13 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     result: { outputPath: string; fileName: string },
   ) => {
     const fileStat = await stat(result.outputPath);
+    const stream = createReadStream(result.outputPath);
+    deleteAfterReply(reply, result.outputPath, stream);
     return reply
       .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
-      .send(createReadStream(result.outputPath));
+      .send(stream);
   };
 
   const requireDefaultSite = async () => {
@@ -455,6 +490,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.addHook('onClose', async () => {
     eventLoopDelayMonitor.close();
+    await cleanupExpiredPreparedExports(Number.MAX_SAFE_INTEGER);
     await app.close();
     await queryDb.close();
   });
@@ -679,11 +715,13 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       parseProjectExportOptions(request.body),
     );
     const fileStat = await stat(result.outputPath);
+    const stream = createReadStream(result.outputPath);
+    deleteAfterReply(reply, result.outputPath, stream);
     return reply
       .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
-      .send(createReadStream(result.outputPath));
+      .send(stream);
   });
 
   server.post('/api/projects/:projectId/export/prepare', async (request) => {
@@ -709,17 +747,23 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const prepared = preparedExports.get(params.token);
     if (!prepared || prepared.expiresAt <= Date.now()) {
       preparedExports.delete(params.token);
+      if (prepared) {
+        await removeExportFile(prepared.outputPath);
+      }
       reply.code(404);
       throw new Error('导出文件已过期，请重新导出。');
     }
 
+    preparedExports.delete(params.token);
     const fileStat = await stat(prepared.outputPath);
+    const stream = createReadStream(prepared.outputPath);
+    deleteAfterReply(reply, prepared.outputPath, stream);
     return reply
       .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${prepared.fileName}"`)
       .header('Content-Length', fileStat.size)
       .header('Cache-Control', 'no-store')
-      .send(createReadStream(prepared.outputPath));
+      .send(stream);
   });
 
   server.post('/api/sites', async (request, reply) => {
@@ -971,12 +1015,14 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       crawlRunId,
     });
     const fileStat = await stat(result.outputPath);
+    const stream = createReadStream(result.outputPath);
+    deleteAfterReply(reply, result.outputPath, stream);
 
     return reply
       .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
-      .send(createReadStream(result.outputPath));
+      .send(stream);
   });
 
   server.post('/api/sites/:siteId/pages/export-by-ids', async (request, reply) => {
@@ -988,12 +1034,14 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       artifacts: parseExportArtifacts(body.artifacts),
     });
     const fileStat = await stat(result.outputPath);
+    const stream = createReadStream(result.outputPath);
+    deleteAfterReply(reply, result.outputPath, stream);
 
     return reply
       .type('application/zip')
       .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
       .header('Content-Length', fileStat.size)
-      .send(createReadStream(result.outputPath));
+      .send(stream);
   });
 
   server.get('/api/sites/:siteId/pages/:sitePageId', async (request) => {
