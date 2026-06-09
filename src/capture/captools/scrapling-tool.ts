@@ -1,5 +1,5 @@
 import type { BrowserManager } from '../browser-provider.js';
-import { PYTHON_BRIDGE_TIMEOUT_MS } from '../python-bridge-config.js';
+import { SCRAPLING_PYTHON_BRIDGE_TIMEOUT_MS } from '../python-bridge-config.js';
 import { PythonBridge } from '../python-bridge.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
 import { resolvePythonToolScript } from './resolve-python-tool-script.js';
@@ -14,7 +14,7 @@ export class ScraplingTool implements CaptureTool {
       : new PythonBridge({
           toolName: 'scrapling-page',
           scriptPath: resolvePythonToolScript('scrapling_tool.py'),
-          timeoutMs: PYTHON_BRIDGE_TIMEOUT_MS,
+          timeoutMs: SCRAPLING_PYTHON_BRIDGE_TIMEOUT_MS,
           browserManager: bridgeOrBrowserManager,
         });
   }

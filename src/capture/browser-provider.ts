@@ -400,6 +400,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
     const cdpHttpUrl = `http://127.0.0.1:${port}`;
     const browser = await launch({
       headless: true,
+      humanize: true,
       proxy: identity.proxyKey,
       args: [
         `--remote-debugging-port=${port}`,
@@ -511,6 +512,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
 async function importCloakBrowser(): Promise<{
   launch: (options: {
     headless?: boolean;
+    humanize?: boolean;
     proxy?: string;
     args?: string[];
   }) => Promise<Browser>;
@@ -520,6 +522,7 @@ async function importCloakBrowser(): Promise<{
     return await import(moduleName) as {
       launch: (options: {
         headless?: boolean;
+        humanize?: boolean;
         proxy?: string;
         args?: string[];
       }) => Promise<Browser>;

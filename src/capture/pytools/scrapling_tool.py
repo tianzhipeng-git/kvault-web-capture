@@ -7,14 +7,22 @@ import sys
 from common import extract_page, html_to_markdown, read_input, redirect_process_stdout_to_stderr, write_output
 
 
-def build_page_action(needs_screenshot):
-    if not needs_screenshot:
-        return None, None
+SOFT_NETWORK_IDLE_TIMEOUT_MS = 10000
 
+
+def build_page_action(needs_screenshot):
     capture_state = {}
 
     async def page_action(page):
-        capture_state["screenshot"] = await page.screenshot(type="png", full_page=True)
+        try:
+            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+            await page.wait_for_load_state("networkidle", timeout=SOFT_NETWORK_IDLE_TIMEOUT_MS)
+        except PlaywrightTimeoutError:
+            pass
+
+        if needs_screenshot:
+            capture_state["screenshot"] = await page.screenshot(type="png", full_page=True)
 
     return page_action, capture_state
 
@@ -30,23 +38,29 @@ async def run(payload):
     proxy_url = payload.get("proxyUrl") or None
     cdp_url = payload.get("cdpWebSocketUrl") or None
     fetch_kwargs = {
-        "timeout": 120000,
+        "timeout": 180000,
+        "network_idle": False,
+        "solve_cloudflare": True,
     }
 
     if cdp_url:
         fetch_kwargs["cdp_url"] = cdp_url
-        fetch_kwargs["network_idle"] = False
-        fetch_kwargs["solve_cloudflare"] = False
     else:
         fetch_kwargs["headless"] = True
-        fetch_kwargs["network_idle"] = True
-        fetch_kwargs["solve_cloudflare"] = True
         if proxy_url:
             fetch_kwargs["proxy"] = proxy_url
 
     page_action, capture_state = build_page_action("screenshot" in needs)
-    if page_action is not None:
-        fetch_kwargs["page_action"] = page_action
+    fetch_kwargs["page_action"] = page_action
+
+    sys.stderr.write(
+        "scrapling fetch start "
+        f"network_idle={fetch_kwargs['network_idle']} "
+        f"solve_cloudflare={fetch_kwargs['solve_cloudflare']} "
+        f"soft_network_idle_timeout_ms={SOFT_NETWORK_IDLE_TIMEOUT_MS} "
+        f"cdp={bool(cdp_url)}\n"
+    )
+    sys.stderr.flush()
 
     with contextlib.redirect_stdout(sys.stderr):
         response = await StealthyFetcher.async_fetch(
@@ -82,6 +96,9 @@ async def run(payload):
         "diagnostics": {
             "source": "scrapling",
             "cdpUrlUsed": bool(cdp_url),
+            "networkIdle": fetch_kwargs["network_idle"],
+            "softNetworkIdleTimeoutMs": SOFT_NETWORK_IDLE_TIMEOUT_MS,
+            "solveCloudflare": fetch_kwargs["solve_cloudflare"],
             "markdownSource": "markdownify" if "markdown" in needs else None,
             "screenshotSource": "page_action" if screenshot_bytes else None,
         },

@@ -37,3 +37,9 @@ This example is intentionally conservative:
 - the config uses a `scopelist` rule to stay on `www.apple.com`
 
 See [examples/apple/README.md](/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/examples/apple/README.md).
+
+### `scrapling-markdown-smoke`
+
+Use the project Scrapling Python bridge to smoke-test URL to Markdown conversion, with an optional CloakBrowser CDP path.
+
+See [examples/scrapling-markdown-smoke.md](/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/examples/scrapling-markdown-smoke.md).
