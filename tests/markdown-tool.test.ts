@@ -123,8 +123,17 @@ describe('LightpandaMarkdownTool', () => {
 });
 
 describe('JinaMarkdownTool', () => {
-  it('throws when token is null', async () => {
-    await expect(new JinaMarkdownTool(null).capture(makeInput())).rejects.toThrow('Missing JINA_API_TOKEN');
+  it('works without token and omits authorization header', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const fakeFetch = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, text: async () => '# ok\n' } as Response;
+    };
+    const result = await new JinaMarkdownTool(null, fakeFetch as typeof fetch).capture(makeInput());
+    expect(result.markdown).toBe('# ok\n');
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers['x-timeout']).toBe('10');
+    expect(headers['Authorization']).toBeUndefined();
   });
 
   it('throws when response is not ok', async () => {
@@ -163,6 +172,26 @@ describe('JinaMarkdownTool', () => {
     expect(calls[0].url).toBe('https://r.jina.ai/https://example.com/page');
     expect((calls[0].init?.headers as Record<string, string>)['Authorization']).toBe(
       'Bearer test-token',
+    );
+    expect((calls[0].init?.headers as Record<string, string>)['x-timeout']).toBe('10');
+  });
+
+  it('uses POST with url body when target URL contains a hash fragment', async () => {
+    const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const fakeFetch = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      return { ok: true, status: 200, text: async () => '# ok\n' } as Response;
+    };
+    await new JinaMarkdownTool('test-token', fakeFetch as typeof fetch).capture(makeInput({
+      url: 'https://example.com/#/route',
+      normalizedUrl: 'https://example.com/#/route',
+    }));
+
+    expect(calls[0].url).toBe('https://r.jina.ai/');
+    expect(calls[0].init?.method).toBe('POST');
+    expect(calls[0].init?.body).toBe('url=https%3A%2F%2Fexample.com%2F%23%2Froute');
+    expect((calls[0].init?.headers as Record<string, string>)['Content-Type']).toBe(
+      'application/x-www-form-urlencoded',
     );
   });
 });

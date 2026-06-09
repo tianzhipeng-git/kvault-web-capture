@@ -9,6 +9,8 @@ import { parseHtmlDocument } from '../html.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
 import { responseBody, responseFinalUrl, responseStatusCode } from './http-base-tool.js';
 
+const JINA_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
 function requireNonEmptyMarkdown(content: string, toolName: string): string {
   const trimmed = content.trim();
 
@@ -100,15 +102,29 @@ export class JinaMarkdownTool implements CaptureTool {
   ) {}
 
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
-    if (!this.token) {
-      throw new Error('Missing JINA_API_TOKEN');
+    const headers: Record<string, string> = {
+      'x-timeout': '10',
+    };
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await this.fetchImpl(`https://r.jina.ai/${input.url}`, {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
-    });
+    const init: RequestInit = {
+      signal: AbortSignal.timeout(JINA_REQUEST_TIMEOUT_MS),
+      headers,
+    };
+
+    let requestUrl: string;
+    if (input.url.includes('#')) {
+      requestUrl = 'https://r.jina.ai/';
+      init.method = 'POST';
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      init.body = new URLSearchParams({ url: input.url }).toString();
+    } else {
+      requestUrl = `https://r.jina.ai/${input.url}`;
+    }
+
+    const response = await this.fetchImpl(requestUrl, init);
 
     if (!response.ok) {
       throw new Error(`Jina request failed with status ${response.status}`);
