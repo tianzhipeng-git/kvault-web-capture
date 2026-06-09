@@ -1,3 +1,7 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import type { BrowserManager } from '../src/capture/browser-provider.js';
@@ -460,6 +464,45 @@ describe('PageCaptureExecutor', () => {
       expect(resolvePythonCommand({ toolName: 'crawl4ai-page' })).toBe('/tool/crawl4ai-python');
       expect(resolvePythonCommand({ toolName: 'scrapling-page' })).toBe('/tool/scrapling-python');
       expect(resolvePythonCommand()).toBe('/shared/python');
+    } finally {
+      if (originalEnv.KVAULT_PYTHON === undefined) {
+        delete process.env.KVAULT_PYTHON;
+      } else {
+        process.env.KVAULT_PYTHON = originalEnv.KVAULT_PYTHON;
+      }
+      if (originalEnv.KVAULT_PYTHON_CRAWL4AI === undefined) {
+        delete process.env.KVAULT_PYTHON_CRAWL4AI;
+      } else {
+        process.env.KVAULT_PYTHON_CRAWL4AI = originalEnv.KVAULT_PYTHON_CRAWL4AI;
+      }
+      if (originalEnv.KVAULT_PYTHON_SCRAPLING === undefined) {
+        delete process.env.KVAULT_PYTHON_SCRAPLING;
+      } else {
+        process.env.KVAULT_PYTHON_SCRAPLING = originalEnv.KVAULT_PYTHON_SCRAPLING;
+      }
+    }
+  });
+
+  it('prefers the shared project venv before legacy tool venvs', async () => {
+    const originalEnv = {
+      KVAULT_PYTHON: process.env.KVAULT_PYTHON,
+      KVAULT_PYTHON_CRAWL4AI: process.env.KVAULT_PYTHON_CRAWL4AI,
+      KVAULT_PYTHON_SCRAPLING: process.env.KVAULT_PYTHON_SCRAPLING,
+    };
+    const cwd = mkdtempSync(join(tmpdir(), 'kvault-python-'));
+    const projectPython = join(cwd, '.venv', 'bin', 'python');
+    const legacyPython = join(cwd, '.venv-crawl4ai', 'bin', 'python');
+    mkdirSync(join(cwd, '.venv', 'bin'), { recursive: true });
+    mkdirSync(join(cwd, '.venv-crawl4ai', 'bin'), { recursive: true });
+    writeFileSync(projectPython, '');
+    writeFileSync(legacyPython, '');
+
+    delete process.env.KVAULT_PYTHON;
+    delete process.env.KVAULT_PYTHON_CRAWL4AI;
+    delete process.env.KVAULT_PYTHON_SCRAPLING;
+
+    try {
+      expect(resolvePythonCommand({ cwd, toolName: 'crawl4ai-page' })).toBe(projectPython);
     } finally {
       if (originalEnv.KVAULT_PYTHON === undefined) {
         delete process.env.KVAULT_PYTHON;

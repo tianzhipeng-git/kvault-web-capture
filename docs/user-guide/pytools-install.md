@@ -1,37 +1,26 @@
 # Python Capture Tools 安装说明
 
-`crawl4ai-page` 和 `scrapling-page` 是 Node 侧 `CaptureTool` 的 Python bridge 实现。Node 进程会优先按工具级环境变量和约定虚拟环境路径选择 Python 解释器，再执行 `src/capture/pytools/*.py`。
+`crawl4ai-page` 和 `scrapling-page` 是 Node 侧 `CaptureTool` 的 Python bridge 实现。Node 进程会优先按工具级环境变量和仓库 `.venv` 选择 Python 解释器，再执行 `src/capture/pytools/*.py`。
 
 ## 1. 创建 Python 环境
 
-建议使用独立虚拟环境，避免污染系统 Python。如果只使用单一 Python tool，可以共用一个环境：
+建议使用仓库内的 `.venv`，避免污染系统 Python。当前上游版本组合里，`crawl4ai==0.8.6` 声明 `lxml~=5.3`，而 `scrapling[all]==0.4.8` 需要 `lxml>=6.1.0`。项目用 uv override 明确把合并环境固定到 `lxml==6.1.1`：
 
 ```bash
 cd /Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture
-python3.12 -m venv .venv-pytools
-. .venv-pytools/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r src/capture/pytools/requirements.txt
+uv venv .venv --python 3.11
+uv pip install --python .venv/bin/python \
+  -r src/capture/pytools/requirements.txt \
+  --overrides src/capture/pytools/uv-overrides.txt
 ```
 
-如果机器上没有 `python3.12`，也可以使用兼容的 Python 解释器路径。
+如果机器上没有 uv，也可以先安装 uv；不建议用普通 `pip install -r` 安装这个组合，因为 pip/uv 的标准 resolver 会正确地拒绝上游 metadata 中的 `lxml` 互斥约束。
 
-如果你需要同时启用 `crawl4ai-page` 和 `scrapling-page`，更推荐拆成两个环境。当前上游版本组合 `crawl4ai~=0.8.6` 与 `scrapling[all]~=0.4.8` 可能因为依赖冲突无法稳定共存于同一个虚拟环境：
+旧的拆分环境仍可作为 fallback 使用，或者通过工具级环境变量显式指定：
 
 ```bash
-cd /Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture
-
-python3.12 -m venv .venv-crawl4ai
-. .venv-crawl4ai/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "crawl4ai~=0.8.6"
-deactivate
-
-python3.12 -m venv .venv-scrapling
-. .venv-scrapling/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "scrapling[all]~=0.4.8"
-deactivate
+export KVAULT_PYTHON_CRAWL4AI=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/.venv-crawl4ai/bin/python
+export KVAULT_PYTHON_SCRAPLING=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/.venv-scrapling/bin/python
 ```
 
 ## 2. 安装浏览器依赖
@@ -39,7 +28,7 @@ deactivate
 Crawl4AI 和 Scrapling 都会使用浏览器能力。安装 Python 包后，如果要启用它们各自“自管浏览器”的 fallback 路径，还需要安装浏览器运行时：
 
 ```bash
-. .venv-pytools/bin/activate
+. .venv/bin/activate
 playwright install chromium
 scrapling install
 ```
@@ -59,21 +48,21 @@ crawl4ai-doctor
 
 1. `KVAULT_PYTHON_CRAWL4AI` / `KVAULT_PYTHON_SCRAPLING`
 2. `KVAULT_PYTHON`
-3. 仓库默认探测的 `.venv-crawl4ai` / `.venv-scrapling`
-4. 仓库默认探测的 `.venv`
+3. 仓库默认探测的 `.venv`
+4. 仓库默认探测的旧拆分环境 `.venv-crawl4ai` / `.venv-scrapling`
 5. `python3`
 
-如果你使用拆分环境，建议显式设置工具级变量：
+默认不需要设置环境变量。如果你使用拆分环境，建议显式设置工具级变量：
 
 ```bash
 export KVAULT_PYTHON_CRAWL4AI=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/.venv-crawl4ai/bin/python
 export KVAULT_PYTHON_SCRAPLING=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/.venv-scrapling/bin/python
 ```
 
-如果你使用共享环境，也可以继续只设置：
+如果你使用非默认共享环境，也可以只设置：
 
 ```bash
-export KVAULT_PYTHON=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capture/.venv-pytools/bin/python
+export KVAULT_PYTHON=/path/to/shared-python/bin/python
 ```
 
 如果常规运行路径是“TS BrowserManager 提供 CDP endpoint，Python tool 复用该浏览器”，那么上面的浏览器安装步骤不是首选必需项；但当 CDP 不可用、工具回退到自管浏览器，或者你需要单独调试 Python tool 时，仍建议安装。部署时也建议显式设置环境变量，避免用错 Python 环境。
@@ -130,8 +119,9 @@ export KVAULT_PYTHON=/Users/tianzhipeng/Documents/private/cnm/vt/kvault-web-capt
 - `crawl4ai_tool.py`
 - `scrapling_tool.py`
 - `requirements.txt`
+- `uv-overrides.txt`
 
-部署 dist 时仍需要在目标机器安装 Python 依赖，并设置对应的 `KVAULT_PYTHON_*` 或 `KVAULT_PYTHON`。
+部署 dist 时仍需要在目标机器安装 Python 依赖，并设置对应的 `KVAULT_PYTHON_*` 或 `KVAULT_PYTHON`，或者把依赖安装到仓库默认 `.venv`。
 
 ## 6. 常见错误
 

@@ -46,7 +46,7 @@ const TOOL_PYTHON_ENV_VARS: Partial<Record<string, string>> = {
   'scrapling-page': 'KVAULT_PYTHON_SCRAPLING',
 };
 
-const TOOL_PYTHON_VENV_DIRS: Partial<Record<string, string>> = {
+const LEGACY_TOOL_PYTHON_VENV_DIRS: Partial<Record<string, string>> = {
   'crawl4ai-page': '.venv-crawl4ai',
   'scrapling-page': '.venv-scrapling',
 };
@@ -65,17 +65,17 @@ export function resolvePythonCommand(input: {
     return process.env.KVAULT_PYTHON;
   }
 
-  const toolVenvDir = input.toolName ? TOOL_PYTHON_VENV_DIRS[input.toolName] : undefined;
+  const projectVenvPython = join(cwd, '.venv', 'bin', 'python');
+  if (existsSync(projectVenvPython)) {
+    return projectVenvPython;
+  }
+
+  const toolVenvDir = input.toolName ? LEGACY_TOOL_PYTHON_VENV_DIRS[input.toolName] : undefined;
   if (toolVenvDir) {
     const toolVenvPython = join(cwd, toolVenvDir, 'bin', 'python');
     if (existsSync(toolVenvPython)) {
       return toolVenvPython;
     }
-  }
-
-  const projectVenvPython = join(cwd, '.venv', 'bin', 'python');
-  if (existsSync(projectVenvPython)) {
-    return projectVenvPython;
   }
 
   return 'python3';

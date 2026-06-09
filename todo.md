@@ -14,15 +14,17 @@
 
 <br />
 
-比较一下在 python 和 TS 里的单纯 HTML 转换 Markdown的几个库的效果, 比如defuddle, markitdown, readability markdownify, 然后对应配置上
-
-<br />
-
 保留通过 CLI 直接跑的能力。这是为了未来安在调度机上后，就不用走 HTTP 接口了(这里要注意，python工具所使用的两个 ENV 的合并)。
+
+CLI 里加入一键爬整站的功能，还有一键爬单个 URL 的功能 这个页面里有
 
 <br />
 
 captureProfiles/defaultCaptureProfile 这两个配置项是不是太啰嗦了？其实我们一个站点只会配置一个。
+
+<br />
+
+**直接上线到线上 然后把雷朋的网站爬一遍 看看效果 都没问题的话 就使用导出到阿里云 然后跑那个页面理解**
 
 ## 更多站点
 
