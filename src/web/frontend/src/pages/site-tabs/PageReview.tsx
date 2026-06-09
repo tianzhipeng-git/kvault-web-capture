@@ -4,7 +4,7 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, triggerPreparedExportDownload } from "@/lib/api";
 import type { ProcessingState, ProjectExportArtifact, SitePageDetail, SitePageListRow } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -107,17 +107,6 @@ function parseUrlInput(value: string): string[] {
   }
 
   return [...new Set(urls)];
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 }
 
 type PreviewKind = "base" | "markdown" | "screenshot" | "structured";
@@ -671,14 +660,14 @@ export function PageReview({
   const exportPages = async () => {
     setIsExporting(true);
     try {
-      const { blob, filename } = await api.exportSitePages(siteId, {
+      const prepared = await api.prepareSitePagesExport(siteId, {
         query,
         status: statuses,
         label,
         pendingReason,
         crawlRunId,
       });
-      downloadBlob(blob, filename);
+      triggerPreparedExportDownload(prepared);
       toast.success('页面清单已导出。');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '导出失败。');
@@ -710,11 +699,11 @@ export function PageReview({
 
     setIsExportingPageIds(true);
     try {
-      const { blob, filename } = await api.exportSitePagesByIds(siteId, {
+      const prepared = await api.prepareSitePagesByIdsExport(siteId, {
         pageIds,
         artifacts: [...selectedPageIdExportArtifacts],
       });
-      downloadBlob(blob, filename);
+      triggerPreparedExportDownload(prepared);
       setPageIdExportOpen(false);
       toast.success(`已导出 ${pageIds.length} 个 page ID 对应的页面。`);
     } catch (error) {

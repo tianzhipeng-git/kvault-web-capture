@@ -98,17 +98,6 @@ describe('web server', () => {
       },
     }).then((response) => response.json())).items[0].projectId as number;
 
-    const exportResponse = await webServer.inject({
-      method: 'POST',
-      url: `/api/projects/${projectId}/export`,
-      cookies: {
-        kvault_session: authCookie.split('=')[1],
-      },
-    });
-    expect(exportResponse.statusCode).toBe(200);
-    expect(exportResponse.headers['content-type']).toContain('application/zip');
-    expect(exportResponse.rawPayload.length).toBeGreaterThan(0);
-
     const preparedExportResponse = await webServer.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/export/prepare`,
@@ -128,7 +117,7 @@ describe('web server', () => {
 
     const preparedDownloadResponse = await webServer.inject({
       method: 'GET',
-      url: `/api/projects/${projectId}/export/download/${preparedExport.token}`,
+      url: `/api/exports/download/${preparedExport.token}`,
       cookies: {
         kvault_session: authCookie.split('=')[1],
       },
@@ -142,7 +131,7 @@ describe('web server', () => {
 
     const repeatedPreparedDownloadResponse = await webServer.inject({
       method: 'GET',
-      url: `/api/projects/${projectId}/export/download/${preparedExport.token}`,
+      url: `/api/exports/download/${preparedExport.token}`,
       cookies: {
         kvault_session: authCookie.split('=')[1],
       },

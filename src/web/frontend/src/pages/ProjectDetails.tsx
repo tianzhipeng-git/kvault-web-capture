@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api } from "@/lib/api";
+import { api, triggerPreparedExportDownload } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -78,12 +78,7 @@ export function ProjectDetails() {
         artifacts: [...selectedExportArtifacts],
         includeDeniedPages,
       });
-      const link = document.createElement("a");
-      link.href = prepared.downloadUrl;
-      link.download = prepared.fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      triggerPreparedExportDownload(prepared);
       setIsExportDialogOpen(false);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : "导出失败");

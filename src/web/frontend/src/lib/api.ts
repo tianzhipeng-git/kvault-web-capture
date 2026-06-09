@@ -78,7 +78,7 @@ export interface SitePageIdExportOptions {
   artifacts?: ProjectExportArtifact[];
 }
 
-export interface PreparedProjectExport {
+export interface PreparedExport {
   token: string;
   fileName: string;
   expiresInSeconds: number;
@@ -237,26 +237,25 @@ async function fetchApi(url: string, options?: RequestInit) {
   return res.json();
 }
 
-async function fetchBlobApi(url: string, options?: RequestInit) {
-  const res = await fetch(`${baseUrl}${url}`, options);
-  if (res.status === 401) {
-    const loginPath = `${import.meta.env.BASE_URL ?? '/'}login`;
-    if (window.location.pathname !== loginPath && window.location.pathname !== '/login') {
-      window.location.href = loginPath;
-    }
-    throw new Error('Unauthorized');
-  }
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.message || 'API request failed');
-  }
+function preparedExportDownloadUrl(token: string): string {
+  return `${baseUrl}/api/exports/download/${encodeURIComponent(token)}`;
+}
 
-  const disposition = res.headers.get('Content-Disposition') ?? '';
-  const filenameMatch = /filename="([^"]+)"/.exec(disposition);
+async function fetchPreparedExport(url: string, options?: RequestInit): Promise<PreparedExport> {
+  const result = await fetchApi(url, options) as Omit<PreparedExport, 'downloadUrl'>;
   return {
-    blob: await res.blob(),
-    filename: filenameMatch?.[1] ?? 'project-export.zip',
+    ...result,
+    downloadUrl: preparedExportDownloadUrl(result.token),
   };
+}
+
+export function triggerPreparedExportDownload(prepared: PreparedExport): void {
+  const link = document.createElement('a');
+  link.href = prepared.downloadUrl;
+  link.download = prepared.fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 export const api = {
@@ -294,22 +293,12 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ labelDefinitions })
   }),
-  exportProject: (projectId: number, options?: ProjectExportOptions): Promise<{ blob: Blob; filename: string }> => fetchBlobApi(`/api/projects/${projectId}/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(options ?? {})
-  }),
-  prepareProjectExport: async (projectId: number, options?: ProjectExportOptions): Promise<PreparedProjectExport> => {
-    const result = await fetchApi(`/api/projects/${projectId}/export/prepare`, {
+  prepareProjectExport: (projectId: number, options?: ProjectExportOptions): Promise<PreparedExport> =>
+    fetchPreparedExport(`/api/projects/${projectId}/export/prepare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(options ?? {})
-    }) as Omit<PreparedProjectExport, "downloadUrl">;
-    return {
-      ...result,
-      downloadUrl: `${baseUrl}/api/projects/${projectId}/export/download/${encodeURIComponent(result.token)}`,
-    };
-  },
+      body: JSON.stringify(options ?? {}),
+    }),
 
   getDefaultSite: (): Promise<DefaultSiteSetting> => fetchApi('/api/system/default-site'),
   setDefaultSite: (siteId: number | null): Promise<DefaultSiteSetting & { status: string }> => fetchApi('/api/system/default-site', {
@@ -357,8 +346,8 @@ export const api = {
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
   getRunPageIds: (runId: number): Promise<{ runId: number; siteId: number; pageIds: number[] }> =>
     fetchApi(`/api/runs/${runId}/page-ids`),
-  exportRunPages: (runId: number, options?: { artifacts?: ProjectExportArtifact[] }): Promise<{ blob: Blob; filename: string }> =>
-    fetchBlobApi(`/api/runs/${runId}/export`, {
+  prepareRunExport: (runId: number, options?: { artifacts?: ProjectExportArtifact[] }): Promise<PreparedExport> =>
+    fetchPreparedExport(`/api/runs/${runId}/export/prepare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options ?? {}),
@@ -368,12 +357,17 @@ export const api = {
     const q = buildQueryString(params);
     return fetchApi(`/api/sites/${siteId}/pages?${q}`);
   },
-  exportSitePages: (siteId: number, params: Omit<SitePageListParams, "page" | "pageSize">): Promise<{ blob: Blob; filename: string }> => {
-    const q = buildQueryString(params);
-    return fetchBlobApi(`/api/sites/${siteId}/pages/export?${q}`);
-  },
-  exportSitePagesByIds: (siteId: number, options: SitePageIdExportOptions): Promise<{ blob: Blob; filename: string }> =>
-    fetchBlobApi(`/api/sites/${siteId}/pages/export-by-ids`, {
+  prepareSitePagesExport: (
+    siteId: number,
+    params: Omit<SitePageListParams, 'page' | 'pageSize'>,
+  ): Promise<PreparedExport> =>
+    fetchPreparedExport(`/api/sites/${siteId}/pages/export/prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+  prepareSitePagesByIdsExport: (siteId: number, options: SitePageIdExportOptions): Promise<PreparedExport> =>
+    fetchPreparedExport(`/api/sites/${siteId}/pages/export-by-ids/prepare`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),

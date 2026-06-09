@@ -155,6 +155,47 @@ function parseExportArtifacts(value: unknown): ProjectExportArtifact[] | undefin
     : undefined;
 }
 
+function exportContentType(fileName: string): string {
+  if (fileName.endsWith('.xlsx')) {
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  }
+
+  return 'application/zip';
+}
+
+function parseSitePageListExportInput(siteId: number, value: unknown) {
+  const record = typeof value === 'object' && value !== null
+    ? value as Record<string, unknown>
+    : {};
+  const crawlRunId = record.crawlRunId === undefined
+    ? undefined
+    : typeof record.crawlRunId === 'number'
+      ? record.crawlRunId
+      : Number(record.crawlRunId);
+
+  if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
+    throw new Error('crawlRunId 无效。');
+  }
+
+  const status = record.status === undefined
+    ? undefined
+    : parseStatusFilter(
+      Array.isArray(record.status)
+        ? record.status.map((item) => String(item))
+        : String(record.status),
+    );
+
+  return {
+    siteId,
+    status,
+    query: typeof record.query === 'string' ? record.query : undefined,
+    label: typeof record.label === 'string' ? record.label : undefined,
+    pendingReason: typeof record.pendingReason === 'string' ? record.pendingReason : undefined,
+    discoverySource: typeof record.discoverySource === 'string' ? record.discoverySource : undefined,
+    crawlRunId,
+  };
+}
+
 function parsePageIdList(value: unknown): number[] {
   const rawValues = Array.isArray(value) ? value : [];
   const pageIds = rawValues.map((pageId) => (
@@ -436,6 +477,35 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return token;
   };
 
+  const buildPreparedExportResponse = (result: { outputPath: string; fileName: string }) => ({
+    token: rememberPreparedExport(result),
+    fileName: result.fileName,
+    expiresInSeconds: Math.floor(EXPORT_DOWNLOAD_TTL_MS / 1000),
+  });
+
+  const sendPreparedExportDownload = async (reply: FastifyReply, token: string) => {
+    const prepared = preparedExports.get(token);
+    if (!prepared || prepared.expiresAt <= Date.now()) {
+      preparedExports.delete(token);
+      if (prepared) {
+        await removeExportFile(prepared.outputPath);
+      }
+      reply.code(404);
+      throw new Error('导出文件已过期，请重新导出。');
+    }
+
+    preparedExports.delete(token);
+    const fileStat = await stat(prepared.outputPath);
+    const stream = createReadStream(prepared.outputPath);
+    deleteAfterReply(reply, prepared.outputPath, stream);
+    return reply
+      .type(exportContentType(prepared.fileName))
+      .header('Content-Disposition', `attachment; filename="${prepared.fileName}"`)
+      .header('Content-Length', fileStat.size)
+      .header('Cache-Control', 'no-store')
+      .send(stream);
+  };
+
   const sendZipFile = async (
     reply: FastifyReply,
     result: { outputPath: string; fileName: string },
@@ -707,21 +777,9 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
   });
 
-  server.post('/api/projects/:projectId/export', async (request, reply) => {
-    const params = request.params as { projectId: string };
-    const result = await app.exportProject(
-      parseProjectId(params.projectId),
-      undefined,
-      parseProjectExportOptions(request.body),
-    );
-    const fileStat = await stat(result.outputPath);
-    const stream = createReadStream(result.outputPath);
-    deleteAfterReply(reply, result.outputPath, stream);
-    return reply
-      .type('application/zip')
-      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
-      .header('Content-Length', fileStat.size)
-      .send(stream);
+  server.get('/api/exports/download/:token', async (request, reply) => {
+    const params = request.params as { token: string };
+    return sendPreparedExportDownload(reply, params.token);
   });
 
   server.post('/api/projects/:projectId/export/prepare', async (request) => {
@@ -731,39 +789,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       undefined,
       parseProjectExportOptions(request.body),
     );
-    const token = rememberPreparedExport(result);
-
-    return {
-      token,
-      fileName: result.fileName,
-      expiresInSeconds: Math.floor(EXPORT_DOWNLOAD_TTL_MS / 1000),
-    };
-  });
-
-  server.get('/api/projects/:projectId/export/download/:token', async (request, reply) => {
-    const params = request.params as { projectId: string; token: string };
-    parseProjectId(params.projectId);
-
-    const prepared = preparedExports.get(params.token);
-    if (!prepared || prepared.expiresAt <= Date.now()) {
-      preparedExports.delete(params.token);
-      if (prepared) {
-        await removeExportFile(prepared.outputPath);
-      }
-      reply.code(404);
-      throw new Error('导出文件已过期，请重新导出。');
-    }
-
-    preparedExports.delete(params.token);
-    const fileStat = await stat(prepared.outputPath);
-    const stream = createReadStream(prepared.outputPath);
-    deleteAfterReply(reply, prepared.outputPath, stream);
-    return reply
-      .type('application/zip')
-      .header('Content-Disposition', `attachment; filename="${prepared.fileName}"`)
-      .header('Content-Length', fileStat.size)
-      .header('Cache-Control', 'no-store')
-      .send(stream);
+    return buildPreparedExportResponse(result);
   });
 
   server.post('/api/sites', async (request, reply) => {
@@ -923,6 +949,16 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return runQuery.getRunPageIds(parseRunId(params.runId));
   });
 
+  server.post('/api/runs/:runId/export/prepare', async (request) => {
+    const params = request.params as { runId: string };
+    const body = (request.body ?? {}) as { artifacts?: unknown };
+    const result = await app.exportRunPages(
+      parseRunId(params.runId),
+      parseExportArtifacts(body.artifacts),
+    );
+    return buildPreparedExportResponse(result);
+  });
+
   server.post('/api/runs/:runId/export', async (request, reply) => {
     const params = request.params as { runId: string };
     const body = (request.body ?? {}) as { artifacts?: unknown };
@@ -996,36 +1032,15 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     });
   });
 
-  server.get('/api/sites/:siteId/pages/export', async (request, reply) => {
+  server.post('/api/sites/:siteId/pages/export/prepare', async (request) => {
     const params = request.params as { siteId: string };
-    const query = request.query as Record<string, string | string[] | undefined>;
-    const crawlRunId = typeof query.crawlRunId === 'string' ? Number(query.crawlRunId) : undefined;
-
-    if (crawlRunId !== undefined && (!Number.isInteger(crawlRunId) || crawlRunId <= 0)) {
-      throw new Error('crawlRunId 无效。');
-    }
-
-    const result = await app.exportSitePageList({
-      siteId: parseSiteId(params.siteId),
-      status: parseStatusFilter(query.status),
-      query: typeof query.query === 'string' ? query.query : undefined,
-      label: typeof query.label === 'string' ? query.label : undefined,
-      pendingReason: typeof query.pendingReason === 'string' ? query.pendingReason : undefined,
-      discoverySource: typeof query.discoverySource === 'string' ? query.discoverySource : undefined,
-      crawlRunId,
-    });
-    const fileStat = await stat(result.outputPath);
-    const stream = createReadStream(result.outputPath);
-    deleteAfterReply(reply, result.outputPath, stream);
-
-    return reply
-      .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
-      .header('Content-Length', fileStat.size)
-      .send(stream);
+    const result = await app.exportSitePageList(
+      parseSitePageListExportInput(parseSiteId(params.siteId), request.body),
+    );
+    return buildPreparedExportResponse(result);
   });
 
-  server.post('/api/sites/:siteId/pages/export-by-ids', async (request, reply) => {
+  server.post('/api/sites/:siteId/pages/export-by-ids/prepare', async (request) => {
     const params = request.params as { siteId: string };
     const body = (request.body ?? {}) as { pageIds?: unknown; artifacts?: unknown };
     const result = await app.exportSitePagesByIds({
@@ -1033,15 +1048,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       pageIds: parsePageIdList(body.pageIds),
       artifacts: parseExportArtifacts(body.artifacts),
     });
-    const fileStat = await stat(result.outputPath);
-    const stream = createReadStream(result.outputPath);
-    deleteAfterReply(reply, result.outputPath, stream);
-
-    return reply
-      .type('application/zip')
-      .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
-      .header('Content-Length', fileStat.size)
-      .send(stream);
+    return buildPreparedExportResponse(result);
   });
 
   server.get('/api/sites/:siteId/pages/:sitePageId', async (request) => {
