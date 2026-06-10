@@ -6,16 +6,6 @@
 
 如果不配置 `captureProfiles`，系统会使用内置默认 profile，名称显示为 `default`，工具链为：
 
-```json
-[
-  "http-base",
-  "defuddle-markdown",
-  "lightpanda-markdown",
-  "jina-markdown",
-  "playwright-screenshot"
-]
-```
-
 默认工具链的含义：
 
 | 工具名 | 能力 |
