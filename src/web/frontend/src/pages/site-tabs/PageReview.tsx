@@ -35,7 +35,7 @@ const pendingReasonOptions = [
 ];
 
 const minPageSize = 1;
-const maxPageSize = 500;
+const maxPageSize = 5000;
 const exportArtifactOptions: Array<{ value: ProjectExportArtifact; label: string }> = [
   { value: "base", label: "Base 文本" },
   { value: "markdown", label: "Markdown" },

@@ -30,7 +30,13 @@ Crawl4AI 和 Scrapling 都会使用浏览器能力。安装 Python 包后，如�
 ```bash
 . .venv/bin/activate
 playwright install chromium
+python -m cloakbrowser install
 scrapling install
+```
+
+系统依赖:
+```
+/home/bluewii/.conda/envs/prefect-env/bin/playwright  install-deps chromium
 ```
 
 如果 Crawl4AI 环境需要额外初始化，可运行：

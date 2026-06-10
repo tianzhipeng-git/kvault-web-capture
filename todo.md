@@ -24,7 +24,7 @@ captureProfiles/defaultCaptureProfile 这两个配置项是不是太啰嗦了？
 
 <br />
 
-**直接上线到线上 然后把雷朋的网站爬一遍 看看效果 都没问题的话 就使用导出到阿里云 然后跑那个页面理解**
+s是否要新增 Update Policy 这个里如果新加一种策略 就是re evaluate validator
 
 ## 更多站点
 
