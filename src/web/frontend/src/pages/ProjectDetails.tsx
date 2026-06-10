@@ -141,11 +141,12 @@ export function ProjectDetails() {
               {isExporting ? "正在打包..." : "导出项目"}
             </Button>
           </DialogTrigger>
-          <DialogContent className="w-[calc(100vw-2rem)] max-w-2xl min-w-0 overflow-hidden">
-            <DialogHeader>
+          <DialogContent className="flex w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] max-w-2xl min-w-0 flex-col overflow-hidden">
+            <DialogHeader className="shrink-0">
               <DialogTitle>导出项目</DialogTitle>
               <DialogDescription>选择要打包的站点和 artifact。artifact 全不选时只导出 Excel 页面列表。</DialogDescription>
             </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="min-w-0 space-y-5 py-2">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -163,7 +164,7 @@ export function ProjectDetails() {
                     全选
                   </label>
                 </div>
-                <div className="max-h-56 min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border divide-y">
+                <div className="max-h-40 min-w-0 max-w-full overflow-y-auto overflow-x-hidden rounded-md border divide-y">
                   {sites.map((site) => (
                     <label key={site.siteId} className="flex min-w-0 items-start gap-3 px-3 py-2.5 text-sm">
                       <input
@@ -207,12 +208,12 @@ export function ProjectDetails() {
 
               <div className="space-y-3">
                 <Label>页面范围</Label>
-                <details className="relative">
-                  <summary className="flex h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm">
+                <details className="rounded-md border bg-background">
+                  <summary className="flex h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm [&::-webkit-details-marker]:hidden">
                     <span className="truncate">{inventoryStatusFilterLabel(exportStatuses)}</span>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                   </summary>
-                  <div className="absolute z-20 mt-2 w-full rounded-md border bg-background p-2 text-sm shadow-md">
+                  <div className="max-h-44 overflow-y-auto border-t p-2 text-sm">
                     <button
                       type="button"
                       className="mb-1 w-full rounded px-2 py-1.5 text-left hover:bg-muted"
@@ -236,7 +237,8 @@ export function ProjectDetails() {
                 <p className="text-sm text-muted-foreground">不选择时导出全部状态；选择后 Excel 页面列表和 page 文件夹都只包含对应状态的页面。</p>
               </div>
             </div>
-            <DialogFooter>
+            </div>
+            <DialogFooter className="shrink-0 border-t pt-4">
               <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>取消</Button>
               <Button onClick={handleExport} disabled={isExporting || selectedExportSiteIds.size === 0}>
                 {isExporting ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Download className="mr-2 w-4 h-4" />}
