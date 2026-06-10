@@ -70,7 +70,7 @@ export type ProjectExportArtifact = "base" | "markdown" | "screenshot" | "struct
 export interface ProjectExportOptions {
   siteIds?: number[];
   artifacts?: ProjectExportArtifact[];
-  includeDeniedPages?: boolean;
+  status?: string | string[];
 }
 
 export interface SitePageIdExportOptions {

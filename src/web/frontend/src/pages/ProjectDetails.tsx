@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Globe, ChevronRight, Download, Loader2 } from "lucide-react";
+import { Plus, Globe, ChevronRight, ChevronDown, Download, Loader2 } from "lucide-react";
+import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
 import { motion } from "framer-motion";
 import { ProjectLabelDefinitions } from "./ProjectLabelDefinitions";
 import type { ProjectExportArtifact } from "@/lib/api";
@@ -28,7 +29,7 @@ export function ProjectDetails() {
   const [selectedExportArtifacts, setSelectedExportArtifacts] = useState<Set<ProjectExportArtifact>>(
     new Set(["base", "markdown", "screenshot", "structured"]),
   );
-  const [includeDeniedPages, setIncludeDeniedPages] = useState(true);
+  const [exportStatuses, setExportStatuses] = useState<string[]>([]);
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
   const storageRootEdited = useRef(false);
 
@@ -76,7 +77,7 @@ export function ProjectDetails() {
       const prepared = await api.prepareProjectExport(Number(projectId), {
         siteIds: [...selectedExportSiteIds],
         artifacts: [...selectedExportArtifacts],
-        includeDeniedPages,
+        ...(exportStatuses.length > 0 ? { status: exportStatuses } : {}),
       });
       triggerPreparedExportDownload(prepared);
       setIsExportDialogOpen(false);
@@ -109,6 +110,11 @@ export function ProjectDetails() {
       }
       return next;
     });
+  };
+  const toggleExportStatus = (value: string) => {
+    setExportStatuses((current) =>
+      current.includes(value) ? current.filter((status) => status !== value) : [...current, value],
+    );
   };
 
   return (
@@ -201,18 +207,33 @@ export function ProjectDetails() {
 
               <div className="space-y-3">
                 <Label>页面范围</Label>
-                <label className="flex items-start gap-3 rounded-md border px-3 py-2.5 text-sm">
-                  <input
-                    type="checkbox"
-                    className="mt-1 shrink-0"
-                    checked={includeDeniedPages}
-                    onChange={(event) => setIncludeDeniedPages(event.target.checked)}
-                  />
-                  <span className="min-w-0">
-                    <span className="block font-medium text-foreground">导出“不采集”页面</span>
-                    <span className="block text-muted-foreground">关闭后，Excel 页面列表和 page 文件夹都会排除状态为“不采集”的页面。</span>
-                  </span>
-                </label>
+                <details className="relative">
+                  <summary className="flex h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm">
+                    <span className="truncate">{inventoryStatusFilterLabel(exportStatuses)}</span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </summary>
+                  <div className="absolute z-20 mt-2 w-full rounded-md border bg-background p-2 text-sm shadow-md">
+                    <button
+                      type="button"
+                      className="mb-1 w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+                      onClick={() => setExportStatuses([])}
+                    >
+                      全部状态
+                    </button>
+                    {inventoryStatusOptions.filter((option) => option.value).map((option) => (
+                      <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={exportStatuses.includes(option.value)}
+                          onChange={() => toggleExportStatus(option.value)}
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+                <p className="text-sm text-muted-foreground">不选择时导出全部状态；选择后 Excel 页面列表和 page 文件夹都只包含对应状态的页面。</p>
               </div>
             </div>
             <DialogFooter>

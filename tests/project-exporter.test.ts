@@ -315,12 +315,12 @@ describe('project export', () => {
     const withoutDeniedResult = await app.exportProject(project.id, withoutDeniedOutputPath, {
       siteIds: [site.id],
       artifacts: [],
-      includeDeniedPages: false,
+      status: ['stage2_captured', 'base_captured', 'stage2_pending', 'stage2_skipped', 'discovered_only'],
     });
     const withoutDeniedEntries = await readZipEntries(withoutDeniedResult.outputPath);
     const withoutDeniedProjectInfo = JSON.parse(withoutDeniedEntries.get('project_info.json')!.toString('utf8')) as {
       pageCount: number;
-      exportOptions: { includeDeniedPages: boolean };
+      exportOptions: { status: string[] };
     };
     const withoutDeniedPageListPath = [...withoutDeniedEntries.keys()].find((path) => path.endsWith('/page_list.xlsx'));
     const withoutDeniedWorkbook = new ExcelJS.Workbook();
@@ -330,7 +330,7 @@ describe('project export', () => {
     const withoutDeniedSheet = withoutDeniedWorkbook.getWorksheet('pages');
     expect(withoutDeniedResult.pageCount).toBe(1);
     expect(withoutDeniedProjectInfo.pageCount).toBe(1);
-    expect(withoutDeniedProjectInfo.exportOptions.includeDeniedPages).toBe(false);
+    expect(withoutDeniedProjectInfo.exportOptions.status).not.toContain('url_rule_denied');
     expect(withoutDeniedSheet?.getRow(2).getCell(4).value).toBe(longUrl);
     expect(withoutDeniedSheet?.getRow(3).getCell(4).value).toBeNull();
 

@@ -182,7 +182,8 @@ export class CaptureApp {
   exportRunPages(
     runId: number,
     artifacts?: ProjectExportOptions['artifacts'],
+    outputPath?: string,
   ): Promise<SitePageIdExportResult & { runId: number }> {
-    return this.projectExporter.exportRunPages({ runId, artifacts });
+    return this.projectExporter.exportRunPages({ runId, artifacts, outputPath });
   }
 }

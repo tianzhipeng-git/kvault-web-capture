@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 
 import { CaptureApp } from './app/capture-app.js';
 import type { UpdatePolicy } from './domain/types.js';
+import type { ProjectExportArtifact } from './export/project-exporter.js';
+
+const exportArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
 
 function getArg(flag: string, fallback?: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -24,10 +27,59 @@ function getRequiredArg(flag: string): string {
   return value;
 }
 
+function getArgList(flag: string): string[] | undefined {
+  const value = getArg(flag);
+  if (!value) {
+    return undefined;
+  }
+
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function getArgNumberList(flag: string): number[] | undefined {
+  const items = getArgList(flag);
+  if (!items) {
+    return undefined;
+  }
+
+  const numbers = items.map((item) => Number(item));
+  if (numbers.some((value) => !Number.isInteger(value) || value <= 0)) {
+    throw new Error(`${flag} contains invalid numeric values`);
+  }
+
+  return numbers;
+}
+
+function parseExportArtifactList(flag: string): ProjectExportArtifact[] | undefined {
+  const items = getArgList(flag);
+  if (!items) {
+    return undefined;
+  }
+
+  const artifacts = items.filter((item): item is ProjectExportArtifact => exportArtifacts.has(item as ProjectExportArtifact));
+  if (artifacts.length !== items.length) {
+    throw new Error(`${flag} must be a comma-separated list of base, markdown, screenshot, structured`);
+  }
+
+  return artifacts;
+}
+
+function parseStatusList(flag: string): string[] | undefined {
+  return getArgList(flag);
+}
+
 function printUsage(): void {
   console.log(`Usage:
   node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
-  node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--db ./.local/state.db]
+  node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--site-ids <id,id>] [--artifacts base,markdown,screenshot,structured] [--status <status,status>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:export-pages --site <site-id> [--output ./.local/exports/pages.xlsx] [--status <status,status>] [--query <text>] [--label <text>] [--pending-reason <reason>] [--crawl-run-id <run-id>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:export-pages-by-ids --site <site-id> --page-ids <id,id> [--output ./.local/exports/pages.zip] [--artifacts base,markdown,screenshot,structured] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:export --run <run-id> [--output ./.local/exports/run.zip] [--artifacts base,markdown,screenshot,structured] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
@@ -61,8 +113,56 @@ async function main(): Promise<void> {
       }
       case 'project:export': {
         const output = getArg('--output');
+        const siteIds = getArgNumberList('--site-ids');
+        const artifacts = parseExportArtifactList('--artifacts');
+        const status = parseStatusList('--status');
         const result = await app.exportProject(
           Number(getRequiredArg('--project')),
+          output ? resolve(output) : undefined,
+          {
+            ...(siteIds ? { siteIds } : {}),
+            ...(artifacts ? { artifacts } : {}),
+            ...(status ? { status } : {}),
+          },
+        );
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'site:export-pages': {
+        const output = getArg('--output');
+        const crawlRunId = getArg('--crawl-run-id');
+        const result = await app.exportSitePageList({
+          siteId: Number(getRequiredArg('--site')),
+          outputPath: output ? resolve(output) : undefined,
+          status: parseStatusList('--status'),
+          query: getArg('--query'),
+          label: getArg('--label'),
+          pendingReason: getArg('--pending-reason'),
+          crawlRunId: crawlRunId ? Number(crawlRunId) : undefined,
+        });
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'site:export-pages-by-ids': {
+        const output = getArg('--output');
+        const pageIds = getArgNumberList('--page-ids');
+        if (!pageIds) {
+          throw new Error('Missing required flag --page-ids');
+        }
+        const result = await app.exportSitePagesByIds({
+          siteId: Number(getRequiredArg('--site')),
+          pageIds,
+          outputPath: output ? resolve(output) : undefined,
+          artifacts: parseExportArtifactList('--artifacts'),
+        });
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'run:export': {
+        const output = getArg('--output');
+        const result = await app.exportRunPages(
+          Number(getRequiredArg('--run')),
+          parseExportArtifactList('--artifacts'),
           output ? resolve(output) : undefined,
         );
         console.log(JSON.stringify(result, null, 2));

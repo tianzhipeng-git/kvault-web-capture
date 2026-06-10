@@ -80,7 +80,7 @@ export type ProjectExportArtifact = 'base' | 'markdown' | 'screenshot' | 'struct
 export interface ProjectExportOptions {
   siteIds?: number[];
   artifacts?: ProjectExportArtifact[];
-  includeDeniedPages?: boolean;
+  status?: string | string[];
 }
 
 export interface ProjectExportResult {
@@ -101,7 +101,6 @@ export interface SitePageListExportInput {
   pendingReason?: string;
   discoverySource?: string;
   crawlRunId?: number;
-  includeDeniedPages?: boolean;
 }
 
 export interface SitePageListExportResult {
@@ -271,10 +270,6 @@ function buildPageFilters(input: SitePageListExportInput): { whereClause: string
   if (statuses.length > 0) {
     filters.push(`sp.inventory_status IN (${statuses.map(() => '?').join(', ')})`);
     args.push(...statuses);
-  }
-
-  if (input.includeDeniedPages === false) {
-    filters.push("sp.inventory_status <> 'url_rule_denied'");
   }
 
   if (input.query) {
@@ -699,7 +694,7 @@ export class ProjectExporter {
     const exportedAt = this.clock.now();
     const outputPath = input.outputPath ?? defaultExportPath(project, exportedAt);
     const selectedArtifacts = normalizeExportArtifacts(input.options?.artifacts);
-    const includeDeniedPages = input.options?.includeDeniedPages ?? true;
+    const status = input.options?.status;
     const siteIds = input.options?.siteIds?.filter((siteId) => Number.isInteger(siteId) && siteId > 0);
     const siteFilter = siteIds === undefined
       ? ''
@@ -714,7 +709,7 @@ export class ProjectExporter {
       [project.id, ...(siteIds ?? [])],
     );
 
-    const projectPageCount = await this.countProjectPages(project.id, siteIds, includeDeniedPages);
+    const projectPageCount = await this.countProjectPages(project.id, siteIds, status);
     const tempFiles: string[] = [];
     let artifactFileCount = 0;
 
@@ -731,14 +726,14 @@ export class ProjectExporter {
           exportOptions: {
             siteIds: siteIds === undefined ? 'all' : siteIds,
             artifacts: [...selectedArtifacts],
-            includeDeniedPages,
+            status: status ?? 'all',
           },
           labelDefinitions: parseJson<unknown>(project.label_definitions_json),
         });
 
         for (const site of sites) {
           const siteDir = safeDirectoryName(`site-${site.id}`, site.name);
-          const pages = await this.listPages(site.id, { includeDeniedPages });
+          const pages = await this.listPages(site.id, { status });
           const artifacts = latestArtifactMap(await this.listLatestSuccessfulArtifacts(site.id));
           artifactFileCount += await this.addSiteExportEntries({
             zip,
@@ -862,20 +857,27 @@ export class ProjectExporter {
   private async countProjectPages(
     projectId: number,
     siteIds?: number[],
-    includeDeniedPages = true,
+    status?: string | string[],
   ): Promise<number> {
     const siteFilter = siteIds === undefined
       ? ''
       : siteIds.length > 0
         ? ` AND s.id IN (${siteIds.map(() => '?').join(', ')})`
         : ' AND 1 = 0';
-    const pageFilter = includeDeniedPages ? '' : " AND sp.inventory_status <> 'url_rule_denied'";
+    const statuses = Array.isArray(status)
+      ? status.filter(Boolean)
+      : status
+        ? [status]
+        : [];
+    const statusFilter = statuses.length > 0
+      ? ` AND sp.inventory_status IN (${statuses.map(() => '?').join(', ')})`
+      : '';
     const row = await this.db.get<{ count: number }>(
         `SELECT COUNT(sp.id) AS count
          FROM site_pages sp
          INNER JOIN sites s ON s.id = sp.site_id
-         WHERE s.project_id = ?${siteFilter}${pageFilter}`,
-      [projectId, ...(siteIds ?? [])],
+         WHERE s.project_id = ?${siteFilter}${statusFilter}`,
+      [projectId, ...(siteIds ?? []), ...statuses],
     );
     return Number(row?.count ?? 0);
   }

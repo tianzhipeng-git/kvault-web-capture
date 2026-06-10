@@ -23,18 +23,9 @@ import {
   type RuleAssistantSuggestion,
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
+import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
 import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
-
-const statusOptions = [
-  { value: "", label: "全部状态" },
-  { value: "stage2_pending", label: "待确认" },
-  { value: "stage2_captured", label: "已完成采集" },
-  { value: "base_captured", label: "已完成基础信息" },
-  { value: "url_rule_denied", label: "不采集" },
-  { value: "stage2_skipped", label: "无需深入采集" },
-  { value: "discovered_only", label: "仅发现" },
-];
 
 const pendingReasonOptions = [
   { value: "", label: "全部待确认原因" },
@@ -58,14 +49,6 @@ const updatePolicyOptions: Array<{ value: UpdatePolicy; label: string }> = [
   { value: "force_recrawl_all", label: "强制重新采集" },
   { value: "stale_after_duration", label: "超过时间后更新" },
 ];
-
-function statusFilterLabel(values: string[]): string {
-  if (values.length === 0) return "全部状态";
-  if (values.length === 1) {
-    return statusOptions.find((option) => option.value === values[0])?.label ?? "已选 1 个状态";
-  }
-  return `已选 ${values.length} 个状态`;
-}
 
 function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "-";
@@ -732,7 +715,7 @@ export function PageReview({
   };
 
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
-  const selectedStatusLabel = statusFilterLabel(statuses);
+  const selectedStatusLabel = inventoryStatusFilterLabel(statuses);
 
   const toggleStatus = (value: string) => {
     setPage(1);
@@ -861,7 +844,7 @@ export function PageReview({
                 >
                   全部状态
                 </button>
-                {statusOptions.filter((option) => option.value).map((option) => (
+                {inventoryStatusOptions.filter((option) => option.value).map((option) => (
                   <label key={option.value} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
                     <input
                       type="checkbox"
