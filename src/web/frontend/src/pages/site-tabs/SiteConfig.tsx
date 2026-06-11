@@ -237,7 +237,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
       seedMaxDepth: Number(seedMaxDepth),
       crawlMaxDepth: Number(crawlMaxDepth),
     },
-    urlNormalization: config.urlNormalization,
+    urlNormalization: config?.urlNormalization,
     ...captureConfigToApi(captureConfig),
   });
 

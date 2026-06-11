@@ -3,6 +3,7 @@ import { BasicCrawler, type Configuration, type RequestQueue } from 'crawlee';
 import { REQUEST_HANDLER_TIMEOUT_SECS } from '../capture/python-bridge-config.js';
 import type { RuntimeContext } from '../capture/types.js';
 import type { PageCaptureTask } from '../domain/types.js';
+import { combineAbortSignals, RunCancelledError, throwIfAborted } from '../utils/cancellation.js';
 
 const SESSION_POOL_OPTIONS = {
   maxPoolSize: 50,
@@ -18,6 +19,7 @@ export interface CrawleeCaptureRuntimeOptions {
   configuration: Configuration;
   maxConcurrency?: number;
   requestHandlerTimeoutSecs?: number;
+  abortSignal?: AbortSignal;
   requestHandler: (input: {
     task: PageCaptureTask;
     request: { id?: string; url: string };
@@ -33,8 +35,11 @@ export interface CrawleeCaptureRuntimeOptions {
 export class CrawleeCaptureRuntime {
   private readonly crawler: BasicCrawler;
 
+  private readonly abortSignal?: AbortSignal;
+
   constructor(options: CrawleeCaptureRuntimeOptions) {
     const handlerTimeoutSecs = options.requestHandlerTimeoutSecs ?? REQUEST_HANDLER_TIMEOUT_SECS;
+    this.abortSignal = options.abortSignal;
 
     this.crawler = new BasicCrawler(
       {
@@ -44,8 +49,14 @@ export class CrawleeCaptureRuntime {
         ...ANTI_BLOCKING_OPTIONS,
         sessionPoolOptions: SESSION_POOL_OPTIONS,
         requestHandler: async (context) => {
+          throwIfAborted(this.abortSignal);
+
           const request = context.request;
           const task = request.userData as PageCaptureTask;
+          const requestAbortSignal = combineAbortSignals([
+            this.abortSignal,
+            AbortSignal.timeout(handlerTimeoutSecs * 1000),
+          ]);
           const sendRequest = async (url: string, requestOptions?: Record<string, unknown>) =>
             context.sendRequest({
               url,
@@ -71,7 +82,7 @@ export class CrawleeCaptureRuntime {
                       : undefined,
                   }
                 : undefined,
-              abortSignal: AbortSignal.timeout(handlerTimeoutSecs * 1000),
+              abortSignal: requestAbortSignal,
             },
           });
         },
@@ -88,6 +99,26 @@ export class CrawleeCaptureRuntime {
   }
 
   async run(): Promise<void> {
-    await this.crawler.run();
+    throwIfAborted(this.abortSignal);
+
+    const onAbort = () => {
+      void this.crawler.teardown();
+    };
+
+    this.abortSignal?.addEventListener('abort', onAbort, { once: true });
+
+    try {
+      await this.crawler.run();
+    } catch (error) {
+      if (this.abortSignal?.aborted) {
+        throw new RunCancelledError();
+      }
+
+      throw error;
+    } finally {
+      this.abortSignal?.removeEventListener('abort', onAbort);
+    }
+
+    throwIfAborted(this.abortSignal);
   }
 }

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Database, Play, RefreshCw, ScrollText, FileText, AlertCircle } from "lucide-react";
+import { Database, Play, RefreshCw, ScrollText, FileText, AlertCircle, Square } from "lucide-react";
 import { PageReview } from "./PageReview";
 import { RunLogs } from "@/components/RunLogs";
 
@@ -27,6 +27,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
   const [updatePolicy, setUpdatePolicy] = useState("skip_existing");
   const [targetSuccessCount, setTargetSuccessCount] = useState("");
   const [staleAfterDays, setStaleAfterDays] = useState("");
+  const [cancellingRunId, setCancellingRunId] = useState<number | null>(null);
 
   const loadRuns = () => {
     api.getSiteRuns(siteId).then((data) => {
@@ -59,6 +60,16 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
       loadRuns();
     } finally {
       setIsStarting(false);
+    }
+  };
+
+  const cancelRun = async (runId: number) => {
+    setCancellingRunId(runId);
+    try {
+      await api.cancelRun(runId);
+      loadRuns();
+    } finally {
+      setCancellingRunId(null);
     }
   };
 
@@ -113,6 +124,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
                 <TableHead>成功 / 待确认 / 拒绝</TableHead>
                 <TableHead>目标成功数</TableHead>
                 <TableHead>开始时间</TableHead>
+                <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -138,11 +150,28 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
                   <TableCell>{run.successfulPages} / {run.pendingPages} / {run.deniedPages}</TableCell>
                   <TableCell>{run.targetSuccessCount ?? "不限"}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(run.startedAt)}</TableCell>
+                  <TableCell className="text-right">
+                    {run.status === "running" && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        disabled={cancellingRunId === run.runId}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void cancelRun(run.runId);
+                        }}
+                      >
+                        {cancellingRunId === run.runId ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+                        停止
+                      </Button>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
               {runs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -154,7 +183,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pages" | "logs")}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm text-muted-foreground">
-              Run #{selectedRunId}{selectedRun?.status === "failed" ? " · 运行失败" : ""}
+              Run #{selectedRunId}{selectedRun?.status === "failed" ? " · 运行失败" : selectedRun?.status === "cancelled" ? " · 已取消" : ""}
             </h3>
             <TabsList>
               <TabsTrigger value="pages" className="gap-1.5 text-xs">

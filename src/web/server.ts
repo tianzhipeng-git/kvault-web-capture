@@ -733,6 +733,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       throw new Error('未能创建简易采集任务。');
     }
 
+    coordinator.attachRunId(defaultSite.siteId, latestRun.runId);
+
     return {
       runId: latestRun.runId,
       siteId: defaultSite.siteId,
@@ -937,6 +939,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       throw new Error('未能创建初步摸底任务。');
     }
 
+    coordinator.attachRunId(siteId, latestRun.runId);
+
     return {
       runId: latestRun.runId,
       statusLabel: '进行中',
@@ -959,6 +963,8 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       throw new Error('未能创建正式采集任务。');
     }
 
+    coordinator.attachRunId(siteId, latestRun.runId);
+
     return {
       runId: latestRun.runId,
       statusLabel: '进行中',
@@ -975,6 +981,21 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   server.get('/api/runs/:runId', async (request) => {
     const params = request.params as { runId: string };
     return runQuery.getRunSummary(parseRunId(params.runId));
+  });
+
+  server.post('/api/runs/:runId/cancel', async (request, reply) => {
+    const params = request.params as { runId: string };
+    const runId = parseRunId(params.runId);
+
+    if (!coordinator.cancelRun(runId)) {
+      reply.code(409);
+      throw new Error('该运行不在当前进程中或已经结束，无法取消。');
+    }
+
+    return {
+      runId,
+      statusLabel: '正在取消',
+    };
   });
 
   server.get('/api/runs/:runId/page-ids', async (request) => {

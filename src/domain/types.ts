@@ -10,7 +10,7 @@ export type RuleMatchType = 'url' | 'label';
 
 export type RunType = 'seed_run' | 'crawl_run';
 
-export type RunStatus = 'running' | 'succeeded' | 'failed';
+export type RunStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export type UpdatePolicy =
   | 'force_recrawl_all'

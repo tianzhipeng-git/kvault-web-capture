@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { CaptureApp } from './app/capture-app.js';
 import type { UpdatePolicy } from './domain/types.js';
 import type { ProjectExportArtifact } from './export/project-exporter.js';
+import { isRunCancelledError } from './utils/cancellation.js';
 
 const exportArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
 
@@ -71,6 +72,36 @@ function parseExportArtifactList(flag: string): ProjectExportArtifact[] | undefi
 
 function parseStatusList(flag: string): string[] | undefined {
   return getArgList(flag);
+}
+
+function installRunSignalHandlers(): {
+  abortSignal: AbortSignal;
+  dispose: () => void;
+} {
+  const controller = new AbortController();
+
+  const handleSignal = (signal: 'SIGINT' | 'SIGTERM') => {
+    if (controller.signal.aborted) {
+      return;
+    }
+
+    process.exitCode = signal === 'SIGINT' ? 130 : 143;
+    console.error(`Received ${signal}, cancelling active run...`);
+    controller.abort();
+  };
+  const handleSigint = () => handleSignal('SIGINT');
+  const handleSigterm = () => handleSignal('SIGTERM');
+
+  process.once('SIGINT', handleSigint);
+  process.once('SIGTERM', handleSigterm);
+
+  return {
+    abortSignal: controller.signal,
+    dispose: () => {
+      process.removeListener('SIGINT', handleSigint);
+      process.removeListener('SIGTERM', handleSigterm);
+    },
+  };
 }
 
 function printUsage(): void {
@@ -193,24 +224,36 @@ async function main(): Promise<void> {
       }
       case 'run:seed': {
         const targetSuccessCount = getArg('--target-success-count');
-        const result = await app.runSeed({
-          siteId: Number(getRequiredArg('--site')),
-          targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
-        });
-        console.log(JSON.stringify(result, null, 2));
+        const cancellation = installRunSignalHandlers();
+        try {
+          const result = await app.runSeed({
+            siteId: Number(getRequiredArg('--site')),
+            targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
+            abortSignal: cancellation.abortSignal,
+          });
+          console.log(JSON.stringify(result, null, 2));
+        } finally {
+          cancellation.dispose();
+        }
         return;
       }
       case 'run:crawl': {
         const updatePolicy = getRequiredArg('--update-policy') as UpdatePolicy;
         const targetSuccessCount = getArg('--target-success-count');
         const staleAfterMs = getArg('--stale-after-ms');
-        const result = await app.runCrawl({
-          siteId: Number(getRequiredArg('--site')),
-          updatePolicy,
-          targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
-          staleAfterMs: staleAfterMs ? Number(staleAfterMs) : null,
-        });
-        console.log(JSON.stringify(result, null, 2));
+        const cancellation = installRunSignalHandlers();
+        try {
+          const result = await app.runCrawl({
+            siteId: Number(getRequiredArg('--site')),
+            updatePolicy,
+            targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
+            staleAfterMs: staleAfterMs ? Number(staleAfterMs) : null,
+            abortSignal: cancellation.abortSignal,
+          });
+          console.log(JSON.stringify(result, null, 2));
+        } finally {
+          cancellation.dispose();
+        }
         return;
       }
       case 'site:inventory-summary': {
@@ -267,6 +310,12 @@ async function main(): Promise<void> {
 
 main()
   .catch((error: unknown) => {
+    if (isRunCancelledError(error)) {
+      console.error(error.message);
+      process.exitCode ??= 1;
+      return;
+    }
+
     console.error(error);
     process.exitCode = 1;
   })

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 export type RunType = "seed_run" | "crawl_run";
+export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
 
 function buildQueryString(params: object): string {
   const q = new URLSearchParams();
@@ -20,7 +21,7 @@ export interface SiteRunListItem {
   runId: number;
   runType: RunType;
   runTypeLabel: string;
-  status: string;
+  status: RunStatus;
   statusLabel: string;
   startedAt: string;
   finishedAt: string | null;
@@ -362,6 +363,9 @@ export const api = {
   
   getSiteRuns: (siteId: number) => fetchApi(`/api/sites/${siteId}/runs`),
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
+  cancelRun: (runId: number): Promise<{ runId: number; statusLabel: string }> => fetchApi(`/api/runs/${runId}/cancel`, {
+    method: 'POST',
+  }),
   getRunPageIds: (runId: number): Promise<{ runId: number; siteId: number; pageIds: number[] }> =>
     fetchApi(`/api/runs/${runId}/page-ids`),
   prepareRunExport: (runId: number, options?: { artifacts?: ProjectExportArtifact[] }): Promise<PreparedExport> =>

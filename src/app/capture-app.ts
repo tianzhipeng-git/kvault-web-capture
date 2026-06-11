@@ -137,7 +137,11 @@ export class CaptureApp {
     return this.sites.updateSystemUrlNormalization(config);
   }
 
-  runSeed(input: number | { siteId: number; targetSuccessCount: number | null }): Promise<RunSummary> {
+  runSeed(input: number | {
+    siteId: number;
+    targetSuccessCount: number | null;
+    abortSignal?: AbortSignal;
+  }): Promise<RunSummary> {
     return this.runs.runSeed(input);
   }
 
@@ -148,6 +152,7 @@ export class CaptureApp {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
+    abortSignal?: AbortSignal;
   }): Promise<RunSummary> {
     return this.runs.runCrawl(input);
   }

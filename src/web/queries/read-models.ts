@@ -88,6 +88,8 @@ function toRunStatusLabel(status: string): string {
       return '进行中';
     case 'failed':
       return '失败';
+    case 'cancelled':
+      return '已取消';
     default:
       return '已完成';
   }
@@ -1358,6 +1360,10 @@ export class RunSummaryQuery {
 
     if (row.status === 'failed') {
       issues.push('运行没有完整结束，请检查站点配置或抓取日志。');
+    }
+
+    if (row.status === 'cancelled') {
+      issues.push('运行已被手动取消。');
     }
 
     return {

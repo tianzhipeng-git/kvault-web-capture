@@ -52,6 +52,7 @@ import { resolveBaseTaskNeeds } from '../planner/base-task-needs.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
+import { isRunCancelledError, throwIfAborted } from '../utils/cancellation.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
 import { isInvalidUrlError, mergeUrlNormalizationConfigs } from '../utils/url.js';
 
@@ -68,7 +69,7 @@ interface RunNotificationInput {
   };
   runType: RunType;
   updatePolicy: UpdatePolicy;
-  status: 'succeeded' | 'failed';
+  status: 'succeeded' | 'failed' | 'cancelled';
   errorMessage?: string;
 }
 
@@ -110,6 +111,7 @@ export class RunService {
   async runSeed(input: number | {
     siteId: number;
     targetSuccessCount: number | null;
+    abortSignal?: AbortSignal;
   }): Promise<RunSummary> {
     const normalizedInput =
       typeof input === 'number'
@@ -122,6 +124,7 @@ export class RunService {
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: normalizedInput.targetSuccessCount,
       staleAfterMs: null,
+      abortSignal: normalizedInput.abortSignal,
     });
   }
 
@@ -132,6 +135,7 @@ export class RunService {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
+    abortSignal?: AbortSignal;
   }): Promise<RunSummary> {
     return this.executeRun({
       siteId: input.siteId,
@@ -141,6 +145,7 @@ export class RunService {
       staleAfterMs: input.staleAfterMs,
       initialUrls: input.initialUrls ?? null,
       crawlMaxDepthOverride: input.crawlMaxDepthOverride ?? null,
+      abortSignal: input.abortSignal,
     });
   }
 
@@ -152,6 +157,7 @@ export class RunService {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
+    abortSignal?: AbortSignal;
   }): Promise<RunSummary> {
     const site = await this.sites.getById(input.siteId);
 
@@ -185,6 +191,7 @@ export class RunService {
           updatePolicy: input.updatePolicy,
           siteId: site.id,
         });
+        throwIfAborted(input.abortSignal);
         return this.executeRunWithRuntime(input, runId, effectiveConfig);
       });
     } catch (error) {
@@ -192,18 +199,24 @@ export class RunService {
 
       if (currentRun?.status === 'running') {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const status = isRunCancelledError(error) ? 'cancelled' : 'failed';
         await this.runs.refreshCounts(runId);
-        await this.runs.finishRun(runId, 'failed', errorMessage);
-        await this.runLogs.crawl_error(
-          runId,
-          errorMessage,
-          { stack: error instanceof Error ? (error.stack ?? null) : null },
-        );
-        logger.error('Run failed before completion', {
+        await this.runs.finishRun(runId, status, errorMessage);
+        if (status === 'cancelled') {
+          await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
+        } else {
+          await this.runLogs.crawl_error(
+            runId,
+            errorMessage,
+            { stack: error instanceof Error ? (error.stack ?? null) : null },
+          );
+        }
+        logger[status === 'cancelled' ? 'warn' : 'error']('Run ended before completion', {
           runId,
           siteId: site.id,
           runType: input.runType,
           updatePolicy: input.updatePolicy,
+          status,
           errorName: error instanceof Error ? error.name : null,
           errorMessage,
           stack: error instanceof Error ? (error.stack ?? null) : null,
@@ -213,7 +226,7 @@ export class RunService {
           site,
           runType: input.runType,
           updatePolicy: input.updatePolicy,
-          status: 'failed',
+          status,
           errorMessage,
         });
       }
@@ -232,6 +245,7 @@ export class RunService {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
+    abortSignal?: AbortSignal;
   }, runId: number, effectiveConfig: SiteConfig): Promise<RunSummary> {
     const site = await this.sites.getById(input.siteId);
 
@@ -305,6 +319,8 @@ export class RunService {
     const planDecisionCounts = new Map<string, number>();
 
     for (const candidate of startupCandidates) {
+      throwIfAborted(input.abortSignal);
+
       const planned = await this.planner.planRequest({
         siteId: site.id,
         discoveredUrl: candidate.url,
@@ -440,6 +456,7 @@ export class RunService {
     const runtime = new CrawleeCaptureRuntime({
       requestQueue: pageCaptureQueue,
       configuration,
+      abortSignal: input.abortSignal,
       requestHandlerTimeoutSecs: REQUEST_HANDLER_TIMEOUT_SECS,
       requestHandler: createPageCaptureRequestHandler({
         executor,
@@ -474,7 +491,9 @@ export class RunService {
     });
 
     try {
+      throwIfAborted(input.abortSignal);
       await runtime.run();
+      throwIfAborted(input.abortSignal);
 
       await this.runs.refreshCounts(runId);
       await this.runs.finishRun(runId, 'succeeded');
@@ -488,19 +507,24 @@ export class RunService {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const status = isRunCancelledError(error) ? 'cancelled' : 'failed';
       await this.runs.refreshCounts(runId);
-      await this.runs.finishRun(runId, 'failed', errorMessage);
-      await this.runLogs.crawl_error(
-        runId,
-        errorMessage,
-        { stack: error instanceof Error ? (error.stack ?? null) : null },
-      );
+      await this.runs.finishRun(runId, status, errorMessage);
+      if (status === 'cancelled') {
+        await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
+      } else {
+        await this.runLogs.crawl_error(
+          runId,
+          errorMessage,
+          { stack: error instanceof Error ? (error.stack ?? null) : null },
+        );
+      }
       await this.notifyRunFinished({
         runId,
         site,
         runType: input.runType,
         updatePolicy: input.updatePolicy,
-        status: 'failed',
+        status,
         errorMessage,
       });
       throw error;
@@ -560,7 +584,11 @@ export class RunService {
         return;
       }
 
-      const statusLabel = input.status === 'succeeded' ? '成功' : '失败';
+      const statusLabel = input.status === 'succeeded'
+        ? '成功'
+        : input.status === 'cancelled'
+          ? '已取消'
+          : '失败';
       const pageRuns = await this.pageRuns.countByRun(input.runId);
       const artifactRuns = await this.artifactRuns.countByRun(input.runId);
       const content: FeishuPostContent = [
