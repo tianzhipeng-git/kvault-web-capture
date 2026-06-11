@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Folder, Loader2, Send } from "lucide-react";
+import { Plus, Folder, Loader2, Send, Copy, UnfoldVertical } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function Projects() {
@@ -16,6 +16,9 @@ export function Projects() {
   const [defaultSite, setDefaultSite] = useState<any>(null);
   const [quickUrl, setQuickUrl] = useState("");
   const [isSubmittingQuickUrl, setIsSubmittingQuickUrl] = useState(false);
+  const [expandUrl, setExpandUrl] = useState("");
+  const [expandedLinks, setExpandedLinks] = useState<Awaited<ReturnType<typeof api.expandLinks>> | null>(null);
+  const [isExpandingLinks, setIsExpandingLinks] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -49,6 +52,24 @@ export function Projects() {
     } finally {
       setIsSubmittingQuickUrl(false);
     }
+  };
+
+  const handleExpandLinks = async () => {
+    if (!expandUrl.trim()) return;
+    setIsExpandingLinks(true);
+    try {
+      setExpandedLinks(await api.expandLinks(expandUrl.trim()));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "链接展开失败。");
+    } finally {
+      setIsExpandingLinks(false);
+    }
+  };
+
+  const copyExpandedLinks = async () => {
+    if (!expandedLinks) return;
+    await navigator.clipboard.writeText(expandedLinks.links.join("\n"));
+    toast.success(`已复制 ${expandedLinks.links.length} 个链接。`);
   };
 
   return (
@@ -117,6 +138,50 @@ export function Projects() {
             </Button>
           </div>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader className="space-y-4">
+          <div>
+            <CardTitle>链接展开</CardTitle>
+            <CardDescription>递归展开 Sitemap；普通页面仅请求一次并提取其中的子链接。</CardDescription>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <Input
+              placeholder="粘贴 Sitemap 或单页 URL"
+              value={expandUrl}
+              onChange={(event) => setExpandUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  handleExpandLinks();
+                }
+              }}
+              disabled={isExpandingLinks}
+            />
+            <Button className="gap-2" onClick={handleExpandLinks} disabled={!expandUrl.trim() || isExpandingLinks}>
+              {isExpandingLinks ? <Loader2 className="w-4 h-4 animate-spin" /> : <UnfoldVertical className="w-4 h-4" />}
+              展开
+            </Button>
+          </div>
+        </CardHeader>
+        {expandedLinks && (
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">
+                {expandedLinks.sourceType === "sitemap" ? "Sitemap" : "单页"} · {expandedLinks.links.length} 个链接
+              </span>
+              <Button variant="outline" size="sm" className="gap-2" onClick={copyExpandedLinks} disabled={expandedLinks.links.length === 0}>
+                <Copy className="w-4 h-4" />
+                复制全部
+              </Button>
+            </div>
+            <textarea
+              className="h-64 w-full rounded-md border bg-muted/30 p-3 font-mono text-xs"
+              readOnly
+              value={expandedLinks.links.join("\n")}
+            />
+          </CardContent>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

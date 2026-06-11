@@ -57,6 +57,43 @@ describe('web server', () => {
     }
   });
 
+  it('expands page links through the authenticated web API', async () => {
+    const dir = createTempDir('kvault-web-link-expand-');
+    const webServer = await createWebServer({
+      dbPath: join(dir, 'state.db'),
+      adminPassword: 'secret',
+      maxConcurrentRuns: 1,
+    });
+    servers.push(webServer);
+
+    const siteServer = await startTestSiteServer();
+    siteServers.push(siteServer);
+
+    const unauthenticated = await webServer.inject({
+      method: 'POST',
+      url: '/api/links/expand',
+      payload: { url: `${siteServer.baseUrl}/docs` },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const authCookie = await login(webServer);
+    const response = await webServer.inject({
+      method: 'POST',
+      url: '/api/links/expand',
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: { url: `${siteServer.baseUrl}/docs` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      sourceUrl: `${siteServer.baseUrl}/docs`,
+      sourceType: 'page',
+      links: [`${siteServer.baseUrl}/product`],
+    });
+  });
+
   it('serves authenticated project, site, config, and run flows', async () => {
     const dir = createTempDir('kvault-web-');
     const dbPath = join(dir, 'state.db');

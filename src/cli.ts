@@ -5,6 +5,7 @@ import { CaptureApp } from './app/capture-app.js';
 import type { UpdatePolicy } from './domain/types.js';
 import type { ProjectExportArtifact } from './export/project-exporter.js';
 import { isRunCancelledError } from './utils/cancellation.js';
+import { expandLinks } from './utils/link-expander.js';
 
 const exportArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
 
@@ -120,7 +121,8 @@ function printUsage(): void {
   node --import tsx src/cli.ts site:path-tree --site <site-id> [--format text|json] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:denied --site <site-id> [--db ./.local/state.db]
-  node --import tsx src/cli.ts site:sample-captures --site <site-id> [--limit 5] [--db ./.local/state.db]`);
+  node --import tsx src/cli.ts site:sample-captures --site <site-id> [--limit 5] [--db ./.local/state.db]
+  node --import tsx src/cli.ts link:expand --url <url>`);
 }
 
 async function main(): Promise<void> {
@@ -130,6 +132,11 @@ async function main(): Promise<void> {
   if (!command) {
     printUsage();
     process.exitCode = 1;
+    return;
+  }
+
+  if (command === 'link:expand') {
+    console.log(JSON.stringify(await expandLinks(getRequiredArg('--url')), null, 2));
     return;
   }
 

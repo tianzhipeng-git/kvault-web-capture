@@ -24,6 +24,7 @@ import {
   SitePageListQuery,
 } from './queries/read-models.js';
 import { buildBaseEnqueueDecision, buildStage2EnqueueDecision } from '../rules/rule-decision.js';
+import { expandLinks } from '../utils/link-expander.js';
 import { mapConfigFormToSiteConfig, mapRunForm } from './services/config-mapper.js';
 import { RunCoordinator } from './services/run-coordinator.js';
 
@@ -627,6 +628,16 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
 
   server.get('/api/auth/session', async (request) => auth.getSessionState(request));
+
+  server.post('/api/links/expand', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    const body = (request.body ?? {}) as { url?: string };
+    if (!body.url?.trim()) {
+      reply.code(400);
+      throw new Error('URL 不能为空。');
+    }
+    return expandLinks(body.url.trim());
+  });
 
   server.post('/api/llm/chat', async (request, reply) => {
     const body = (request.body ?? {}) as {

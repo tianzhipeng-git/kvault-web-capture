@@ -276,6 +276,15 @@ export const api = {
   }),
   logout: () => fetchApi('/api/auth/logout', { method: 'POST' }),
   getSession: () => fetchApi('/api/auth/session'),
+  expandLinks: (url: string): Promise<{
+    sourceUrl: string;
+    sourceType: 'sitemap' | 'page';
+    links: string[];
+  }> => fetchApi('/api/links/expand', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }),
 
   llmChat: (data: {
     promptName: string;
