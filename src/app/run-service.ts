@@ -108,6 +108,33 @@ export class RunService {
     this.runNotificationBot = options.feishuBot;
   }
 
+  async previewClassification(siteId: number, sitePageId: number) {
+    const site = await this.sites.getById(siteId);
+    if (!site) {
+      throw new Error(`Site ${siteId} not found`);
+    }
+
+    const base = await this.pageRuns.getLatestSuccessfulBase(siteId, sitePageId);
+    if (!base) {
+      throw new Error('该页面没有可用于打标的成功 base 信息。');
+    }
+
+    const labelDefinitions = (await this.projects.getById(site.projectId))?.labelDefinitions ?? [];
+    const classifier = this.classifier
+      ?? (extractLabelDefinitionCores(labelDefinitions).length > 0
+        ? new LLMClassifier(labelDefinitions)
+        : new FakeClassifier());
+
+    return classifier.classify({
+      url: base.url,
+      normalizedUrl: base.url,
+      title: base.title,
+      metaDescription: base.metaDescription,
+      bodyText: base.bodyText,
+      links: [],
+    });
+  }
+
   async runSeed(input: number | {
     siteId: number;
     targetSuccessCount: number | null;

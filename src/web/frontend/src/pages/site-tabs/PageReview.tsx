@@ -24,7 +24,7 @@ import {
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
 import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
-import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, Tags, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const pendingReasonOptions = [
@@ -278,6 +278,8 @@ function PageDetailDialog({
   const [labelDefinitions, setLabelDefinitions] = useState<unknown>([]);
   const [rulePreviewResult, setRulePreviewResult] = useState<RulePreviewResult | null>(null);
   const [isPreviewingRules, setIsPreviewingRules] = useState(false);
+  const [classificationPreviewResult, setClassificationPreviewResult] = useState<Record<string, string[]> | null>(null);
+  const [isPreviewingClassification, setIsPreviewingClassification] = useState(false);
 
   useEffect(() => {
     setActivePreview("base");
@@ -286,6 +288,8 @@ function PageDetailDialog({
     setAssistantOpen(false);
     setRulePreviewResult(null);
     setIsPreviewingRules(false);
+    setClassificationPreviewResult(null);
+    setIsPreviewingClassification(false);
   }, [detail?.sitePageId]);
 
   useEffect(() => {
@@ -376,6 +380,20 @@ function PageDetailDialog({
     }
   };
 
+  const runClassificationPreview = async () => {
+    if (!detail) return;
+    setIsPreviewingClassification(true);
+    setClassificationPreviewResult(null);
+    try {
+      const result = await api.previewPageClassification(detail.siteId, detail.sitePageId);
+      setClassificationPreviewResult(result.labels);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '试运行打标失败。');
+    } finally {
+      setIsPreviewingClassification(false);
+    }
+  };
+
   return (
     <Dialog open={!!detail} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[92vw] w-[92vw] max-h-[90vh] overflow-y-auto overflow-x-hidden grid-cols-1">
@@ -395,6 +413,10 @@ function PageDetailDialog({
                     <Play className="h-4 w-4" />
                     {isPreviewingRules ? '计算中...' : '试运行规则'}
                   </Button>
+                  <Button type="button" variant="outline" className="gap-2" onClick={runClassificationPreview} disabled={isPreviewingClassification}>
+                    <Tags className="h-4 w-4" />
+                    {isPreviewingClassification ? '打标中...' : '试运行打标'}
+                  </Button>
                   <Button type="button" variant="outline" className="gap-2" onClick={() => setAssistantOpen(true)}>
                     <WandSparkles className="h-4 w-4" />
                     规则编辑助手
@@ -404,6 +426,17 @@ function PageDetailDialog({
               {rulePreviewResult && (
                 <div className="pt-1">
                   <RulePreviewResultGrid result={rulePreviewResult} />
+                </div>
+              )}
+              {classificationPreviewResult && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-sm text-muted-foreground">试运行打标结果：</span>
+                  {Object.entries(classificationPreviewResult).flatMap(([key, values]) =>
+                    values.map((value) => <Badge key={`${key}:${value}`} variant="secondary">{key}: {value}</Badge>),
+                  )}
+                  {Object.keys(classificationPreviewResult).length === 0 && (
+                    <span className="text-sm text-muted-foreground">无标签</span>
+                  )}
                 </div>
               )}
               <div className="grid gap-3 md:grid-cols-3 text-sm">

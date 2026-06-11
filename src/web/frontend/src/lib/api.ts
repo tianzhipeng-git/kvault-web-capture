@@ -404,6 +404,13 @@ export const api = {
       body: JSON.stringify(options),
     }),
   getSitePageDetail: (siteId: number, sitePageId: number) => fetchApi(`/api/sites/${siteId}/pages/${sitePageId}`),
+  previewPageClassification: (
+    siteId: number,
+    sitePageId: number,
+  ): Promise<{ labels: Record<string, string[]> }> =>
+    fetchApi(`/api/sites/${siteId}/pages/${sitePageId}/classification/preview`, {
+      method: 'POST',
+    }),
   getPendingReview: (siteId: number) => fetchApi(`/api/sites/${siteId}/pending-review`),
   getRunLogs: (runId: number, params?: { sitePageId?: number }): Promise<{ items: RunLogItem[]; errorMessage: string | null }> => {
     const q = params?.sitePageId ? `?sitePageId=${params.sitePageId}` : "";

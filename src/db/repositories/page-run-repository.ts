@@ -70,6 +70,39 @@ export class PageRunRepository {
     return Number(row.count);
   }
 
+  async getLatestSuccessfulBase(siteId: number, sitePageId: number): Promise<{
+    url: string;
+    title: string;
+    metaDescription: string;
+    bodyText: string;
+  } | null> {
+    const row = await this.db.get<{
+      normalized_url: string;
+      title: string;
+      meta_description: string;
+      body_text: string;
+    }>(
+      `SELECT sp.normalized_url, pr.title, pr.meta_description, pr.body_text
+       FROM page_runs pr
+       INNER JOIN site_pages sp ON sp.id = pr.site_page_id
+       WHERE sp.site_id = ?
+         AND sp.id = ?
+         AND pr.base_capture_status = 'succeeded'
+       ORDER BY pr.id DESC
+       LIMIT 1`,
+      [siteId, sitePageId],
+    );
+
+    return row
+      ? {
+          url: row.normalized_url,
+          title: row.title,
+          metaDescription: row.meta_description,
+          bodyText: row.body_text,
+        }
+      : null;
+  }
+
   /**
    * Records a failed base-capture request.  This mirrors `create()` but marks
    * the page as failed and stores the error message rather than page content.

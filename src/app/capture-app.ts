@@ -121,6 +121,10 @@ export class CaptureApp {
     return this.sites.updateConfig(siteId, config);
   }
 
+  previewPageClassification(siteId: number, sitePageId: number) {
+    return this.runs.previewClassification(siteId, sitePageId);
+  }
+
   getDefaultSite() {
     return this.sites.getDefaultSite();
   }

@@ -376,6 +376,25 @@ describe('web server', () => {
     expect(pageDetail.runHistory.some((run) => run.runId === runId && run.pageRuns.length > 0)).toBe(
       true,
     );
+
+    const classificationPreviewResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/pages/${pageList.rows[0]!.sitePageId}/classification/preview`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(classificationPreviewResponse.statusCode).toBe(200);
+    const expectedContentType = pageList.rows[0]!.title.toLowerCase().includes('docs')
+      ? 'docs'
+      : pageList.rows[0]!.title.toLowerCase().includes('product')
+        ? 'product'
+        : 'generic';
+    expect(classificationPreviewResponse.json()).toEqual({
+      labels: {
+        content_type: [expectedContentType],
+      },
+    });
   });
 
   it('serves screenshot artifact files with their real content length', async () => {

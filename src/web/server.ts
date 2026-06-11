@@ -1124,6 +1124,14 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     );
   });
 
+  server.post('/api/sites/:siteId/pages/:sitePageId/classification/preview', async (request) => {
+    const params = request.params as { siteId: string; sitePageId: string };
+    return app.previewPageClassification(
+      parseSiteId(params.siteId),
+      parseSitePageId(params.sitePageId),
+    );
+  });
+
   server.get('/api/sites/:siteId/artifacts/:artifactRunId/file', async (request, reply) => {
     const params = request.params as { siteId: string; artifactRunId: string };
     const artifact = await sitePageDetailQuery.getArtifactFile(
