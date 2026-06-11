@@ -56,7 +56,7 @@ flowchart TD
 
 `PageCaptureExecutor.capture()` 在一次 Crawlee request handler 调用内：
 
-1. 通过 `CaptureProfileResolver` 解析站点 `captureProfiles` 中的 tool 顺序。
+1. 通过 `CaptureProfileResolver` 解析站点 `captureProfile` 中的 tool 顺序。
 2. 按顺序遍历 tool；若某 tool 不覆盖剩余 `needs`，跳过。
 3. 调用 `tool.capture()`；成功返回后由 `ResultValidator` 逐 capability 验收。
 4. 通过验收的能力 merge 进 `CaptureResult`；已满足的能力不再重复抓取。
@@ -175,7 +175,7 @@ const ANTI_BLOCKING_OPTIONS = {
 
 Validator 在 **tool 成功返回之后、merge 之前**，对每个相关 capability 调用 `validate()`（`src/capture/executor.ts`）。只有通过验收的 capability 才会 `mergeResult`。
 
-站点级 `validation` 与 profile 级 `validation` 会 merge：profile 规则追加到全局规则（`src/capture/result-validator.ts` 的 `mergeRule`）。
+结果校验统一读取站点根级 `validation`。`captureProfile` 不包含校验规则，只负责工具顺序。
 
 ### 6.2 各 capability 检查项
 
@@ -222,8 +222,8 @@ Tool 层不直接写 repository；状态写入在 `handlers.ts` 完成。见 `do
 
 | 目标 | 优先查看 |
 |------|----------|
-| 改 tool 顺序或 fallback 策略 | 站点 `captureProfiles`；`src/capture/profile-resolver.ts` |
-| 改验收规则 | 站点 `validation` / profile `validation`；`src/capture/result-validator.ts` |
+| 改 tool 顺序或 fallback 策略 | 站点 `captureProfile`；`src/capture/profile-resolver.ts` |
+| 改验收规则 | 站点根级 `validation`；`src/capture/result-validator.ts` |
 | 改 Crawlee 重试次数、超时 | `src/crawlee/capture-runtime.ts`（添加 `maxRequestRetries` 等） |
 | 改失败后落库 | `src/crawlee/handlers.ts` → `createPageCaptureFailedRequestHandler` |
 | 改 session / 浏览器身份 | `src/capture/browser-provider.ts`；[浏览器复用策略](./browser-reuse-strategy.md) |

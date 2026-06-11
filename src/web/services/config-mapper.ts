@@ -10,8 +10,7 @@ export interface SiteConfigFormInput {
     seedMaxDepth?: number;
     crawlMaxDepth?: number;
   };
-  captureProfiles?: SiteConfig['captureProfiles'];
-  defaultCaptureProfile?: SiteConfig['defaultCaptureProfile'];
+  captureProfile?: SiteConfig['captureProfile'];
   urlNormalization?: SiteConfig['urlNormalization'];
   validation?: SiteConfig['validation'];
   browser?: SiteConfig['browser'];
@@ -36,8 +35,7 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
       seedMaxDepth: input.runOptions?.seedMaxDepth ?? 1,
       crawlMaxDepth: input.runOptions?.crawlMaxDepth ?? 2,
     },
-    captureProfiles: input.captureProfiles,
-    defaultCaptureProfile: input.defaultCaptureProfile,
+    captureProfile: input.captureProfile,
     urlNormalization: input.urlNormalization,
     validation: input.validation,
     browser: input.browser,

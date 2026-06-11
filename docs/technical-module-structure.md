@@ -111,16 +111,12 @@ Pending 原因：
   "sitemaps": [],
   "rulesBeforeBaseEq": [],
   "rulesBeforeStage2Eq": [],
-  "captureProfiles": {
-    "default": {
-      "tools": ["http-base", "defuddle-markdown", "playwright-screenshot"],
-      "validation": {
-        "markdown": { "minLength": 500 }
-      }
-    }
+  "captureProfile": {
+    "tools": ["http-base", "defuddle-markdown", "playwright-screenshot"]
   },
-  "defaultCaptureProfile": "default",
-  "validation": {},
+  "validation": {
+    "markdown": { "minLength": 500 }
+  },
   "proxyPolicy": {
     "mode": "off"
   },
@@ -135,7 +131,7 @@ Pending 原因：
 }
 ```
 
-其中基础字段是必需业务配置；`captureProfiles`、`validation`、`proxyPolicy` 和 `browser` 是采集工具策略配置。它们不改变 URL / label 规则的职责：规则只回答“是否抓、要哪些 artifact”，profile 和 validator 回答“用哪些 tool 抓、什么结果算可接受”。
+其中基础字段是必需业务配置；`captureProfile`、`validation`、`proxyPolicy` 和 `browser` 是采集工具策略配置。它们不改变 URL / label 规则的职责：规则只回答“是否抓、要哪些 artifact”，profile 和 validator 回答“用哪些 tool 抓、什么结果算可接受”。
 
 ### 2.4 规则模型
 
@@ -325,7 +321,7 @@ base -> classifier -> stage2 decision -> page_run
 
 它的边界是工具策略层，不写数据库、不写 artifact 文件、不执行分类和规则。主要职责：
 
-- 通过 `CaptureProfileResolver` 读取站点 `defaultCaptureProfile` 和 profile tool chain。
+- 通过 `CaptureProfileResolver` 读取站点 `captureProfile` 工具链，未配置时使用内置默认链。
 - 对每个剩余 capability 选择能覆盖它的 `CaptureTool`。
 - 跳过不匹配 URL 的 `SiteAutomationAdapter`。
 - 调用 `ResultValidator` 判断 base / markdown / screenshot / structured 结果是否可接受。
@@ -348,11 +344,11 @@ base -> classifier -> stage2 decision -> page_run
 http-base -> defuddle-markdown -> lightpanda-markdown -> jina-markdown -> playwright-screenshot
 ```
 
-`RunService` 会把 Crawl4AI、Scrapling 和 Kickstarter adapter 注册进 `CaptureToolRegistry`，但它们只有在站点 `captureProfiles.tools` 中被引用，或调用方注入了不同默认 tool chain 时才会参与执行。
+`RunService` 会把 Crawl4AI、Scrapling 和 Kickstarter adapter 注册进 `CaptureToolRegistry`，但它们只有在站点 `captureProfile.tools` 中被引用，或调用方注入了不同默认 tool chain 时才会参与执行。
 
 ### 4.4 Result validator
 
-`src/capture/result-validator.ts` 定义工具结果是否可接受。规则来源是站点级 `validation` 与 profile 级 `validation` 的合并，profile 可以覆盖数值阈值，`rejectRegex` / `requireRegex` 会追加。
+`src/capture/result-validator.ts` 定义工具结果是否可接受。所有规则统一来自站点根级 `validation`；`captureProfile` 只决定工具链与 fallback 顺序。
 
 当前校验口径：
 

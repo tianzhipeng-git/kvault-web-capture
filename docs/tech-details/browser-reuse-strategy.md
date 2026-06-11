@@ -483,17 +483,15 @@ capture profile 仍负责 tool 顺序：
 
 ```json
 {
-  "captureProfiles": {
-    "default": {
-      "tools": ["http-base", "defuddle-markdown", "lightpanda-markdown", "jina-markdown", "playwright-screenshot"]
-    }
+  "captureProfile": {
+    "tools": ["http-base", "defuddle-markdown", "lightpanda-markdown", "jina-markdown", "playwright-screenshot"]
   }
 }
 ```
 
 也就是说：
 
-- `captureProfiles` 决定“用什么工具抓”。
+- `captureProfile` 决定“用什么工具抓”。
 - `browser` 决定“这些工具使用什么浏览器身份”。
 
 ## 11. 已落地与后续方向

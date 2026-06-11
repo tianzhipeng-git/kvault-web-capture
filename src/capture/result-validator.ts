@@ -1,6 +1,5 @@
 import type {
   CaptureCapability,
-  CaptureValidationConfig,
   CaptureValidationRule,
   SiteConfig,
 } from '../domain/types.js';
@@ -16,28 +15,6 @@ const DEFAULT_REJECT_PATTERNS = [
 export interface CapabilityValidationResult {
   accepted: boolean;
   message?: string;
-}
-
-function mergeRule(
-  globalRule: CaptureValidationRule | undefined,
-  profileRule: CaptureValidationRule | undefined,
-): CaptureValidationRule | undefined {
-  if (!globalRule && !profileRule) {
-    return undefined;
-  }
-
-  return {
-    ...globalRule,
-    ...profileRule,
-    rejectRegex: [
-      ...(globalRule?.rejectRegex ?? []),
-      ...(profileRule?.rejectRegex ?? []),
-    ],
-    requireRegex: [
-      ...(globalRule?.requireRegex ?? []),
-      ...(profileRule?.requireRegex ?? []),
-    ],
-  };
 }
 
 function textMatchesAny(text: string, patterns: readonly string[]): string | null {
@@ -113,15 +90,12 @@ function isJsonSerializable(value: unknown): boolean {
 }
 
 export class ResultValidator {
-  private rules(input: {
-    siteConfig: SiteConfig;
-    profileValidation?: CaptureValidationConfig;
-  }): Required<Record<CaptureCapability, CaptureValidationRule | undefined>> {
+  private rules(siteConfig: SiteConfig): Required<Record<CaptureCapability, CaptureValidationRule | undefined>> {
     return {
-      base: mergeRule(input.siteConfig.validation?.base, input.profileValidation?.base),
-      markdown: mergeRule(input.siteConfig.validation?.markdown, input.profileValidation?.markdown),
-      screenshot: mergeRule(input.siteConfig.validation?.screenshot, input.profileValidation?.screenshot),
-      structured: mergeRule(input.siteConfig.validation?.structured, input.profileValidation?.structured),
+      base: siteConfig.validation?.base,
+      markdown: siteConfig.validation?.markdown,
+      screenshot: siteConfig.validation?.screenshot,
+      structured: siteConfig.validation?.structured,
     };
   }
 
@@ -129,9 +103,8 @@ export class ResultValidator {
     capability: CaptureCapability;
     result: CaptureToolResult;
     siteConfig: SiteConfig;
-    profileValidation?: CaptureValidationConfig;
   }): CapabilityValidationResult {
-    const rules = this.rules(input);
+    const rules = this.rules(input.siteConfig);
 
     switch (input.capability) {
       case 'base': {

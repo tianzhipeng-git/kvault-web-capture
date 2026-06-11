@@ -97,7 +97,6 @@ export interface CaptureValidationConfig {
 
 export interface CaptureProfileConfig {
   tools: string[];
-  validation?: CaptureValidationConfig;
 }
 
 export interface ProxyPolicyConfig {
@@ -125,8 +124,7 @@ export interface SiteConfig {
   rulesBeforeStage2Eq: Array<UrlRule | LabelRule>;
   runOptions: SiteRunOptions;
   urlNormalization?: UrlNormalizationConfig;
-  captureProfiles?: Record<string, CaptureProfileConfig>;
-  defaultCaptureProfile?: string;
+  captureProfile?: CaptureProfileConfig;
   validation?: CaptureValidationConfig;
   proxyPolicy?: ProxyPolicyConfig;
   browser?: BrowserConfig;

@@ -37,31 +37,26 @@ describe('web config mapper', () => {
   it('preserves capture profile and validation fields', () => {
     const config = mapConfigFormToSiteConfig({
       seedUrls: ['https://example.com'],
-      captureProfiles: {
-        default: {
-          tools: ['crawl4ai-page', 'http-base', 'defuddle-markdown'],
-          validation: {
-            markdown: {
-              minLength: 500,
-              rejectRegex: ['Access Denied'],
-            },
-          },
-        },
+      captureProfile: {
+        tools: ['crawl4ai-page', 'http-base', 'defuddle-markdown'],
       },
-      defaultCaptureProfile: 'default',
       validation: {
+        markdown: {
+          minLength: 500,
+          rejectRegex: ['Access Denied'],
+        },
         screenshot: {
           minBytes: 20000,
         },
       },
     });
 
-    expect(config.captureProfiles?.default.tools).toEqual([
+    expect(config.captureProfile?.tools).toEqual([
       'crawl4ai-page',
       'http-base',
       'defuddle-markdown',
     ]);
-    expect(config.captureProfiles?.default.validation?.markdown?.minLength).toBe(500);
+    expect(config.validation?.markdown?.minLength).toBe(500);
     expect(config.validation?.screenshot?.minBytes).toBe(20000);
   });
 
@@ -96,13 +91,13 @@ describe('web config mapper', () => {
     });
   });
 
-  it('rejects dangling default capture profile and reports invalid regex field names', () => {
+  it('reports invalid capture profile and regex field names', () => {
     expect(() =>
       parseSiteConfig({
         seedUrls: ['https://example.com'],
-        defaultCaptureProfile: 'missing',
+        captureProfile: [],
       }),
-    ).toThrow('defaultCaptureProfile requires captureProfiles');
+    ).toThrow('captureProfile must be an object');
 
     expect(() =>
       parseSiteConfig({

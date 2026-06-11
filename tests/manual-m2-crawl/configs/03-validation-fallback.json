@@ -32,29 +32,26 @@
     "seedMaxDepth": 0,
     "crawlMaxDepth": 1
   },
-  "captureProfiles": {
-    "default": {
-      "tools": [
-        "http-base",
-        "jina-markdown",
-        "defuddle-markdown",
-        "lightpanda-markdown"
-      ],
-      "validation": {
-        "markdown": {
-          "minLength": 800,
-          "rejectRegex": [
-            "Access Denied",
-            "Just a moment",
-            "captcha",
-            "verify you are human"
-          ],
-          "requireRegex": [
-            "M2 Mock"
-          ]
-        }
-      }
-    }
+  "captureProfile": {
+    "tools": [
+      "http-base",
+      "jina-markdown",
+      "defuddle-markdown",
+      "lightpanda-markdown"
+    ]
   },
-  "defaultCaptureProfile": "default"
+  "validation": {
+    "markdown": {
+      "minLength": 800,
+      "rejectRegex": [
+        "Access Denied",
+        "Just a moment",
+        "captcha",
+        "verify you are human"
+      ],
+      "requireRegex": [
+        "M2 Mock"
+      ]
+    }
+  }
 }

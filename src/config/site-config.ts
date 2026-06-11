@@ -265,23 +265,15 @@ function parseCaptureProfile(value: unknown, fieldName: string): CaptureProfileC
   assert(isRecord(value), `${fieldName} must be an object`);
   return {
     tools: asStringArray(value.tools, `${fieldName}.tools`),
-    validation: value.validation === undefined
-      ? undefined
-      : parseValidationConfig(value.validation, `${fieldName}.validation`),
   };
 }
 
-function parseCaptureProfiles(value: unknown): Record<string, CaptureProfileConfig> | undefined {
+function parseCaptureProfileConfig(value: unknown): CaptureProfileConfig | undefined {
   if (value === undefined) {
     return undefined;
   }
 
-  assert(isRecord(value), 'captureProfiles must be an object');
-  const entries = Object.entries(value).map(([name, profile]) => {
-    assert(name.length > 0, 'captureProfiles must not contain an empty profile name');
-    return [name, parseCaptureProfile(profile, `captureProfiles.${name}`)] as const;
-  });
-  return Object.fromEntries(entries);
+  return parseCaptureProfile(value, 'captureProfile');
 }
 
 function parseProxyPolicy(value: unknown): ProxyPolicyConfig | undefined {
@@ -353,22 +345,10 @@ function parseBrowserConfig(value: unknown): BrowserConfig | undefined {
 export function parseSiteConfig(input: unknown): SiteConfig {
   assert(isRecord(input), 'site config must be an object');
 
-  const captureProfiles = parseCaptureProfiles(input.captureProfiles);
+  const captureProfile = parseCaptureProfileConfig(input.captureProfile);
   const proxyPolicy = parseProxyPolicy(input.proxyPolicy);
   const browser = parseBrowserConfig(input.browser);
   const urlNormalization = parseUrlNormalization(input.urlNormalization);
-  const defaultCaptureProfile = input.defaultCaptureProfile;
-  assert(
-    defaultCaptureProfile === undefined || typeof defaultCaptureProfile === 'string',
-    'defaultCaptureProfile must be a string',
-  );
-  if (defaultCaptureProfile !== undefined) {
-    assert(captureProfiles !== undefined, 'defaultCaptureProfile requires captureProfiles');
-    assert(
-      captureProfiles[defaultCaptureProfile] !== undefined,
-      `defaultCaptureProfile ${defaultCaptureProfile} does not exist in captureProfiles`,
-    );
-  }
 
   const config: SiteConfig = {
     seedUrls: asStringArray(input.seedUrls, 'seedUrls'),
@@ -382,11 +362,8 @@ export function parseSiteConfig(input: unknown): SiteConfig {
     runOptions: parseRunOptions(input.runOptions ?? {}),
   };
 
-  if (captureProfiles !== undefined) {
-    config.captureProfiles = captureProfiles;
-  }
-  if (defaultCaptureProfile !== undefined) {
-    config.defaultCaptureProfile = defaultCaptureProfile;
+  if (captureProfile !== undefined) {
+    config.captureProfile = captureProfile;
   }
   if (urlNormalization !== undefined) {
     config.urlNormalization = urlNormalization;

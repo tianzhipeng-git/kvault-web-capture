@@ -326,6 +326,107 @@ const postgresTablesSchema = baseTablesSchema.replaceAll(
   'SERIAL PRIMARY KEY',
 );
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeValidationRule(
+  siteRule: unknown,
+  profileRule: unknown,
+): Record<string, unknown> | undefined {
+  if (!isJsonObject(siteRule) && !isJsonObject(profileRule)) {
+    return undefined;
+  }
+
+  const site = isJsonObject(siteRule) ? siteRule : {};
+  const profile = isJsonObject(profileRule) ? profileRule : {};
+  return {
+    ...site,
+    ...profile,
+    rejectRegex: [
+      ...(Array.isArray(site.rejectRegex) ? site.rejectRegex : []),
+      ...(Array.isArray(profile.rejectRegex) ? profile.rejectRegex : []),
+    ],
+    requireRegex: [
+      ...(Array.isArray(site.requireRegex) ? site.requireRegex : []),
+      ...(Array.isArray(profile.requireRegex) ? profile.requireRegex : []),
+    ],
+  };
+}
+
+function mergeProfileValidationIntoSite(config: Record<string, unknown>): boolean {
+  if (!isJsonObject(config.captureProfile) || !isJsonObject(config.captureProfile.validation)) {
+    return false;
+  }
+
+  const siteValidation = isJsonObject(config.validation) ? config.validation : {};
+  const profileValidation = config.captureProfile.validation;
+  const mergedValidation: Record<string, unknown> = {};
+
+  for (const capability of ['base', 'markdown', 'screenshot', 'structured']) {
+    const mergedRule = mergeValidationRule(
+      siteValidation[capability],
+      profileValidation[capability],
+    );
+    if (mergedRule !== undefined) {
+      mergedValidation[capability] = mergedRule;
+    }
+  }
+
+  config.validation = mergedValidation;
+  delete config.captureProfile.validation;
+  return true;
+}
+
+function migrateCaptureProfileConfig(configJson: string): string | null {
+  const config = JSON.parse(configJson) as Record<string, unknown>;
+  const hasLegacyFields =
+    Object.hasOwn(config, 'captureProfiles') || Object.hasOwn(config, 'defaultCaptureProfile');
+
+  if (hasLegacyFields && config.captureProfile === undefined) {
+    const profiles = config.captureProfiles;
+    const profileName =
+      typeof config.defaultCaptureProfile === 'string' ? config.defaultCaptureProfile : 'default';
+
+    if (
+      profiles !== null
+      && typeof profiles === 'object'
+      && !Array.isArray(profiles)
+      && Object.hasOwn(profiles, profileName)
+    ) {
+      config.captureProfile = (profiles as Record<string, unknown>)[profileName];
+    }
+  }
+
+  delete config.captureProfiles;
+  delete config.defaultCaptureProfile;
+  const movedValidation = mergeProfileValidationIntoSite(config);
+  return hasLegacyFields || movedValidation ? JSON.stringify(config) : null;
+}
+
+async function migrateStoredCaptureProfiles(db: DbClient): Promise<void> {
+  const targets = [
+    { table: 'sites', column: 'config_json' },
+    { table: 'crawl_runs', column: 'config_snapshot_json' },
+  ] as const;
+
+  for (const target of targets) {
+    const rows = await db.all<{ id: number; config_json: string }>(
+      `SELECT id, ${target.column} AS config_json FROM ${target.table}`,
+    );
+
+    for (const row of rows) {
+      const migratedJson = migrateCaptureProfileConfig(row.config_json);
+      if (migratedJson !== null) {
+        await db.run(
+          `UPDATE ${target.table} SET ${target.column} = ? WHERE id = ?`,
+          [migratedJson, row.id],
+        );
+      }
+    }
+  }
+}
+
 export async function initializeSchema(db: DbClient): Promise<void> {
   await db.exec(db.dialect === 'postgres' ? postgresTablesSchema : baseTablesSchema);
 
@@ -348,6 +449,7 @@ export async function initializeSchema(db: DbClient): Promise<void> {
     }
   }
 
+  await migrateStoredCaptureProfiles(db);
   await db.exec(indexesSchema);
   await db.run(
     `INSERT INTO system_settings (key, value, updated_at)

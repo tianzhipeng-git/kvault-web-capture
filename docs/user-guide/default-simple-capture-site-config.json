@@ -32,16 +32,6 @@
     "seedMaxDepth": 0,
     "crawlMaxDepth": 0
   },
-  "captureProfiles": {
-    "default-simple-capture": {
-      "tools": [
-        "scrapling-page",
-        "crawl4ai-page",
-        "jina-markdown"
-      ]
-    }
-  },
-  "defaultCaptureProfile": "default-simple-capture",
   "validation": {
     "base": {
       "minLength": 80,
@@ -86,5 +76,12 @@
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",
     "proxyBinding": "session"
+  },
+  "captureProfile": {
+    "tools": [
+      "scrapling-page",
+      "crawl4ai-page",
+      "jina-markdown"
+    ]
   }
 }

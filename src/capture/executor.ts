@@ -112,7 +112,7 @@ export class PageCaptureExecutor {
       requestId: input.runtime.requestId,
       url: input.normalizedUrl,
       needs: input.needs,
-      profile: resolvedProfile.name,
+      profile: resolvedProfile.source,
       tools: resolvedProfile.tools.map((tool) => tool.name),
     });
 
@@ -135,7 +135,7 @@ export class PageCaptureExecutor {
           siteId: input.siteId,
           requestId: input.runtime.requestId,
           url: input.normalizedUrl,
-          profile: resolvedProfile.name,
+          profile: resolvedProfile.source,
           tool: tool.name,
           capabilities: tool.capabilities,
           remainingNeeds,
@@ -156,7 +156,7 @@ export class PageCaptureExecutor {
           siteId: input.siteId,
           requestId: input.runtime.requestId,
           url: input.normalizedUrl,
-          profile: resolvedProfile.name,
+          profile: resolvedProfile.source,
           tool: tool.name,
           siteKey: tool.siteKey,
           capabilities: tool.capabilities,
@@ -174,7 +174,7 @@ export class PageCaptureExecutor {
           siteId: input.siteId,
           requestId: input.runtime.requestId,
           url: input.normalizedUrl,
-          profile: resolvedProfile.name,
+          profile: resolvedProfile.source,
           tool: tool.name,
           needs: toolNeeds,
           capabilities: tool.capabilities,
@@ -195,7 +195,6 @@ export class PageCaptureExecutor {
             capability: need,
             result: toolResult,
             siteConfig: input.siteConfig,
-            profileValidation: resolvedProfile.profile.validation,
           });
           if (!validation.accepted) {
             validationMessages.push(`${need}: ${validation.message ?? 'rejected'}`);
@@ -209,15 +208,15 @@ export class PageCaptureExecutor {
           status: acceptedCapabilities.length > 0 ? 'succeeded' : 'failed',
           capabilities: [...tool.capabilities],
           message: validationMessages.length > 0
-            ? `profile=${resolvedProfile.name}; ${validationMessages.join(' | ')}`
-            : `profile=${resolvedProfile.name}`,
+            ? `profile=${resolvedProfile.source}; ${validationMessages.join(' | ')}`
+            : `profile=${resolvedProfile.source}`,
         });
         logger.info('Page capture tool attempt finished', {
           runId: input.runId,
           siteId: input.siteId,
           requestId: input.runtime.requestId,
           url: input.normalizedUrl,
-          profile: resolvedProfile.name,
+          profile: resolvedProfile.source,
           tool: tool.name,
           needs: toolNeeds,
           acceptedCapabilities,
@@ -246,7 +245,7 @@ export class PageCaptureExecutor {
           siteId: input.siteId,
           requestId: input.runtime.requestId,
           url: input.normalizedUrl,
-          profile: resolvedProfile.name,
+          profile: resolvedProfile.source,
           tool: tool.name,
           capabilities: tool.capabilities,
           remainingNeeds,
@@ -274,7 +273,7 @@ export class PageCaptureExecutor {
         requestId: input.runtime.requestId,
         url: input.normalizedUrl,
         needs: input.needs,
-        profile: resolvedProfile.name,
+        profile: resolvedProfile.source,
         missing,
         diagnostics: result.diagnostics,
         durationMs: Date.now() - captureStartedAt,
@@ -290,7 +289,7 @@ export class PageCaptureExecutor {
       requestId: input.runtime.requestId,
       url: input.normalizedUrl,
       needs: input.needs,
-      profile: resolvedProfile.name,
+      profile: resolvedProfile.source,
       finalUrl: result.finalUrl,
       statusCode: result.statusCode,
       diagnostics: result.diagnostics,
@@ -304,7 +303,7 @@ export class PageCaptureExecutor {
         requestId: input.runtime.requestId,
         url: input.normalizedUrl,
         needs: input.needs,
-        profile: resolvedProfile.name,
+        profile: resolvedProfile.source,
         summary: fallbackSummary,
         diagnostics: result.diagnostics,
         durationMs: Date.now() - captureStartedAt,

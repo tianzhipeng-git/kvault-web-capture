@@ -3,8 +3,6 @@ import { toolCoversAnyNeed } from './capability-utils.js';
 import type { CaptureTool } from './types.js';
 import { CaptureToolRegistry } from './tool-registry.js';
 
-export const DEFAULT_CAPTURE_PROFILE_NAME = 'default';
-
 export const DEFAULT_CAPTURE_TOOL_CHAIN = [
   'http-base',
   'defuddle-markdown',
@@ -14,7 +12,7 @@ export const DEFAULT_CAPTURE_TOOL_CHAIN = [
 ] as const;
 
 export interface ResolvedCaptureProfile {
-  name: string;
+  source: 'site' | 'default';
   profile: CaptureProfileConfig;
   tools: CaptureTool[];
 }
@@ -29,8 +27,7 @@ export class CaptureProfileResolver {
     siteConfig: SiteConfig;
     needs: CaptureCapability[];
   }): ResolvedCaptureProfile {
-    const profileName = input.siteConfig.defaultCaptureProfile ?? DEFAULT_CAPTURE_PROFILE_NAME;
-    const configuredProfile = input.siteConfig.captureProfiles?.[profileName];
+    const configuredProfile = input.siteConfig.captureProfile;
     const profile: CaptureProfileConfig = configuredProfile ?? {
       tools: [...this.defaultToolChain],
     };
@@ -40,7 +37,7 @@ export class CaptureProfileResolver {
       .filter((tool) => toolCoversAnyNeed(tool, input.needs));
 
     return {
-      name: configuredProfile ? profileName : DEFAULT_CAPTURE_PROFILE_NAME,
+      source: configuredProfile ? 'site' : 'default',
       profile,
       tools,
     };

@@ -1,6 +1,6 @@
 # SiteConfig 抓取结果校验
 
-本文说明 `SiteConfig.validation` 和 `captureProfiles.<name>.validation` 的用法。校验用于判断某个工具产出的 base、markdown、screenshot、structured 是否可以接受；被拒绝后 Executor 会继续尝试 profile 中的后续工具。
+本文说明 `SiteConfig.validation` 的用法。校验用于判断某个工具产出的 base、markdown、screenshot、structured 是否可以接受；被拒绝后 Executor 会继续尝试 capture profile 中的后续工具。
 
 ## 1. 配置位置
 
@@ -23,24 +23,7 @@
 }
 ```
 
-也可以写在某个 capture profile 下：
-
-```json
-{
-  "captureProfiles": {
-    "default": {
-      "tools": ["http-base", "defuddle-markdown"],
-      "validation": {
-        "markdown": {
-          "requireRegex": ["产品|文档|价格"]
-        }
-      }
-    }
-  }
-}
-```
-
-全局 `validation` 先应用，profile 内的 `validation` 再叠加。`minLength` 和 `minBytes` 使用 profile 值覆盖全局值；`rejectRegex` 和 `requireRegex` 会把全局数组与 profile 数组合并。
+每个站点只有这一处结果校验配置，`captureProfile` 只负责工具链与 fallback 顺序。
 
 ## 2. 字段说明
 
@@ -98,31 +81,27 @@ base 和 markdown 默认会拒绝常见反爬/拦截页面。内置模式包括�
 
 ```json
 {
-  "captureProfiles": {
-    "default": {
-      "tools": [
-        "defuddle-markdown",
-        "lightpanda-markdown",
-        "jina-markdown"
-      ],
-      "validation": {
-        "markdown": {
-          "minLength": 800,
-          "rejectRegex": [
-            "Access Denied",
-            "captcha",
-            "正在验证"
-          ],
-          "requireRegex": [
-            "Example Product|Example Docs"
-          ]
-        }
-      }
-    }
+  "captureProfile": {
+    "tools": [
+      "defuddle-markdown",
+      "lightpanda-markdown",
+      "jina-markdown"
+    ]
   },
-  "defaultCaptureProfile": "default"
+  "validation": {
+    "markdown": {
+      "minLength": 800,
+      "rejectRegex": [
+        "Access Denied",
+        "captcha",
+        "正在验证"
+      ],
+      "requireRegex": [
+        "Example Product|Example Docs"
+      ]
+    }
+  }
 }
 ```
 
 在这个例子里，如果 `defuddle-markdown` 产出的 Markdown 太短、像拦截页，或没有包含期望内容，Executor 会继续尝试后面的 markdown 工具。
-

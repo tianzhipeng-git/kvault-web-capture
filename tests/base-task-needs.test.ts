@@ -48,10 +48,8 @@ describe('base task needs', () => {
           artifacts: ['markdown', 'screenshot', 'structured'],
         },
       ],
-      captureProfiles: {
-        default: {
-          tools: ['scrapling-page'],
-        },
+      captureProfile: {
+        tools: ['scrapling-page'],
       },
     };
 
@@ -108,10 +106,8 @@ describe('base task needs', () => {
   it('includes label whitelist artifacts when integrated tools cover them', () => {
     const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
-      captureProfiles: {
-        default: {
-          tools: ['scrapling-page'],
-        },
+      captureProfile: {
+        tools: ['scrapling-page'],
       },
     };
 
@@ -157,10 +153,8 @@ describe('base task needs', () => {
   it('respects update policy when deciding eager artifact needs', () => {
     const siteConfig: SiteConfig = {
       ...createDefaultSiteConfig('https://example.com'),
-      captureProfiles: {
-        default: {
-          tools: ['scrapling-page'],
-        },
+      captureProfile: {
+        tools: ['scrapling-page'],
       },
     };
 

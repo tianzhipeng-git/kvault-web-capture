@@ -1,16 +1,13 @@
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2 } from "lucide-react";
 import {
   KNOWN_CAPTURE_TOOLS,
   type CaptureConfigFormState,
-  type CaptureProfileFormItem,
+  type CaptureProfileFormState,
   type CaptureValidationRuleForm,
   type ValidationCapability,
   type ValidationConfigForm,
-  createEmptyProfileFormItem,
   validationCapabilityLabel,
 } from "@/lib/capture-config-form";
 
@@ -108,36 +105,13 @@ function ValidationConfigEditor({
 
 function ProfileEditor({
   profile,
-  defaultSelected,
   onChange,
-  onRemove,
-  onSelectDefault,
 }: {
-  profile: CaptureProfileFormItem;
-  defaultSelected: boolean;
-  onChange: (next: CaptureProfileFormItem) => void;
-  onRemove: () => void;
-  onSelectDefault: () => void;
+  profile: CaptureProfileFormState;
+  onChange: (next: CaptureProfileFormState) => void;
 }) {
   return (
     <div className="rounded-md border p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" checked={defaultSelected} onChange={onSelectDefault} />
-          默认 Profile
-        </label>
-        <div className="flex-1 min-w-[12rem] space-y-1">
-          <Label>Profile 名称</Label>
-          <Input
-            value={profile.name}
-            onChange={(event) => onChange({ ...profile, name: event.target.value })}
-          />
-        </div>
-        <Button type="button" variant="outline" size="sm" className="gap-1" onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-          删除
-        </Button>
-      </div>
       <div className="space-y-1">
         <Label>工具链 (tools，每行一个，按 fallback 顺序排列)</Label>
         <textarea
@@ -150,20 +124,6 @@ function ProfileEditor({
           可用工具：{KNOWN_CAPTURE_TOOLS.join("、")}
         </p>
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={profile.validationEnabled}
-          onChange={(event) => onChange({ ...profile, validationEnabled: event.target.checked })}
-        />
-        为此 Profile 配置专属校验规则（覆盖站点级校验）
-      </label>
-      {profile.validationEnabled && (
-        <ValidationConfigEditor
-          value={profile.validation}
-          onChange={(validation) => onChange({ ...profile, validation })}
-        />
-      )}
     </div>
   );
 }
@@ -175,13 +135,6 @@ export function CaptureConfigEditor({
   value: CaptureConfigFormState;
   onChange: (next: CaptureConfigFormState) => void;
 }) {
-  const updateProfiles = (profiles: CaptureProfileFormItem[]) => {
-    const defaultCaptureProfile = profiles.some((item) => item.name === value.defaultCaptureProfile)
-      ? value.defaultCaptureProfile
-      : (profiles[0]?.name ?? "");
-    onChange({ ...value, profiles, defaultCaptureProfile });
-  };
-
   return (
     <div className="space-y-6">
       <Card>
@@ -196,35 +149,19 @@ export function CaptureConfigEditor({
             <label className="flex items-center gap-2 text-sm shrink-0">
               <input
                 type="checkbox"
-                checked={value.captureProfilesEnabled}
-                onChange={(event) => onChange({ ...value, captureProfilesEnabled: event.target.checked })}
+                checked={value.captureProfileEnabled}
+                onChange={(event) => onChange({ ...value, captureProfileEnabled: event.target.checked })}
               />
               启用
             </label>
           </div>
         </CardHeader>
-        {value.captureProfilesEnabled && (
+        {value.captureProfileEnabled && (
           <CardContent className="space-y-4">
-            {value.profiles.map((profile) => (
-              <ProfileEditor
-                key={profile.key}
-                profile={profile}
-                defaultSelected={value.defaultCaptureProfile === profile.name}
-                onChange={(next) => updateProfiles(value.profiles.map((item) => item.key === profile.key ? next : item))}
-                onRemove={() => updateProfiles(value.profiles.filter((item) => item.key !== profile.key))}
-                onSelectDefault={() => onChange({ ...value, defaultCaptureProfile: profile.name })}
-              />
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              onClick={() => updateProfiles([...value.profiles, createEmptyProfileFormItem()])}
-            >
-              <Plus className="h-4 w-4" />
-              添加 Profile
-            </Button>
+            <ProfileEditor
+              profile={value.captureProfile}
+              onChange={(captureProfile) => onChange({ ...value, captureProfile })}
+            />
           </CardContent>
         )}
       </Card>
@@ -235,7 +172,7 @@ export function CaptureConfigEditor({
             <div className="space-y-1">
               <CardTitle>站点级结果校验</CardTitle>
               <CardDescription>
-                定义抓取结果是否可接受；Profile 级校验可覆盖此处配置。
+                定义抓取结果是否可接受；所有工具统一使用此处配置。
               </CardDescription>
             </div>
             <label className="flex items-center gap-2 text-sm shrink-0">

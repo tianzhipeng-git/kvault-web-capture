@@ -13,7 +13,7 @@
 上下游文档：
 
 - 规则如何决定「要不要抓、要哪些 artifact」：[规则格式指南](../user-guide/site-config-rule-format-guide.md)
-- capture profile 如何决定工具链：[SiteConfig 抓取 Profile](../user-guide/site-config-capture-profiles.md)
+- capture profile 如何决定工具链：[SiteConfig 抓取 Profile](../user-guide/site-config-capture-profile.md)
 - executor fallback 与 validator：[Retry、Fallback 与 Validator](./retry-fallback-and-validator.md)
 - 总体模块关系：[技术与模块结构说明](../technical-module-structure.md)
 
@@ -158,7 +158,7 @@ Handler 按 `task.needs.includes('base')` 分流：
 
 `PageCaptureExecutor.capture(input.needs)` 逻辑不变：
 
-1. 按 `defaultCaptureProfile` / `captureProfiles` 解析工具链
+1. 按 `captureProfile` 解析工具链；未配置时使用内置默认链
 2. 过滤能覆盖剩余 needs 的工具
 3. 每个工具只收到其 capabilities 覆盖的子集：
 

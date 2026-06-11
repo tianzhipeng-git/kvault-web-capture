@@ -33,24 +33,6 @@
     "seedMaxDepth": 0,
     "crawlMaxDepth": 1
   },
-  "captureProfiles": {
-    "default": {
-      "tools": [
-        "http-base",
-        "lightpanda-markdown",
-        "playwright-screenshot"
-      ],
-      "validation": {
-        "markdown": {
-          "minLength": 300
-        },
-        "screenshot": {
-          "minBytes": 10000
-        }
-      }
-    }
-  },
-  "defaultCaptureProfile": "default",
   "browser": {
     "engine": "lightpanda",
     "profileMode": "ephemeral",
@@ -61,5 +43,20 @@
   },
   "proxyPolicy": {
     "mode": "off"
+  },
+  "captureProfile": {
+    "tools": [
+      "http-base",
+      "lightpanda-markdown",
+      "playwright-screenshot"
+    ]
+  },
+  "validation": {
+    "markdown": {
+      "minLength": 300
+    },
+    "screenshot": {
+      "minBytes": 10000
+    }
   }
 }

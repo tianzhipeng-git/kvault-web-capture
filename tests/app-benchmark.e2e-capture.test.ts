@@ -89,19 +89,9 @@ function writeBenchmarkSiteConfig(input: {
           pageReuse: 'none',
           proxyBinding: 'none',
         },
-        captureProfiles: {
-          default: {
-            tools: input.tools,
-            validation: input.screenshotMinBytes === undefined
-              ? undefined
-              : {
-                  screenshot: {
-                    minBytes: input.screenshotMinBytes,
-                  },
-                },
-          },
+        captureProfile: {
+          tools: input.tools,
         },
-        defaultCaptureProfile: 'default',
         validation: {
           base: {
             rejectRegex: ['Access Denied', 'Just a moment', 'verify you are human'],
@@ -110,6 +100,11 @@ function writeBenchmarkSiteConfig(input: {
             minLength: 1,
             rejectRegex: ['Access Denied', 'Just a moment', 'verify you are human'],
           },
+          screenshot: input.screenshotMinBytes === undefined
+            ? undefined
+            : {
+                minBytes: input.screenshotMinBytes,
+              },
         },
       },
       null,

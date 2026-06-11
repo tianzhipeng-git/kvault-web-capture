@@ -302,13 +302,11 @@ describe('PageCaptureExecutor', () => {
       needs: ['base', 'markdown'],
       siteConfig: {
         ...createDefaultSiteConfig('https://example.com'),
-        captureProfiles: {
-          default: {
-            tools: ['bad-crawl4ai', 'fallback-base', 'fallback-markdown'],
-            validation: {
-              markdown: { minLength: 5 },
-            },
-          },
+        captureProfile: {
+          tools: ['bad-crawl4ai', 'fallback-base', 'fallback-markdown'],
+        },
+        validation: {
+          markdown: { minLength: 5 },
         },
       },
       runtime,
@@ -588,10 +586,8 @@ describe('PageCaptureExecutor', () => {
         needs: ['base'],
         siteConfig: {
           ...createDefaultSiteConfig('https://example.com'),
-          captureProfiles: {
-            default: {
-              tools: ['only-markdown'],
-            },
+          captureProfile: {
+            tools: ['only-markdown'],
           },
         },
         runtime,

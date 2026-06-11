@@ -105,6 +105,13 @@ SQLite 对修改已有表约束、删除列、改列类型支持有限。遇到�
 
 这类迁移应单独评估 SQLite 和 PostgreSQL 的差异，并增加针对性测试。
 
+JSON 配置结构变更也在 `initializeSchema()` 中执行一次性数据迁移。例如站点抓取配置从 `captureProfiles` / `defaultCaptureProfile` 收敛为单个 `captureProfile` 时，迁移会同时更新：
+
+- `sites.config_json`
+- `crawl_runs.config_snapshot_json`
+
+业务配置解析和执行代码只接受迁移后的新结构；旧结构读取只存在于迁移函数中，避免兼容逻辑进入正常运行路径。
+
 ## 5. 注意事项
 
 - 不要只改 `CREATE TABLE`。旧库已有表时这部分基本不会生效。

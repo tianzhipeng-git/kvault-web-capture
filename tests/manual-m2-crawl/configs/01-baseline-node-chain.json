@@ -52,18 +52,6 @@
     "seedMaxDepth": 1,
     "crawlMaxDepth": 2
   },
-  "captureProfiles": {
-    "default": {
-      "tools": [
-        "http-base",
-        "defuddle-markdown",
-        "lightpanda-markdown",
-        "jina-markdown",
-        "playwright-screenshot"
-      ]
-    }
-  },
-  "defaultCaptureProfile": "default",
   "browser": {
     "engine": "chromium",
     "profileMode": "ephemeral",
@@ -71,5 +59,14 @@
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",
     "proxyBinding": "session"
+  },
+  "captureProfile": {
+    "tools": [
+      "http-base",
+      "defuddle-markdown",
+      "lightpanda-markdown",
+      "jina-markdown",
+      "playwright-screenshot"
+    ]
   }
 }

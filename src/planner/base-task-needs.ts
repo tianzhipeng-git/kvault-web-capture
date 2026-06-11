@@ -38,9 +38,7 @@ export function resolveProspectiveArtifacts(input: {
 }
 
 function resolveProfileTools(siteConfig: SiteConfig, captureTools: CaptureTool[]): CaptureTool[] {
-  const profileName = siteConfig.defaultCaptureProfile ?? 'default';
-  const configuredProfile = siteConfig.captureProfiles?.[profileName];
-  const toolNames = configuredProfile?.tools ?? [...DEFAULT_CAPTURE_TOOL_CHAIN];
+  const toolNames = siteConfig.captureProfile?.tools ?? [...DEFAULT_CAPTURE_TOOL_CHAIN];
 
   return toolNames
     .map((name) => captureTools.find((tool) => tool.name === name))

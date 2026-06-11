@@ -26,12 +26,8 @@ export interface ValidationConfigForm {
   structured: CaptureValidationRuleForm;
 }
 
-export interface CaptureProfileFormItem {
-  key: string;
-  name: string;
+export interface CaptureProfileFormState {
   toolsText: string;
-  validationEnabled: boolean;
-  validation: ValidationConfigForm;
 }
 
 export interface BrowserFormState {
@@ -48,9 +44,8 @@ export interface ProxyPolicyFormState {
 }
 
 export interface CaptureConfigFormState {
-  captureProfilesEnabled: boolean;
-  profiles: CaptureProfileFormItem[];
-  defaultCaptureProfile: string;
+  captureProfileEnabled: boolean;
+  captureProfile: CaptureProfileFormState;
   validationEnabled: boolean;
   validation: ValidationConfigForm;
   browserEnabled: boolean;
@@ -75,12 +70,10 @@ export interface CaptureValidationConfigApi {
 
 export interface CaptureProfileConfigApi {
   tools: string[];
-  validation?: CaptureValidationConfigApi;
 }
 
 export interface SiteConfigM2Fields {
-  captureProfiles?: Record<string, CaptureProfileConfigApi>;
-  defaultCaptureProfile?: string;
+  captureProfile?: CaptureProfileConfigApi;
   validation?: CaptureValidationConfigApi;
   browser?: BrowserFormState & { pageReuse: "none" };
   proxyPolicy?: {
@@ -184,21 +177,13 @@ function validationConfigFromForm(form: ValidationConfigForm): CaptureValidation
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
-function createProfileFormItem(name: string, profile?: CaptureProfileConfigApi): CaptureProfileFormItem {
-  const validation = validationConfigToForm(profile?.validation);
+function captureProfileToForm(profile?: CaptureProfileConfigApi): CaptureProfileFormState {
   return {
-    key: `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    name,
     toolsText: arrayToLines(profile?.tools),
-    validationEnabled: validationConfigHasEnabledRule(validation),
-    validation,
   };
 }
 
 export function captureConfigFromApi(config: SiteConfigM2Fields): CaptureConfigFormState {
-  const profiles = Object.entries(config.captureProfiles ?? {}).map(([name, profile]) =>
-    createProfileFormItem(name, profile),
-  );
   const validation = validationConfigToForm(config.validation);
   const browser = config.browser
     ? {
@@ -211,9 +196,8 @@ export function captureConfigFromApi(config: SiteConfigM2Fields): CaptureConfigF
     : defaultBrowserFormState();
 
   return {
-    captureProfilesEnabled: profiles.length > 0,
-    profiles,
-    defaultCaptureProfile: config.defaultCaptureProfile ?? (profiles[0]?.name ?? ""),
+    captureProfileEnabled: config.captureProfile !== undefined,
+    captureProfile: captureProfileToForm(config.captureProfile),
     validationEnabled: validationConfigHasEnabledRule(validation),
     validation,
     browserEnabled: config.browser !== undefined,
@@ -229,27 +213,11 @@ export function captureConfigFromApi(config: SiteConfigM2Fields): CaptureConfigF
 export function captureConfigToApi(state: CaptureConfigFormState): SiteConfigM2Fields {
   const result: SiteConfigM2Fields = {};
 
-  if (state.captureProfilesEnabled && state.profiles.length > 0) {
-    const captureProfiles: Record<string, CaptureProfileConfigApi> = {};
-    for (const profile of state.profiles) {
-      const name = profile.name.trim();
-      if (!name) continue;
-      const entry: CaptureProfileConfigApi = {
-        tools: linesToArray(profile.toolsText),
-      };
-      if (profile.validationEnabled) {
-        const validation = validationConfigFromForm(profile.validation);
-        if (validation) entry.validation = validation;
-      }
-      captureProfiles[name] = entry;
-    }
-    if (Object.keys(captureProfiles).length > 0) {
-      result.captureProfiles = captureProfiles;
-      const defaultName = state.defaultCaptureProfile.trim();
-      if (defaultName && captureProfiles[defaultName]) {
-        result.defaultCaptureProfile = defaultName;
-      }
-    }
+  if (state.captureProfileEnabled) {
+    const captureProfile: CaptureProfileConfigApi = {
+      tools: linesToArray(state.captureProfile.toolsText),
+    };
+    result.captureProfile = captureProfile;
   }
 
   if (state.validationEnabled) {
@@ -274,10 +242,6 @@ export function captureConfigToApi(state: CaptureConfigFormState): SiteConfigM2F
   }
 
   return result;
-}
-
-export function createEmptyProfileFormItem(): CaptureProfileFormItem {
-  return createProfileFormItem("default");
 }
 
 export function validationCapabilityLabel(capability: ValidationCapability): string {

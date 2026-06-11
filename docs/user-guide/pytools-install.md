@@ -75,7 +75,7 @@ export KVAULT_PYTHON=/path/to/shared-python/bin/python
 
 ## 4. 启用 capture profile
 
-完整配置说明见 [SiteConfig 抓取 Profile 配置](../user-guide/site-config-capture-profiles.md)。工具能力与说明见 [Capture Tools 参考](./capture-tools-reference.md)。
+完整配置说明见 [SiteConfig 抓取 Profile 配置](./site-config-capture-profile.md)。工具能力与说明见 [Capture Tools 参考](../tech-details/capture-tools-reference.md)。
 
 默认站点仍使用内置 Node 工具链：
 
@@ -89,29 +89,26 @@ export KVAULT_PYTHON=/path/to/shared-python/bin/python
 
 ```json
 {
-  "captureProfiles": {
-    "default": {
-      "tools": [
-        "crawl4ai-page",
-        "scrapling-page",
-        "http-base",
-        "defuddle-markdown",
-        "lightpanda-markdown",
-        "jina-markdown",
-        "playwright-screenshot"
-      ],
-      "validation": {
-        "markdown": {
-          "minLength": 500,
-          "rejectRegex": ["Access Denied", "Just a moment"]
-        },
-        "screenshot": {
-          "minBytes": 20000
-        }
-      }
-    }
+  "captureProfile": {
+    "tools": [
+      "crawl4ai-page",
+      "scrapling-page",
+      "http-base",
+      "defuddle-markdown",
+      "lightpanda-markdown",
+      "jina-markdown",
+      "playwright-screenshot"
+    ]
   },
-  "defaultCaptureProfile": "default"
+  "validation": {
+    "markdown": {
+      "minLength": 500,
+      "rejectRegex": ["Access Denied", "Just a moment"]
+    },
+    "screenshot": {
+      "minBytes": 20000
+    }
+  }
 }
 ```
 
