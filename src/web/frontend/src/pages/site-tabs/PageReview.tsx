@@ -882,6 +882,7 @@ export function PageReview({
                       />
                     </TableHead>
                   )}
+                  <TableHead className="w-24">Page ID</TableHead>
                   <TableHead>页面</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>发现来源</TableHead>
@@ -902,6 +903,9 @@ export function PageReview({
                         />
                       </TableCell>
                     )}
+                    <TableCell className="text-muted-foreground tabular-nums" onClick={() => openDetail(item.sitePageId)}>
+                      {item.sitePageId}
+                    </TableCell>
                     <TableCell className="max-w-[360px]" onClick={() => openDetail(item.sitePageId)}>
                       <div className="font-medium truncate">{item.title}</div>
                       <div className="text-xs text-muted-foreground truncate">{item.url}</div>
@@ -914,7 +918,7 @@ export function PageReview({
                 ))}
                 {pages.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={onRecrawlStarted ? 6 : 5} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={onRecrawlStarted ? 7 : 6} className="py-10 text-center text-muted-foreground">
                       {isLoading ? "加载中..." : "暂无符合条件的页面。"}
                     </TableCell>
                   </TableRow>
