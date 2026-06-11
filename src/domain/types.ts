@@ -72,6 +72,15 @@ export interface SiteRunOptions {
   crawlMaxDepth: number;
 }
 
+export interface UrlNormalizationConfig {
+  stripQueryParams: string[];
+  stripQueryParamPrefixes?: string[];
+}
+
+export interface SystemConfig {
+  urlNormalization: UrlNormalizationConfig;
+}
+
 export interface CaptureValidationRule {
   minLength?: number;
   minBytes?: number;
@@ -115,6 +124,7 @@ export interface SiteConfig {
   rulesBeforeBaseEq: UrlRule[];
   rulesBeforeStage2Eq: Array<UrlRule | LabelRule>;
   runOptions: SiteRunOptions;
+  urlNormalization?: UrlNormalizationConfig;
   captureProfiles?: Record<string, CaptureProfileConfig>;
   defaultCaptureProfile?: string;
   validation?: CaptureValidationConfig;

@@ -10,6 +10,7 @@ import type {
   ProxyPolicyConfig,
   SiteConfig,
   SiteRunOptions,
+  UrlNormalizationConfig,
   UrlRule,
 } from '../domain/types.js';
 
@@ -168,6 +169,38 @@ function parseRunOptions(value: unknown): SiteRunOptions {
   };
 }
 
+function parseUrlNormalization(value: unknown): UrlNormalizationConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  assert(isRecord(value), 'urlNormalization must be an object');
+  const stripQueryParams = asStringArray(
+    value.stripQueryParams ?? [],
+    'urlNormalization.stripQueryParams',
+  );
+  const stripQueryParamPrefixes = asStringArray(
+    value.stripQueryParamPrefixes ?? [],
+    'urlNormalization.stripQueryParamPrefixes',
+  );
+  assert(
+    stripQueryParams.every((param) => param.length > 0),
+    'urlNormalization.stripQueryParams must not contain empty strings',
+  );
+  assert(
+    stripQueryParamPrefixes.every((prefix) => prefix.length > 0),
+    'urlNormalization.stripQueryParamPrefixes must not contain empty strings',
+  );
+
+  const config: UrlNormalizationConfig = {
+    stripQueryParams,
+  };
+  if (stripQueryParamPrefixes.length > 0) {
+    config.stripQueryParamPrefixes = stripQueryParamPrefixes;
+  }
+  return config;
+}
+
 function parseOptionalRegexList(value: unknown, fieldName: string): string[] | undefined {
   if (value === undefined) {
     return undefined;
@@ -323,6 +356,7 @@ export function parseSiteConfig(input: unknown): SiteConfig {
   const captureProfiles = parseCaptureProfiles(input.captureProfiles);
   const proxyPolicy = parseProxyPolicy(input.proxyPolicy);
   const browser = parseBrowserConfig(input.browser);
+  const urlNormalization = parseUrlNormalization(input.urlNormalization);
   const defaultCaptureProfile = input.defaultCaptureProfile;
   assert(
     defaultCaptureProfile === undefined || typeof defaultCaptureProfile === 'string',
@@ -353,6 +387,9 @@ export function parseSiteConfig(input: unknown): SiteConfig {
   }
   if (defaultCaptureProfile !== undefined) {
     config.defaultCaptureProfile = defaultCaptureProfile;
+  }
+  if (urlNormalization !== undefined) {
+    config.urlNormalization = urlNormalization;
   }
   if (input.validation !== undefined) {
     config.validation = parseValidationConfig(input.validation, 'validation');

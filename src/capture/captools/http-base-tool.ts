@@ -50,7 +50,7 @@ export class HttpBaseTool implements CaptureTool {
       finalUrl,
       statusCode,
       html,
-      extracted: extractPageContentFromHtml(finalUrl, html),
+      extracted: extractPageContentFromHtml(finalUrl, html, input.siteConfig.urlNormalization),
     };
   }
 }

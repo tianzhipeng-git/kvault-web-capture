@@ -1,12 +1,36 @@
-export function normalizeUrl(input: string): string {
+import type { UrlNormalizationConfig } from '../domain/types.js';
+
+function uniqueLowercase(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.toLowerCase()))];
+}
+
+export function mergeUrlNormalizationConfigs(
+  systemConfig: UrlNormalizationConfig,
+  siteConfig?: UrlNormalizationConfig,
+): UrlNormalizationConfig {
+  return {
+    stripQueryParams: uniqueLowercase([
+      ...systemConfig.stripQueryParams,
+      ...(siteConfig?.stripQueryParams ?? []),
+    ]),
+    stripQueryParamPrefixes: uniqueLowercase([
+      ...(systemConfig.stripQueryParamPrefixes ?? []),
+      ...(siteConfig?.stripQueryParamPrefixes ?? []),
+    ]),
+  };
+}
+
+export function normalizeUrl(input: string, config?: UrlNormalizationConfig): string {
   const url = new URL(input);
   url.hash = '';
   url.hostname = url.hostname.toLowerCase();
+  const stripQueryParams = new Set((config?.stripQueryParams ?? []).map((key) => key.toLowerCase()));
+  const stripQueryParamPrefixes = (config?.stripQueryParamPrefixes ?? []).map((prefix) => prefix.toLowerCase());
 
   const keptEntries = [...url.searchParams.entries()]
     .filter(([key]) => {
       const k = key.toLowerCase();
-      return !k.startsWith('utm_') && !['wbraid', 'gbraid', 'ref'].includes(k);
+      return !stripQueryParams.has(k) && !stripQueryParamPrefixes.some((prefix) => k.startsWith(prefix));
     })
     .sort(([left], [right]) => left.localeCompare(right));
 

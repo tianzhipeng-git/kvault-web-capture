@@ -26,7 +26,7 @@ export class RunPlanner {
     updatePolicy: UpdatePolicy;
     staleAfterMs: number | null;
   }): Promise<PlannedRequest> {
-    const normalizedUrl = normalizeUrl(input.discoveredUrl);
+    const normalizedUrl = normalizeUrl(input.discoveredUrl, input.siteConfig.urlNormalization);
 
     // 规则执行点1, rulesBeforeBaseEq
     const baseDecision = buildBaseEnqueueDecision({

@@ -349,4 +349,17 @@ export async function initializeSchema(db: DbClient): Promise<void> {
   }
 
   await db.exec(indexesSchema);
+  await db.run(
+    `INSERT INTO system_settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO NOTHING`,
+    [
+      'url_normalization',
+      JSON.stringify({
+        stripQueryParams: ['wbraid', 'gbraid', 'ref'],
+        stripQueryParamPrefixes: ['utm_'],
+      }),
+      new Date().toISOString(),
+    ],
+  );
 }

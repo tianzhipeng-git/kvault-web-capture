@@ -6,7 +6,7 @@ import type {
   SiteRepository,
   SystemSettingRepository,
 } from '../db/repositories/index.js';
-import type { SiteConfig } from '../domain/types.js';
+import type { SiteConfig, UrlNormalizationConfig } from '../domain/types.js';
 import { buildPathTree } from '../utils/path-tree.js';
 
 export class SiteService {
@@ -100,6 +100,15 @@ export class SiteService {
     }
 
     await this.systemSettings.setDefaultSiteId(siteId);
+  }
+
+  getSystemConfig() {
+    return this.systemSettings.getSystemConfig();
+  }
+
+  async updateSystemUrlNormalization(config: UrlNormalizationConfig) {
+    await this.systemSettings.setUrlNormalization(config);
+    return this.systemSettings.getSystemConfig();
   }
 
   getInventorySummary(siteId: number) {

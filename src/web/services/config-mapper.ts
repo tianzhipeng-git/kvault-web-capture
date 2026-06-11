@@ -12,6 +12,7 @@ export interface SiteConfigFormInput {
   };
   captureProfiles?: SiteConfig['captureProfiles'];
   defaultCaptureProfile?: SiteConfig['defaultCaptureProfile'];
+  urlNormalization?: SiteConfig['urlNormalization'];
   validation?: SiteConfig['validation'];
   browser?: SiteConfig['browser'];
   proxyPolicy?: SiteConfig['proxyPolicy'];
@@ -37,6 +38,7 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
     },
     captureProfiles: input.captureProfiles,
     defaultCaptureProfile: input.defaultCaptureProfile,
+    urlNormalization: input.urlNormalization,
     validation: input.validation,
     browser: input.browser,
     proxyPolicy: input.proxyPolicy,

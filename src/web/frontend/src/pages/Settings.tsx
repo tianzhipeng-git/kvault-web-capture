@@ -6,24 +6,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Loader2, Save } from "lucide-react";
 
+function linesToArray(value: string): string[] {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function arrayToLines(value: string[] | undefined): string {
+  return (value ?? []).join("\n");
+}
+
 export function Settings() {
   const [projects, setProjects] = useState<any[]>([]);
   const [sites, setSites] = useState<any[]>([]);
   const [projectId, setProjectId] = useState("");
   const [siteId, setSiteId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [stripQueryParamsText, setStripQueryParamsText] = useState("");
+  const [stripQueryParamPrefixesText, setStripQueryParamPrefixesText] = useState("");
+  const [isSavingUrlNormalization, setIsSavingUrlNormalization] = useState(false);
 
   useEffect(() => {
     Promise.all([
       api.getProjects(),
       api.getDefaultSite(),
-    ]).then(async ([projectData, defaultSiteData]) => {
+      api.getSystemConfig(),
+    ]).then(async ([projectData, defaultSiteData, systemConfigData]) => {
       const nextProjects = projectData.items || [];
       const defaultSite = defaultSiteData.defaultSite;
       const nextProjectId = defaultSite?.projectId ?? nextProjects[0]?.projectId ?? "";
       setProjects(nextProjects);
       setProjectId(String(nextProjectId));
       setSiteId(defaultSite ? String(defaultSite.siteId) : "");
+      setStripQueryParamsText(arrayToLines(systemConfigData.config.urlNormalization.stripQueryParams));
+      setStripQueryParamPrefixesText(arrayToLines(systemConfigData.config.urlNormalization.stripQueryParamPrefixes));
 
       if (nextProjectId) {
         const siteData = await api.getSites(Number(nextProjectId));
@@ -62,11 +76,28 @@ export function Settings() {
     }
   };
 
+  const saveUrlNormalization = async () => {
+    setIsSavingUrlNormalization(true);
+    try {
+      const response = await api.updateSystemUrlNormalization({
+        stripQueryParams: linesToArray(stripQueryParamsText),
+        stripQueryParamPrefixes: linesToArray(stripQueryParamPrefixesText),
+      });
+      setStripQueryParamsText(arrayToLines(response.config.urlNormalization.stripQueryParams));
+      setStripQueryParamPrefixesText(arrayToLines(response.config.urlNormalization.stripQueryParamPrefixes));
+      toast.success("URL 标准化系统配置已更新。");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "保存失败。");
+    } finally {
+      setIsSavingUrlNormalization(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">系统设置</h1>
-        <p className="text-muted-foreground mt-1">配置简易提交入口使用的默认站点</p>
+        <p className="text-muted-foreground mt-1">配置简易提交入口和全局 URL 标准化规则</p>
       </div>
 
       <Card>
@@ -108,6 +139,37 @@ export function Settings() {
           <div className="flex items-end">
             <Button className="w-full gap-2" onClick={saveDefaultSite} disabled={isSaving}>
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              保存
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>URL 标准化</CardTitle>
+          <CardDescription>系统级规则会和站点级 urlNormalization 合并，用于页面清单去重。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
+          <div className="space-y-2">
+            <Label>去除的 Query 参数</Label>
+            <textarea
+              className="h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={stripQueryParamsText}
+              onChange={(event) => setStripQueryParamsText(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>去除的 Query 参数前缀</Label>
+            <textarea
+              className="h-32 w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={stripQueryParamPrefixesText}
+              onChange={(event) => setStripQueryParamPrefixesText(event.target.value)}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button className="w-full gap-2" onClick={saveUrlNormalization} disabled={isSavingUrlNormalization}>
+              {isSavingUrlNormalization ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               保存
             </Button>
           </div>

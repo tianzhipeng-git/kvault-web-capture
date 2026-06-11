@@ -11,6 +11,7 @@ import {
   RunRepository,
   SitePageRepository,
   SiteRepository,
+  SystemSettingRepository,
 } from '../src/db/repositories/index.js';
 import { SystemClock } from '../src/utils/clock.js';
 import { createTempDir } from './helpers/tmp.js';
@@ -159,6 +160,34 @@ describe('repositories', () => {
       pendingPages: 0,
       deniedPages: 0,
       capturedPages: 1,
+    });
+  });
+
+  it('stores system URL normalization config with database defaults', async () => {
+    const dir = createTempDir('kvault-system-settings-');
+    const db = await openDatabase(join(dir, 'state.db'));
+    openHandles.push(db);
+    await initializeSchema(db);
+
+    const settings = new SystemSettingRepository(db, new SystemClock());
+
+    expect(await settings.getSystemConfig()).toEqual({
+      urlNormalization: {
+        stripQueryParams: ['wbraid', 'gbraid', 'ref'],
+        stripQueryParamPrefixes: ['utm_'],
+      },
+    });
+
+    await settings.setUrlNormalization({
+      stripQueryParams: ['sessionId'],
+      stripQueryParamPrefixes: ['preview_'],
+    });
+
+    expect(await settings.getSystemConfig()).toEqual({
+      urlNormalization: {
+        stripQueryParams: ['sessionId'],
+        stripQueryParamPrefixes: ['preview_'],
+      },
     });
   });
 

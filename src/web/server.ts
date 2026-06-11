@@ -687,6 +687,35 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     };
   });
 
+  server.get('/api/system/config', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    return {
+      config: await app.getSystemConfig(),
+    };
+  });
+
+  server.put('/api/system/url-normalization', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    const body = (request.body ?? {}) as {
+      stripQueryParams?: unknown;
+      stripQueryParamPrefixes?: unknown;
+    };
+    const asStringArray = (value: unknown, fieldName: string): string[] => {
+      if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+        throw new Error(`${fieldName} must be an array of strings`);
+      }
+      return [...new Set(value.map((item) => item.trim()).filter(Boolean))];
+    };
+    const config = await app.updateSystemUrlNormalization({
+      stripQueryParams: asStringArray(body.stripQueryParams ?? [], 'stripQueryParams'),
+      stripQueryParamPrefixes: asStringArray(body.stripQueryParamPrefixes ?? [], 'stripQueryParamPrefixes'),
+    });
+    return {
+      status: 'ok',
+      config,
+    };
+  });
+
   server.post('/api/simple-capture/runs', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const { defaultSite, runInput } = await buildSimpleCaptureInput(body);

@@ -11,7 +11,7 @@ import {
   SiteRepository,
   SystemSettingRepository,
 } from '../db/repositories/index.js';
-import type { RunSummary, SiteConfig, UpdatePolicy } from '../domain/types.js';
+import type { RunSummary, SiteConfig, UpdatePolicy, UrlNormalizationConfig } from '../domain/types.js';
 import {
   ProjectExporter,
   type ProjectExportOptions,
@@ -71,6 +71,7 @@ export class CaptureApp {
         pageRuns,
         artifactRuns,
         runLogs,
+        systemSettings,
         planner,
         options,
       ),
@@ -126,6 +127,14 @@ export class CaptureApp {
 
   setDefaultSite(siteId: number | null) {
     return this.sites.setDefaultSite(siteId);
+  }
+
+  getSystemConfig() {
+    return this.sites.getSystemConfig();
+  }
+
+  updateSystemUrlNormalization(config: UrlNormalizationConfig) {
+    return this.sites.updateSystemUrlNormalization(config);
   }
 
   runSeed(input: number | { siteId: number; targetSuccessCount: number | null }): Promise<RunSummary> {

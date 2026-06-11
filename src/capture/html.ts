@@ -1,6 +1,6 @@
 import { parseHTML } from 'linkedom';
 
-import type { ExtractedPage } from '../domain/types.js';
+import type { ExtractedPage, UrlNormalizationConfig } from '../domain/types.js';
 import { normalizeUrl } from '../utils/url.js';
 
 const HTML_PAGE_EXTENSIONS = new Set([
@@ -48,7 +48,11 @@ export function parseHtmlDocument(html: string): Document {
   return parseHTML(html).document;
 }
 
-export function extractPageContentFromHtml(url: string, html: string): ExtractedPage {
+export function extractPageContentFromHtml(
+  url: string,
+  html: string,
+  urlNormalization?: UrlNormalizationConfig,
+): ExtractedPage {
   const document = parseHtmlDocument(html);
   const title = cleanText(document.querySelector('title')?.textContent ?? '');
   const metaDescription = cleanText(
@@ -77,7 +81,7 @@ export function extractPageContentFromHtml(url: string, html: string): Extracted
 
   return {
     url,
-    normalizedUrl: normalizeUrl(url),
+    normalizedUrl: normalizeUrl(url, urlNormalization),
     title,
     metaDescription,
     bodyText,

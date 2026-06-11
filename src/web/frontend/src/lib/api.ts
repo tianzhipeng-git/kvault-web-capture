@@ -94,6 +94,15 @@ export interface DefaultSiteSetting {
   } | null;
 }
 
+export interface SystemConfigResponse {
+  config: {
+    urlNormalization: {
+      stripQueryParams: string[];
+      stripQueryParamPrefixes?: string[];
+    };
+  };
+}
+
 export interface SitePageListParams {
   page?: number;
   pageSize?: number;
@@ -305,6 +314,15 @@ export const api = {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ siteId }),
+  }),
+  getSystemConfig: (): Promise<SystemConfigResponse> => fetchApi('/api/system/config'),
+  updateSystemUrlNormalization: (input: {
+    stripQueryParams: string[];
+    stripQueryParamPrefixes: string[];
+  }): Promise<SystemConfigResponse & { status: string }> => fetchApi('/api/system/url-normalization', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   }),
   submitSimpleCapture: (url: string): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
     method: 'POST',

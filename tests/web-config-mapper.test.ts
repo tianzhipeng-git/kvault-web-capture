@@ -14,6 +14,9 @@ describe('web config mapper', () => {
         seedMaxDepth: 2,
         crawlMaxDepth: 4,
       },
+      urlNormalization: {
+        stripQueryParams: ['sessionId'],
+      },
     });
 
     expect(config).toEqual({
@@ -24,6 +27,9 @@ describe('web config mapper', () => {
       runOptions: {
         seedMaxDepth: 2,
         crawlMaxDepth: 4,
+      },
+      urlNormalization: {
+        stripQueryParams: ['sessionId'],
       },
     });
   });

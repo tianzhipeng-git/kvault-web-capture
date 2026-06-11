@@ -15,11 +15,13 @@ import type {
   RunRepository,
   SitePageRepository,
   SiteRepository,
+  SystemSettingRepository,
 } from '../db/repositories/index.js';
 import type {
   PageCaptureTask,
   RunType,
   RunSummary,
+  SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
 import { openRunQueue } from '../crawlee/queue-factory.js';
@@ -51,7 +53,7 @@ import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
 
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
 import { logger, openRuntimeLog, withRuntimeLog } from '../utils/runtime-logger.js';
-import { isInvalidUrlError } from '../utils/url.js';
+import { isInvalidUrlError, mergeUrlNormalizationConfigs } from '../utils/url.js';
 
 export interface RunNotificationBot {
   sendPost(title: string, content: FeishuPostContent, lang?: string): Promise<unknown>;
@@ -93,6 +95,7 @@ export class RunService {
     private readonly pageRuns: PageRunRepository,
     private readonly artifactRuns: ArtifactRunRepository,
     private readonly runLogs: RunLogRepository,
+    private readonly systemSettings: SystemSettingRepository,
     private readonly planner: RunPlanner,
     options: RunServiceOptions,
   ) {
@@ -156,6 +159,8 @@ export class RunService {
       throw new Error(`Site ${input.siteId} not found`);
     }
 
+    const effectiveConfig = await this.buildEffectiveConfig(site.config, input.crawlMaxDepthOverride);
+
     await mkdir(site.storageRoot, { recursive: true });
 
     const runId = await this.runs.createRun({
@@ -163,7 +168,7 @@ export class RunService {
       runType: input.runType,
       updatePolicy: input.updatePolicy,
       targetSuccessCount: input.targetSuccessCount,
-      configSnapshot: site.config,
+      configSnapshot: effectiveConfig,
     });
 
     const runtimeLog = await openRuntimeLog({
@@ -180,7 +185,7 @@ export class RunService {
           updatePolicy: input.updatePolicy,
           siteId: site.id,
         });
-        return this.executeRunWithRuntime(input, runId);
+        return this.executeRunWithRuntime(input, runId, effectiveConfig);
       });
     } catch (error) {
       const currentRun = await this.runs.getById(runId);
@@ -227,7 +232,7 @@ export class RunService {
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
     crawlMaxDepthOverride?: number | null;
-  }, runId: number): Promise<RunSummary> {
+  }, runId: number, effectiveConfig: SiteConfig): Promise<RunSummary> {
     const site = await this.sites.getById(input.siteId);
 
     if (!site) {
@@ -246,10 +251,6 @@ export class RunService {
     const pageCaptureQueue = await openRunQueue(runId, 'page-capture', configuration);
     const targetTracker = new RunTargetTracker(input.targetSuccessCount);
 
-    const effectiveConfig = input.crawlMaxDepthOverride !== null && input.crawlMaxDepthOverride !== undefined
-      ? { ...site.config, runOptions: { ...site.config.runOptions, crawlMaxDepth: input.crawlMaxDepthOverride } }
-      : site.config;
-
     let startupCandidates: Awaited<ReturnType<typeof expandStartupUrlCandidates>>;
     if (input.initialUrls && input.initialUrls.length > 0) {
       startupCandidates = input.initialUrls.map((url) => ({ url, discoverySource: 'inventory' as const }));
@@ -259,8 +260,8 @@ export class RunService {
           ? (await this.sitePages.listKnownUrls(site.id)).map((row) => row.discoveredUrl)
           : [];
       startupCandidates = await expandStartupUrlCandidates({
-        seedUrls: site.config.seedUrls,
-        sitemapUrls: site.config.sitemaps,
+        seedUrls: effectiveConfig.seedUrls,
+        sitemapUrls: effectiveConfig.sitemaps,
         knownUrls,
         onSitemapError: async ({ sitemapUrl, error }) => {
           logger.warn('Skipped sitemap during startup expansion', {
@@ -514,6 +515,26 @@ export class RunService {
       normalizedUrl: firstNormalizedUrl,
       pageRuns: await this.pageRuns.countByRun(runId),
       artifactRuns: await this.artifactRuns.countByRun(runId),
+    };
+  }
+
+  private async buildEffectiveConfig(
+    siteConfig: SiteConfig,
+    crawlMaxDepthOverride?: number | null,
+  ): Promise<SiteConfig> {
+    const systemConfig = await this.systemSettings.getSystemConfig();
+    const runOptions =
+      crawlMaxDepthOverride !== null && crawlMaxDepthOverride !== undefined
+        ? { ...siteConfig.runOptions, crawlMaxDepth: crawlMaxDepthOverride }
+        : siteConfig.runOptions;
+
+    return {
+      ...siteConfig,
+      runOptions,
+      urlNormalization: mergeUrlNormalizationConfigs(
+        systemConfig.urlNormalization,
+        siteConfig.urlNormalization,
+      ),
     };
   }
 

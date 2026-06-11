@@ -28,4 +28,35 @@ describe('HttpBaseTool', () => {
       }),
     ).rejects.toThrow('HTTP base request failed with status 404');
   });
+
+  it('uses site URL normalization config for extracted final URL', async () => {
+    const runtime: RuntimeContext = {
+      requestId: 'test-request',
+      async sendRequest() {
+        return {
+          statusCode: 200,
+          url: 'https://example.com/docs?sessionId=abc&a=1',
+          body: '<html><title>Docs</title><body>hello</body></html>',
+        };
+      },
+    };
+    const siteConfig = {
+      ...createDefaultSiteConfig('https://example.com'),
+      urlNormalization: {
+        stripQueryParams: ['sessionId'],
+      },
+    };
+
+    const result = await new HttpBaseTool().capture({
+      runId: 1,
+      siteId: 1,
+      url: 'https://example.com/docs?sessionId=abc&a=1',
+      normalizedUrl: 'https://example.com/docs?a=1',
+      needs: ['base'],
+      siteConfig,
+      runtime,
+    });
+
+    expect(result.extracted?.normalizedUrl).toBe('https://example.com/docs?a=1');
+  });
 });

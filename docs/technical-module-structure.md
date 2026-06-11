@@ -222,7 +222,8 @@ URL 归一化由 `normalizeUrl` 提供，主要处理：
 
 - 去掉 fragment
 - host 小写
-- 移除 `utm_*`
+- 移除系统级 URL 标准化配置中的 query 参数和参数前缀
+- 合并移除 `SiteConfig.urlNormalization` 配置的站点级 query 参数和参数前缀
 - query 参数排序
 - 非根路径去掉尾部 `/`
 

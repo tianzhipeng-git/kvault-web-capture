@@ -139,6 +139,10 @@ interface SiteConfigShape extends SiteConfigM2Fields {
     seedMaxDepth: number;
     crawlMaxDepth: number;
   };
+  urlNormalization?: {
+    stripQueryParams: string[];
+    stripQueryParamPrefixes?: string[];
+  };
 }
 
 type RulePoint = "rulesBeforeBaseEq" | "rulesBeforeStage2Eq";
@@ -233,6 +237,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
       seedMaxDepth: Number(seedMaxDepth),
       crawlMaxDepth: Number(crawlMaxDepth),
     },
+    urlNormalization: config.urlNormalization,
     ...captureConfigToApi(captureConfig),
   });
 
