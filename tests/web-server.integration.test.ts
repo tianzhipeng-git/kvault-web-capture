@@ -325,7 +325,7 @@ describe('web server', () => {
       },
     });
     const pageList = pageResponse.json() as {
-      rows: Array<{ sitePageId: number; businessStatus: string }>;
+      rows: Array<{ sitePageId: number; title: string; businessStatus: string }>;
     };
     expect(pageList.rows[0]?.businessStatus).toBe('待确认');
 
