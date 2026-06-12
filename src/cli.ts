@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import * as readline from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import { resolve } from 'node:path';
 
 import { CaptureApp } from './app/capture-app.js';
@@ -75,6 +77,29 @@ function parseStatusList(flag: string): string[] | undefined {
   return getArgList(flag);
 }
 
+function hasYesFlag(): boolean {
+  return process.argv.includes('--yes');
+}
+
+async function promptDeleteConfirmation(message: string): Promise<boolean> {
+  if (hasYesFlag()) {
+    return true;
+  }
+
+  if (!process.stdin.isTTY) {
+    throw new Error('删除操作需要交互式确认，请附加 --yes 或在终端中运行。');
+  }
+
+  const rl = readline.createInterface({ input, output });
+
+  try {
+    const answer = await rl.question(`${message}\n输入 yes 确认删除: `);
+    return answer.trim().toLowerCase() === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
 function installRunSignalHandlers(): {
   abortSignal: AbortSignal;
   dispose: () => void;
@@ -108,11 +133,13 @@ function installRunSignalHandlers(): {
 function printUsage(): void {
   console.log(`Usage:
   node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
+  node --import tsx src/cli.ts project:delete --project <project-id> [--yes] [--db ./.local/state.db]
   node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--site-ids <id,id>] [--artifacts base,markdown,screenshot,structured] [--status <status,status>] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:export-pages --site <site-id> [--output ./.local/exports/pages.xlsx] [--status <status,status>] [--query <text>] [--label <text>] [--pending-reason <reason>] [--crawl-run-id <run-id>] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:export-pages-by-ids --site <site-id> --page-ids <id,id> [--output ./.local/exports/pages.zip] [--artifacts base,markdown,screenshot,structured] [--db ./.local/state.db]
   node --import tsx src/cli.ts run:export --run <run-id> [--output ./.local/exports/run.zip] [--artifacts base,markdown,screenshot,structured] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:create --project <project-slug> --name <name> --base-url <url> --storage <dir> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:delete --site <site-id> [--yes] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts run:seed --site <site-id> [--target-success-count <n>] [--db ./.local/state.db]
@@ -147,6 +174,26 @@ async function main(): Promise<void> {
       case 'project:create': {
         const result = await app.createProject(getRequiredArg('--name'));
         console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'project:delete': {
+        const projectId = Number(getRequiredArg('--project'));
+        const summary = await app.getProjectDeletionSummary(projectId);
+        const confirmed = await promptDeleteConfirmation(
+          [
+            `即将删除项目「${summary.projectName}」(${summary.projectSlug})。`,
+            `包含 ${summary.siteCount} 个站点，以及所有页面、运行记录和数据库数据。`,
+            '本地 storage 目录不会被自动删除。',
+          ].join('\n'),
+        );
+
+        if (!confirmed) {
+          console.log(JSON.stringify({ status: 'cancelled' }, null, 2));
+          return;
+        }
+
+        await app.deleteProject(projectId);
+        console.log(JSON.stringify({ status: 'ok', projectId }, null, 2));
         return;
       }
       case 'project:export': {
@@ -214,6 +261,28 @@ async function main(): Promise<void> {
           storageRoot: resolve(getRequiredArg('--storage')),
         });
         console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      case 'site:delete': {
+        const siteId = Number(getRequiredArg('--site'));
+        const summary = await app.getSiteDeletionSummary(siteId);
+        const confirmed = await promptDeleteConfirmation(
+          [
+            `即将删除站点「${summary.siteName}」。`,
+            `Base URL: ${summary.baseUrl}`,
+            `Storage: ${summary.storageRoot}`,
+            '将删除该站点的所有页面、运行记录和数据库数据。',
+            '本地 storage 目录不会被自动删除。',
+          ].join('\n'),
+        );
+
+        if (!confirmed) {
+          console.log(JSON.stringify({ status: 'cancelled' }, null, 2));
+          return;
+        }
+
+        await app.deleteSite(siteId);
+        console.log(JSON.stringify({ status: 'ok', siteId }, null, 2));
         return;
       }
       case 'site:import-config': {

@@ -1,3 +1,4 @@
+export * from './deletion-repository.js';
 export * from './project-repository.js';
 export * from './site-repository.js';
 export * from './run-repository.js';

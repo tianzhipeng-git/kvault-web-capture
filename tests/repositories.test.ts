@@ -2,10 +2,12 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { DeletionService } from '../src/app/deletion-service.js';
 import { createDefaultSiteConfig } from '../src/config/site-config.js';
 import { initializeSchema, openDatabase } from '../src/db/database.js';
 import {
   ArtifactRunRepository,
+  DeletionRepository,
   PageRunRepository,
   ProjectRepository,
   RunRepository,
@@ -288,5 +290,93 @@ describe('repositories', () => {
       deniedPages: 0,
       capturedPages: 1,
     });
+  });
+
+  it('cascade deletes site and project data', async () => {
+    const dir = createTempDir('kvault-delete-');
+    const db = await openDatabase(join(dir, 'state.db'));
+    openHandles.push(db);
+    await initializeSchema(db);
+
+    const clock = new SystemClock();
+    const projects = new ProjectRepository(db, clock);
+    const sites = new SiteRepository(db, clock);
+    const runs = new RunRepository(db, clock);
+    const pages = new SitePageRepository(db, clock);
+    const pageRuns = new PageRunRepository(db, clock);
+    const artifactRuns = new ArtifactRunRepository(db, clock);
+    const settings = new SystemSettingRepository(db, clock);
+    const deletionRepo = new DeletionRepository(db);
+    const deletionService = new DeletionService(projects, sites, runs, deletionRepo, settings);
+
+    const project = await projects.create('Delete Me');
+    const site = await sites.create({
+      projectId: project.id,
+      name: 'delete-site',
+      baseUrl: 'https://example.com',
+      storageRoot: dir,
+      config: createDefaultSiteConfig('https://example.com/docs'),
+    });
+    await settings.setDefaultSiteId(site.id);
+
+    const runId = await runs.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+    const sitePageId = await pages.upsertDiscovery({
+      siteId: site.id,
+      discoveredUrl: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      discoverySource: 'seed_url',
+      discoveryReferrerUrl: null,
+      inventoryStatus: 'discovered_only',
+      urlRuleDecision: 'allow',
+    });
+    const pageRunId = await pageRuns.create({
+      runId,
+      sitePageId,
+      baseCaptureStatus: 'succeeded',
+      baseCapturePath: '/tmp/base.md',
+      title: 'Docs',
+      metaDescription: 'Example docs',
+      bodyText: 'hello docs',
+      classificationLabels: { content_type: ['docs'] },
+      ruleOutcome: 'allow',
+      decisionOutcome: 'allow',
+      decisionReason: null,
+      pendingReason: null,
+      requiredArtifacts: ['markdown'],
+    });
+    await artifactRuns.create({
+      runId,
+      pageRunId,
+      sitePageId,
+      artifactType: 'markdown',
+      status: 'succeeded',
+      content: '# Docs',
+      outputPath: null,
+      errorMessage: null,
+      meta: null,
+    });
+    await runs.finishRun(runId, 'succeeded');
+
+    await deletionService.deleteSite(site.id);
+
+    expect(await sites.getById(site.id)).toBeNull();
+    expect(await pages.summarizeInventory(site.id)).toEqual({
+      totalPages: 0,
+      pendingPages: 0,
+      deniedPages: 0,
+      capturedPages: 0,
+    });
+    expect(await settings.getDefaultSiteId()).toBeNull();
+
+    await deletionService.deleteProject(project.id);
+
+    expect(await projects.getById(project.id)).toBeNull();
+    expect(await sites.listIdsByProjectId(project.id)).toEqual([]);
   });
 });

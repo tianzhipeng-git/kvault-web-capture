@@ -96,6 +96,15 @@ export class SiteRepository {
     ]);
   }
 
+  async listIdsByProjectId(projectId: number): Promise<number[]> {
+    const rows = await this.db.all<{ id: number }>(
+      'SELECT id FROM sites WHERE project_id = ? ORDER BY id',
+      [projectId],
+    );
+
+    return rows.map((row) => row.id);
+  }
+
   async cloneConfig(sourceSiteId: number, targetSiteId: number): Promise<void> {
     const source = await this.getById(sourceSiteId);
 

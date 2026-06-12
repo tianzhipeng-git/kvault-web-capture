@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { api, triggerPreparedExportDownload } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Globe, ChevronRight, ChevronDown, Download, Loader2 } from "lucide-react";
+import { Plus, Globe, ChevronRight, ChevronDown, Download, Loader2, Trash2 } from "lucide-react";
 import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
 import { motion } from "framer-motion";
 import { ProjectLabelDefinitions } from "./ProjectLabelDefinitions";
@@ -18,6 +19,7 @@ function toPathSegment(name: string): string {
 
 export function ProjectDetails() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const [sites, setSites] = useState<any[]>([]);
   const [projectSlug, setProjectSlug] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -31,6 +33,10 @@ export function ProjectDetails() {
   );
   const [exportStatuses, setExportStatuses] = useState<string[]>([]);
   const [formData, setFormData] = useState({ name: "", baseUrl: "", storageRoot: "" });
+  const [siteToDelete, setSiteToDelete] = useState<{ siteId: number; siteName: string; baseUrl: string } | null>(null);
+  const [isDeletingSite, setIsDeletingSite] = useState(false);
+  const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
   const storageRootEdited = useRef(false);
 
   const loadSites = () => {
@@ -111,6 +117,35 @@ export function ProjectDetails() {
       return next;
     });
   };
+  const handleDeleteSite = async () => {
+    if (!siteToDelete) return;
+    setIsDeletingSite(true);
+    try {
+      await api.deleteSite(siteToDelete.siteId);
+      toast.success(`已删除站点「${siteToDelete.siteName}」。`);
+      setSiteToDelete(null);
+      loadSites();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "删除失败。");
+    } finally {
+      setIsDeletingSite(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!projectId) return;
+    setIsDeletingProject(true);
+    try {
+      await api.deleteProject(Number(projectId));
+      toast.success(`已删除项目「${projectName}」。`);
+      navigate("/");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "删除失败。");
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
   const toggleExportStatus = (value: string) => {
     setExportStatuses((current) =>
       current.includes(value) ? current.filter((status) => status !== value) : [...current, value],
@@ -130,6 +165,7 @@ export function ProjectDetails() {
           <h1 className="text-3xl font-bold tracking-tight">项目详情</h1>
           <p className="text-muted-foreground mt-1">管理该项目下的采集站点和 LLM 标签定义</p>
         </div>
+        <div className="flex gap-2">
         <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
           <DialogTrigger asChild>
             <Button
@@ -247,6 +283,16 @@ export function ProjectDetails() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <Button
+          variant="outline"
+          className="gap-2 text-destructive hover:text-destructive"
+          disabled={!projectId || isDeletingProject}
+          onClick={() => setIsDeleteProjectOpen(true)}
+        >
+          <Trash2 className="w-4 h-4" />
+          删除项目
+        </Button>
+        </div>
       </div>
 
       {exportError && (
@@ -325,18 +371,34 @@ export function ProjectDetails() {
             transition={{ delay: i * 0.05 }}
             key={site.siteId}
           >
-            <Link to={`/sites/${site.siteId}/overview`}>
-              <Card className="hover:shadow-md transition-all hover:border-primary/50 group cursor-pointer h-full">
-                <CardHeader>
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Globe className="w-5 h-5 text-blue-500" />
-                  </div>
-                  <CardTitle>{site.siteName}</CardTitle>
-                  <CardDescription className="truncate mt-1" title={site.baseUrl}>
-                    {site.baseUrl}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
+            <Card className="hover:shadow-md transition-all hover:border-primary/50 group h-full">
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <Link to={`/sites/${site.siteId}/overview`} className="flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <Globe className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <CardTitle>{site.siteName}</CardTitle>
+                    <CardDescription className="truncate mt-1" title={site.baseUrl}>
+                      {site.baseUrl}
+                    </CardDescription>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => setSiteToDelete({
+                      siteId: site.siteId,
+                      siteName: site.siteName,
+                      baseUrl: site.baseUrl,
+                    })}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Link to={`/sites/${site.siteId}/overview`}>
                   <div className="flex gap-4 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
                     <div>
                       <span className="block font-medium text-foreground">{site.totalPages || 0}</span>
@@ -348,9 +410,9 @@ export function ProjectDetails() {
                       <span>已抓取</span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                </Link>
+              </CardContent>
+            </Card>
           </motion.div>
         ))}
         {sites.length === 0 && (
@@ -361,6 +423,42 @@ export function ProjectDetails() {
       </div>
 
       {projectId && <ProjectLabelDefinitions projectId={Number(projectId)} />}
+
+      <Dialog open={siteToDelete !== null} onOpenChange={(open) => { if (!open) setSiteToDelete(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除站点</DialogTitle>
+            <DialogDescription>
+              即将删除站点「{siteToDelete?.siteName}」（{siteToDelete?.baseUrl}）的所有页面、运行记录和数据库数据。此操作不可恢复，本地 storage 目录不会被自动删除。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSiteToDelete(null)} disabled={isDeletingSite}>取消</Button>
+            <Button variant="destructive" onClick={handleDeleteSite} disabled={isDeletingSite}>
+              {isDeletingSite ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Trash2 className="mr-2 w-4 h-4" />}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteProjectOpen} onOpenChange={setIsDeleteProjectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除项目</DialogTitle>
+            <DialogDescription>
+              即将删除项目「{projectName}」及其下 {sites.length} 个站点的所有页面、运行记录和数据库数据。此操作不可恢复，本地 storage 目录不会被自动删除。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteProjectOpen(false)} disabled={isDeletingProject}>取消</Button>
+            <Button variant="destructive" onClick={handleDeleteProject} disabled={isDeletingProject}>
+              {isDeletingProject ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Trash2 className="mr-2 w-4 h-4" />}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

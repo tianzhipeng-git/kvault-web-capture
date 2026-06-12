@@ -306,6 +306,9 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name })
   }),
+  deleteProject: (projectId: number) => fetchApi(`/api/projects/${projectId}`, {
+    method: 'DELETE',
+  }),
   getProjectLabelDefinitions: (projectId: number) => fetchApi(`/api/projects/${projectId}/label-definitions`),
   updateProjectLabelDefinitions: (projectId: number, labelDefinitions: unknown) => fetchApi(`/api/projects/${projectId}/label-definitions`, {
     method: 'PUT',
@@ -345,6 +348,9 @@ export const api = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
+  }),
+  deleteSite: (siteId: number) => fetchApi(`/api/sites/${siteId}`, {
+    method: 'DELETE',
   }),
   
   getSiteOverview: (siteId: number) => fetchApi(`/api/sites/${siteId}/overview`),

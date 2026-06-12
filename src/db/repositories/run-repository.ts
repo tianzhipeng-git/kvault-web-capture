@@ -75,6 +75,15 @@ export class RunRepository {
     };
   }
 
+  async hasRunningRun(siteId: number): Promise<boolean> {
+    const row = await this.db.get(
+      `SELECT 1 AS found FROM crawl_runs WHERE site_id = ? AND status = 'running' LIMIT 1`,
+      [siteId],
+    );
+
+    return row !== undefined;
+  }
+
   async finishRun(runId: number, status: RunStatus, errorMessage?: string): Promise<void> {
     await this.db.run('UPDATE crawl_runs SET status = ?, finished_at = ?, error_message = ? WHERE id = ?', [
       status,

@@ -798,6 +798,22 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return app.createProject(body.name.trim());
   });
 
+  server.delete('/api/projects/:projectId', async (request, reply) => {
+    const params = request.params as { projectId: string };
+    const projectId = parseProjectId(params.projectId);
+    const summary = await app.getProjectDeletionSummary(projectId);
+
+    for (const site of summary.sites) {
+      if (coordinator.isSiteBusy(site.siteId)) {
+        reply.code(409);
+        throw new Error(`站点「${site.siteName}」有运行中的任务，请先停止后再删除。`);
+      }
+    }
+
+    await app.deleteProject(projectId);
+    return { status: 'ok' };
+  });
+
   server.get('/api/projects/:projectId/sites', async (request) => {
     const params = request.params as { projectId: string };
     return {
@@ -836,6 +852,19 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
       parseProjectExportOptions(request.body),
     );
     return buildPreparedExportResponse(result);
+  });
+
+  server.delete('/api/sites/:siteId', async (request, reply) => {
+    const params = request.params as { siteId: string };
+    const siteId = parseSiteId(params.siteId);
+
+    if (coordinator.isSiteBusy(siteId)) {
+      reply.code(409);
+      throw new Error('当前站点有运行中的任务，请先停止后再删除。');
+    }
+
+    await app.deleteSite(siteId);
+    return { status: 'ok' };
   });
 
   server.post('/api/sites', async (request, reply) => {

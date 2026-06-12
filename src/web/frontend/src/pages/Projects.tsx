@@ -4,10 +4,10 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Folder, Loader2, Send, Copy, UnfoldVertical } from "lucide-react";
+import { Plus, Folder, Loader2, Send, Copy, UnfoldVertical, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function Projects() {
@@ -21,6 +21,8 @@ export function Projects() {
   const [isExpandingLinks, setIsExpandingLinks] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<{ projectId: number; projectName: string; siteCount: number } | null>(null);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   const loadProjects = () => {
     api.getProjects().then(data => setProjects(data.items || []));
@@ -63,6 +65,21 @@ export function Projects() {
       toast.error(error instanceof Error ? error.message : "链接展开失败。");
     } finally {
       setIsExpandingLinks(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!projectToDelete) return;
+    setIsDeletingProject(true);
+    try {
+      await api.deleteProject(projectToDelete.projectId);
+      toast.success(`已删除项目「${projectToDelete.projectName}」。`);
+      setProjectToDelete(null);
+      loadProjects();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "删除失败。");
+    } finally {
+      setIsDeletingProject(false);
     }
   };
 
@@ -192,22 +209,54 @@ export function Projects() {
             transition={{ delay: i * 0.05 }}
             key={project.projectId}
           >
-            <Link to={`/projects/${project.projectId}`}>
-              <Card className="hover:shadow-md transition-all hover:border-primary/50 group cursor-pointer h-full">
-                <CardHeader>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Folder className="w-5 h-5 text-primary" />
-                  </div>
-                  <CardTitle>{project.projectName}</CardTitle>
-                  <CardDescription className="line-clamp-2 mt-2">
-                    Slug: {project.projectSlug}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            </Link>
+            <Card className="hover:shadow-md transition-all hover:border-primary/50 group h-full">
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <Link to={`/projects/${project.projectId}`} className="flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <Folder className="w-5 h-5 text-primary" />
+                    </div>
+                    <CardTitle>{project.projectName}</CardTitle>
+                    <CardDescription className="line-clamp-2 mt-2">
+                      Slug: {project.projectSlug}
+                    </CardDescription>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => setProjectToDelete({
+                      projectId: project.projectId,
+                      projectName: project.projectName,
+                      siteCount: project.siteCount ?? 0,
+                    })}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+            </Card>
           </motion.div>
         ))}
       </div>
+
+      <Dialog open={projectToDelete !== null} onOpenChange={(open) => { if (!open) setProjectToDelete(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除项目</DialogTitle>
+            <DialogDescription>
+              即将删除项目「{projectToDelete?.projectName}」及其下 {projectToDelete?.siteCount ?? 0} 个站点的所有页面、运行记录和数据库数据。此操作不可恢复，本地 storage 目录不会被自动删除。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProjectToDelete(null)} disabled={isDeletingProject}>取消</Button>
+            <Button variant="destructive" onClick={handleDeleteProject} disabled={isDeletingProject}>
+              {isDeletingProject ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Trash2 className="mr-2 w-4 h-4" />}
+              确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

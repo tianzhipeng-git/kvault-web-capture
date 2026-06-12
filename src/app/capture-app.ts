@@ -3,6 +3,7 @@ import type { CaptureTool } from '../capture/types.js';
 import { initializeSchema, openDatabase, type DbClient } from '../db/database.js';
 import {
   ArtifactRunRepository,
+  DeletionRepository,
   PageRunRepository,
   ProjectRepository,
   RunLogRepository,
@@ -11,6 +12,7 @@ import {
   SiteRepository,
   SystemSettingRepository,
 } from '../db/repositories/index.js';
+import { DeletionService } from './deletion-service.js';
 import type { RunSummary, SiteConfig, UpdatePolicy, UrlNormalizationConfig } from '../domain/types.js';
 import {
   ProjectExporter,
@@ -41,6 +43,7 @@ export class CaptureApp {
     private readonly projects: ProjectService,
     private readonly sites: SiteService,
     private readonly runs: RunService,
+    private readonly deletions: DeletionService,
     private readonly projectExporter: ProjectExporter,
   ) {}
 
@@ -55,6 +58,7 @@ export class CaptureApp {
     const artifactRuns = new ArtifactRunRepository(db, clock);
     const runLogs = new RunLogRepository(db, clock);
     const systemSettings = new SystemSettingRepository(db, clock);
+    const deletions = new DeletionRepository(db);
     const planner = new RunPlanner(sitePages, clock);
 
     await initializeSchema(db);
@@ -75,6 +79,7 @@ export class CaptureApp {
         planner,
         options,
       ),
+      new DeletionService(projects, sites, runs, deletions, systemSettings),
       new ProjectExporter(db, clock),
     );
   }
@@ -93,6 +98,22 @@ export class CaptureApp {
 
   updateProjectLabelDefinitions(projectId: number, labelDefinitions: unknown) {
     return this.projects.updateLabelDefinitions(projectId, labelDefinitions);
+  }
+
+  getProjectDeletionSummary(projectId: number) {
+    return this.deletions.getProjectDeletionSummary(projectId);
+  }
+
+  deleteProject(projectId: number) {
+    return this.deletions.deleteProject(projectId);
+  }
+
+  getSiteDeletionSummary(siteId: number) {
+    return this.deletions.getSiteDeletionSummary(siteId);
+  }
+
+  deleteSite(siteId: number) {
+    return this.deletions.deleteSite(siteId);
   }
 
   createSite(input: {
