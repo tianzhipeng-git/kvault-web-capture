@@ -22,6 +22,7 @@ function ValidationRuleFields({
 }) {
   const showMinLength = capability === "base" || capability === "markdown" || capability === "structured";
   const showMinBytes = capability === "screenshot";
+  const showRegex = capability !== "screenshot";
 
   return (
     <div className="rounded-md border p-3 space-y-3">
@@ -57,23 +58,27 @@ function ValidationRuleFields({
               />
             </div>
           )}
-          <div className="space-y-1 md:col-span-2">
-            <Label>拒绝正则 (rejectRegex，每行一条)</Label>
-            <textarea
-              className="h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={form.rejectRegexText}
-              onChange={(event) => onChange({ ...form, rejectRegexText: event.target.value })}
-              placeholder="Access Denied"
-            />
-          </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label>必须匹配正则 (requireRegex，每行一条)</Label>
-            <textarea
-              className="h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
-              value={form.requireRegexText}
-              onChange={(event) => onChange({ ...form, requireRegexText: event.target.value })}
-            />
-          </div>
+          {showRegex && (
+            <>
+              <div className="space-y-1 md:col-span-2">
+                <Label>拒绝正则 (rejectRegex，每行一条)</Label>
+                <textarea
+                  className="h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={form.rejectRegexText}
+                  onChange={(event) => onChange({ ...form, rejectRegexText: event.target.value })}
+                  placeholder="Access Denied"
+                />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label>必须匹配正则 (requireRegex，每行一条)</Label>
+                <textarea
+                  className="h-20 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={form.requireRegexText}
+                  onChange={(event) => onChange({ ...form, requireRegexText: event.target.value })}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -170,7 +175,7 @@ export function CaptureConfigEditor({
         <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="space-y-1">
-              <CardTitle>站点级结果校验</CardTitle>
+              <CardTitle>结果校验</CardTitle>
               <CardDescription>
                 定义抓取结果是否可接受；所有工具统一使用此处配置。
               </CardDescription>

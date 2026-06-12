@@ -119,18 +119,25 @@ export function defaultBrowserFormState(): BrowserFormState {
   };
 }
 
-function validationRuleToForm(rule?: CaptureValidationRuleApi): CaptureValidationRuleForm {
+function validationRuleToForm(
+  rule: CaptureValidationRuleApi | undefined,
+  capability: ValidationCapability,
+): CaptureValidationRuleForm {
   if (!rule) return emptyValidationRule();
+  const supportsRegex = capability !== "screenshot";
   return {
     enabled: true,
     minLength: rule.minLength === undefined ? "" : String(rule.minLength),
     minBytes: rule.minBytes === undefined ? "" : String(rule.minBytes),
-    rejectRegexText: arrayToLines(rule.rejectRegex),
-    requireRegexText: arrayToLines(rule.requireRegex),
+    rejectRegexText: supportsRegex ? arrayToLines(rule.rejectRegex) : "",
+    requireRegexText: supportsRegex ? arrayToLines(rule.requireRegex) : "",
   };
 }
 
-function validationRuleFromForm(form: CaptureValidationRuleForm): CaptureValidationRuleApi | undefined {
+function validationRuleFromForm(
+  form: CaptureValidationRuleForm,
+  capability: ValidationCapability,
+): CaptureValidationRuleApi | undefined {
   if (!form.enabled) return undefined;
 
   const rule: CaptureValidationRuleApi = {};
@@ -140,10 +147,12 @@ function validationRuleFromForm(form: CaptureValidationRuleForm): CaptureValidat
   if (form.minBytes.trim()) {
     rule.minBytes = Number(form.minBytes);
   }
-  const rejectRegex = linesToArray(form.rejectRegexText);
-  const requireRegex = linesToArray(form.requireRegexText);
-  if (rejectRegex.length > 0) rule.rejectRegex = rejectRegex;
-  if (requireRegex.length > 0) rule.requireRegex = requireRegex;
+  if (capability !== "screenshot") {
+    const rejectRegex = linesToArray(form.rejectRegexText);
+    const requireRegex = linesToArray(form.requireRegexText);
+    if (rejectRegex.length > 0) rule.rejectRegex = rejectRegex;
+    if (requireRegex.length > 0) rule.requireRegex = requireRegex;
+  }
 
   const hasValue = rule.minLength !== undefined
     || rule.minBytes !== undefined
@@ -156,10 +165,10 @@ function validationConfigToForm(config?: CaptureValidationConfigApi): Validation
   const empty = emptyValidationConfigForm();
   if (!config) return empty;
   return {
-    base: config.base ? validationRuleToForm(config.base) : empty.base,
-    markdown: config.markdown ? validationRuleToForm(config.markdown) : empty.markdown,
-    screenshot: config.screenshot ? validationRuleToForm(config.screenshot) : empty.screenshot,
-    structured: config.structured ? validationRuleToForm(config.structured) : empty.structured,
+    base: config.base ? validationRuleToForm(config.base, "base") : empty.base,
+    markdown: config.markdown ? validationRuleToForm(config.markdown, "markdown") : empty.markdown,
+    screenshot: config.screenshot ? validationRuleToForm(config.screenshot, "screenshot") : empty.screenshot,
+    structured: config.structured ? validationRuleToForm(config.structured, "structured") : empty.structured,
   };
 }
 
@@ -171,7 +180,7 @@ function validationConfigHasEnabledRule(form: ValidationConfigForm): boolean {
 function validationConfigFromForm(form: ValidationConfigForm): CaptureValidationConfigApi | undefined {
   const config: CaptureValidationConfigApi = {};
   for (const key of ["base", "markdown", "screenshot", "structured"] as ValidationCapability[]) {
-    const rule = validationRuleFromForm(form[key]);
+    const rule = validationRuleFromForm(form[key], key);
     if (rule) config[key] = rule;
   }
   return Object.keys(config).length > 0 ? config : undefined;

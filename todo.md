@@ -38,8 +38,13 @@ s是否要新增 Update Policy 这个里如果新加一种策略 就是re evalua
 2. 初步请求单个网页看看结果
 3. 编写base入队规则
 
-   1. 必定配置的一个前缀scopelist
+   1. 必定配置的一个前缀scopelist, 我们一般只针对单个站点内容, 不会跨多个站点
    2. 一定要注意的多语言、多国家站点 scopelist或拉黑
+
+      1. 子目录 如: example.com/us/
+      2. 子域名 如: us.example.com
+      3. 国家顶级域名 如 example.us, example.co.uk, example.com.cn
+      4. 参数模式 如 example.com?lang=en\&country=us
    3. 登录后才可以用的url拉黑
 4. 编写深度爬取规则
 5. 先跑一次初步摸底, 根据结果调整上述规则
