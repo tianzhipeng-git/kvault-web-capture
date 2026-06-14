@@ -175,6 +175,9 @@ const baseTablesSchema = `
     base_url TEXT NOT NULL,
     storage_root TEXT NOT NULL,
     config_json TEXT NOT NULL,
+    favicon_data BLOB,
+    favicon_content_type TEXT,
+    favicon_updated_at TEXT,
     updated_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id)
@@ -324,7 +327,7 @@ const indexesSchema = `
 const postgresTablesSchema = baseTablesSchema.replaceAll(
   'INTEGER PRIMARY KEY AUTOINCREMENT',
   'SERIAL PRIMARY KEY',
-);
+).replaceAll('BLOB', 'BYTEA');
 
 function isJsonObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -436,6 +439,11 @@ export async function initializeSchema(db: DbClient): Promise<void> {
     `ALTER TABLE site_pages ADD COLUMN last_structured_status TEXT`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_run_id INTEGER`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_at TEXT`,
+    db.dialect === 'postgres'
+      ? `ALTER TABLE sites ADD COLUMN favicon_data BYTEA`
+      : `ALTER TABLE sites ADD COLUMN favicon_data BLOB`,
+    `ALTER TABLE sites ADD COLUMN favicon_content_type TEXT`,
+    `ALTER TABLE sites ADD COLUMN favicon_updated_at TEXT`,
     `DROP INDEX IF EXISTS idx_site_pages_site_latest_handled`,
   ];
 

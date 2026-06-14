@@ -909,6 +909,26 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     return app.getSiteConfig(parseSiteId(params.siteId));
   });
 
+  server.post('/api/sites/:siteId/favicon/fetch', async (request) => {
+    const params = request.params as { siteId: string };
+    return app.fetchSiteFavicon(parseSiteId(params.siteId));
+  });
+
+  server.get('/api/sites/:siteId/favicon.ico', async (request, reply) => {
+    const params = request.params as { siteId: string };
+    const favicon = await app.getSiteFavicon(parseSiteId(params.siteId));
+
+    if (!favicon) {
+      reply.code(404);
+      throw new Error('该站点暂无 favicon。');
+    }
+
+    return reply
+      .type(favicon.contentType)
+      .header('Cache-Control', 'private, max-age=3600')
+      .send(favicon.data);
+  });
+
   server.put('/api/sites/:siteId/config', async (request) => {
     const params = request.params as { siteId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;

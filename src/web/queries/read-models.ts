@@ -157,6 +157,7 @@ export class ProjectListQuery {
     siteId: number;
     siteName: string;
     baseUrl: string;
+    hasFavicon: boolean;
     siteStatusLabel: string;
     totalPages: number;
     pagesNeedReview: number;
@@ -168,6 +169,7 @@ export class ProjectListQuery {
            s.id,
            s.name,
            s.base_url,
+           s.favicon_updated_at,
            COUNT(DISTINCT sp.id) AS total_pages,
            COUNT(DISTINCT CASE WHEN sp.inventory_status = 'stage2_pending' THEN sp.id END) AS pending_pages,
            COUNT(DISTINCT CASE WHEN sp.inventory_status = 'stage2_captured' THEN sp.id END) AS captured_pages,
@@ -176,7 +178,7 @@ export class ProjectListQuery {
          LEFT JOIN site_pages sp ON sp.site_id = s.id
          LEFT JOIN crawl_runs cr ON cr.site_id = s.id
          WHERE s.project_id = ?
-         GROUP BY s.id, s.name, s.base_url
+         GROUP BY s.id, s.name, s.base_url, s.favicon_updated_at
          ORDER BY s.name`,
       [projectId],
     );
@@ -190,6 +192,7 @@ export class ProjectListQuery {
           siteId: Number((row as Record<string, unknown>).id),
           siteName: String((row as Record<string, unknown>).name),
           baseUrl: String((row as Record<string, unknown>).base_url),
+          hasFavicon: (row as Record<string, unknown>).favicon_updated_at !== null,
           siteStatusLabel:
             pendingPages > 0 ? '需要确认规则' : capturedPages > 0 ? '已开始正式采集' : '等待摸底',
           totalPages: Number((row as Record<string, unknown>).total_pages),

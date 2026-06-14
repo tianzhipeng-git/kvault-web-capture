@@ -349,6 +349,10 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   }),
+  fetchSiteFavicon: (siteId: number): Promise<{ status: string; byteLength: number; contentType: string }> =>
+    fetchApi(`/api/sites/${siteId}/favicon/fetch`, {
+      method: 'POST',
+    }),
   deleteSite: (siteId: number) => fetchApi(`/api/sites/${siteId}`, {
     method: 'DELETE',
   }),

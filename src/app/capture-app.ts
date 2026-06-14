@@ -142,6 +142,14 @@ export class CaptureApp {
     return this.sites.updateConfig(siteId, config);
   }
 
+  fetchSiteFavicon(siteId: number) {
+    return this.sites.fetchFavicon(siteId);
+  }
+
+  getSiteFavicon(siteId: number) {
+    return this.sites.getFavicon(siteId);
+  }
+
   previewPageClassification(siteId: number, sitePageId: number) {
     return this.runs.previewClassification(siteId, sitePageId);
   }

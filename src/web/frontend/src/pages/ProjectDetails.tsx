@@ -62,16 +62,19 @@ export function ProjectDetails() {
 
   const handleCreate = async () => {
     if (!formData.name || !formData.baseUrl || !formData.storageRoot) return;
-    await api.createSite({
+    const site = await api.createSite({
       projectId: Number(projectId),
       name: formData.name,
       baseUrl: formData.baseUrl,
       storageRoot: formData.storageRoot
-    });
+    }) as { id: number; name: string };
     setIsDialogOpen(false);
     setFormData({ name: "", baseUrl: "", storageRoot: "" });
     storageRootEdited.current = false;
     loadSites();
+    api.fetchSiteFavicon(site.id)
+      .then(loadSites)
+      .catch((error) => toast.error(error instanceof Error ? error.message : "获取站点 favicon 失败。"));
   };
 
   const handleExport = async () => {
@@ -375,8 +378,16 @@ export function ProjectDetails() {
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <Link to={`/sites/${site.siteId}/overview`} className="flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                      <Globe className="w-5 h-5 text-blue-500" />
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-md border bg-background p-1.5 shadow-sm transition-transform group-hover:scale-105">
+                      {site.hasFavicon ? (
+                        <img
+                          src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/sites/${site.siteId}/favicon.ico`}
+                          alt=""
+                          className="h-full w-full rounded-[4px] object-contain"
+                        />
+                      ) : (
+                        <Globe className="w-5 h-5 text-blue-500" />
+                      )}
                     </div>
                     <CardTitle>{site.siteName}</CardTitle>
                     <CardDescription className="truncate mt-1" title={site.baseUrl}>

@@ -12,6 +12,12 @@ export interface SiteRecord {
   config: SiteConfig;
 }
 
+export interface SiteFaviconRecord {
+  data: Buffer;
+  contentType: string;
+  updatedAt: string;
+}
+
 export class SiteRepository {
   constructor(
     private readonly db: DbClient,
@@ -85,6 +91,39 @@ export class SiteRepository {
       baseUrl: row.base_url,
       storageRoot: row.storage_root,
       config: parseJson<SiteConfig>(row.config_json),
+    };
+  }
+
+  async updateFavicon(siteId: number, favicon: { data: Buffer; contentType: string }): Promise<void> {
+    const now = this.clock.now();
+    await this.db.run(
+      `UPDATE sites
+       SET favicon_data = ?, favicon_content_type = ?, favicon_updated_at = ?, updated_at = ?
+       WHERE id = ?`,
+      [favicon.data, favicon.contentType, now, now, siteId],
+    );
+  }
+
+  async getFavicon(siteId: number): Promise<SiteFaviconRecord | null> {
+    const row = await this.db.get<{
+      favicon_data: Buffer | null;
+      favicon_content_type: string | null;
+      favicon_updated_at: string | null;
+    }>(
+      `SELECT favicon_data, favicon_content_type, favicon_updated_at
+       FROM sites
+       WHERE id = ?`,
+      [siteId],
+    );
+
+    if (!row?.favicon_data || !row.favicon_content_type || !row.favicon_updated_at) {
+      return null;
+    }
+
+    return {
+      data: row.favicon_data,
+      contentType: row.favicon_content_type,
+      updatedAt: row.favicon_updated_at,
     };
   }
 

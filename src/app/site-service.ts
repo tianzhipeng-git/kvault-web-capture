@@ -9,6 +9,10 @@ import type {
 import type { SiteConfig, UrlNormalizationConfig } from '../domain/types.js';
 import { buildPathTree } from '../utils/path-tree.js';
 
+const FAVICON_SIZE = 64;
+const FAVICON_API_URL = 'https://www.google.com/s2/favicons';
+const MAX_FAVICON_BYTES = 256 * 1024;
+
 export class SiteService {
   constructor(
     private readonly projects: ProjectRepository,
@@ -65,6 +69,41 @@ export class SiteService {
   async updateConfig(siteId: number, config: SiteConfig): Promise<void> {
     await this.getSite(siteId);
     await this.sites.updateConfig(siteId, parseSiteConfig(config));
+  }
+
+  async fetchFavicon(siteId: number): Promise<{ status: string; byteLength: number; contentType: string }> {
+    const site = await this.getSite(siteId);
+    const domain = new URL(site.baseUrl).hostname;
+    const url = `${FAVICON_API_URL}?domain=${encodeURIComponent(domain)}&sz=${FAVICON_SIZE}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Favicon fetch failed: ${response.status}`);
+    }
+
+    const data = Buffer.from(await response.arrayBuffer());
+
+    if (data.length === 0) {
+      throw new Error('Favicon fetch returned empty response');
+    }
+
+    if (data.length > MAX_FAVICON_BYTES) {
+      throw new Error(`Favicon is too large: ${data.length} bytes`);
+    }
+
+    const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() || 'image/x-icon';
+    await this.sites.updateFavicon(siteId, { data, contentType });
+
+    return {
+      status: 'ok',
+      byteLength: data.length,
+      contentType,
+    };
+  }
+
+  async getFavicon(siteId: number) {
+    await this.getSite(siteId);
+    return this.sites.getFavicon(siteId);
   }
 
   async getDefaultSite(): Promise<{

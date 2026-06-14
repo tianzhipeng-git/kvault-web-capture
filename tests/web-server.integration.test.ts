@@ -1,7 +1,7 @@
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createWebServer } from '../src/web/server.js';
 import { openDatabase } from '../src/db/database.js';
@@ -48,6 +48,8 @@ describe('web server', () => {
   const siteServers: TestSiteServer[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+
     while (servers.length > 0) {
       await servers.pop()!.close();
     }
@@ -190,6 +192,50 @@ describe('web server', () => {
     });
     const site = siteResponse.json() as { id: number; name: string };
     expect(site.id).toBeGreaterThan(0);
+
+    const faviconBytes = Buffer.from([0, 1, 2, 3]);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(faviconBytes, {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      }),
+    );
+    const faviconFetchResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/favicon/fetch`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(faviconFetchResponse.statusCode).toBe(200);
+    expect(faviconFetchResponse.json()).toEqual({
+      status: 'ok',
+      byteLength: faviconBytes.length,
+      contentType: 'image/png',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://www.google.com/s2/favicons?domain=127.0.0.1&sz=64`,
+    );
+
+    const faviconResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.id}/favicon.ico`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect(faviconResponse.statusCode).toBe(200);
+    expect(faviconResponse.headers['content-type']).toContain('image/png');
+    expect(faviconResponse.rawPayload).toEqual(faviconBytes);
+
+    const sitesResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/projects/${projectId}/sites`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    expect((sitesResponse.json() as { items: Array<{ hasFavicon: boolean }> }).items[0]?.hasFavicon).toBe(true);
 
     const configResponse = await webServer.inject({
       method: 'PUT',
