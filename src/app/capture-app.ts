@@ -182,6 +182,10 @@ export class CaptureApp {
     return this.runs.runCrawl(input);
   }
 
+  cancelOrphanRun(runId: number): Promise<boolean> {
+    return this.runs.cancelOrphanRun(runId);
+  }
+
   getInventorySummary(siteId: number) {
     return this.sites.getInventorySummary(siteId);
   }

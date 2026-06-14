@@ -176,6 +176,26 @@ export class RunService {
     });
   }
 
+  async cancelOrphanRun(runId: number): Promise<boolean> {
+    const run = await this.runs.getById(runId);
+
+    if (!run || run.status !== 'running') {
+      return false;
+    }
+
+    const errorMessage = 'Run marked cancelled because no active worker exists for it.';
+    await this.runs.refreshCounts(runId);
+    await this.runs.finishRun(runId, 'cancelled', errorMessage);
+    await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
+    logger.warn('Marked orphan running run as cancelled', {
+      runId,
+      siteId: run.siteId,
+      runType: run.runType,
+    });
+
+    return true;
+  }
+
   private async executeRun(input: {
     siteId: number;
     runType: RunType;

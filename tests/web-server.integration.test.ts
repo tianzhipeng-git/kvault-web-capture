@@ -519,6 +519,101 @@ describe('web server', () => {
     await db.close();
   });
 
+  it('marks orphan running runs as cancelled when cancel is requested', async () => {
+    const dir = createTempDir('kvault-web-orphan-run-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 2,
+    });
+    servers.push(webServer);
+    const authCookie = await login(webServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const config = {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: {
+        seedMaxDepth: 1,
+        crawlMaxDepth: 0,
+      },
+    };
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Orphan Project', 'orphan-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'orphan-site',
+        'https://example.com',
+        join(dir, 'storage'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+    const run = await db.run(
+      `INSERT INTO crawl_runs (
+        site_id, run_type, update_policy, config_snapshot_json, status, started_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        site.lastInsertId,
+        'crawl_run',
+        'force_recrawl_all',
+        JSON.stringify(config),
+        'running',
+        now,
+      ],
+    );
+
+    const cancelResponse = await webServer.inject({
+      method: 'POST',
+      url: `/api/runs/${run.lastInsertId}/cancel`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.json()).toMatchObject({
+      runId: run.lastInsertId,
+      status: 'cancelled',
+      statusLabel: '已取消',
+    });
+
+    const summaryResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/runs/${run.lastInsertId}`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const summary = summaryResponse.json() as { statusLabel: string; finishedAt: string | null };
+    expect(summary.statusLabel).toBe('已取消');
+    expect(summary.finishedAt).not.toBeNull();
+
+    const logsResponse = await webServer.inject({
+      method: 'GET',
+      url: `/api/runs/${run.lastInsertId}/logs`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const logs = logsResponse.json() as { items: Array<{ event: string; message: string }> };
+    expect(logs.items.some((item) => (
+      item.event === 'crawl_error' && item.message.includes('no active worker')
+    ))).toBe(true);
+    await db.close();
+  });
+
   it('stores a default site and exports pages by run id', async () => {
     const dir = createTempDir('kvault-web-simple-');
     const dbPath = join(dir, 'state.db');

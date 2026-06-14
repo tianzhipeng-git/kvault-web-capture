@@ -1027,15 +1027,26 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     const params = request.params as { runId: string };
     const runId = parseRunId(params.runId);
 
-    if (!coordinator.cancelRun(runId)) {
+    if (coordinator.cancelRun(runId)) {
+      return {
+        runId,
+        status: 'cancelling',
+        statusLabel: '正在取消',
+      };
+    }
+
+    if (await app.cancelOrphanRun(runId)) {
+      return {
+        runId,
+        status: 'cancelled',
+        statusLabel: '已取消',
+      };
+    }
+
+    {
       reply.code(409);
       throw new Error('该运行不在当前进程中或已经结束，无法取消。');
     }
-
-    return {
-      runId,
-      statusLabel: '正在取消',
-    };
   });
 
   server.get('/api/runs/:runId/page-ids', async (request) => {

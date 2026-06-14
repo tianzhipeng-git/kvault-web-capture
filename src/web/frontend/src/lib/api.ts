@@ -378,7 +378,7 @@ export const api = {
   
   getSiteRuns: (siteId: number) => fetchApi(`/api/sites/${siteId}/runs`),
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
-  cancelRun: (runId: number): Promise<{ runId: number; statusLabel: string }> => fetchApi(`/api/runs/${runId}/cancel`, {
+  cancelRun: (runId: number): Promise<{ runId: number; status: "cancelling" | "cancelled"; statusLabel: string }> => fetchApi(`/api/runs/${runId}/cancel`, {
     method: 'POST',
   }),
   getRunPageIds: (runId: number): Promise<{ runId: number; siteId: number; pageIds: number[] }> =>

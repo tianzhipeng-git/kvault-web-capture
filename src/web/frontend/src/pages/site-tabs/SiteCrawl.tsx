@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Database, Play, RefreshCw, ScrollText, FileText, AlertCircle, Square } from "lucide-react";
+import { toast } from "sonner";
 import { PageReview } from "./PageReview";
 import { RunLogs } from "@/components/RunLogs";
 
@@ -66,7 +67,11 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
   const cancelRun = async (runId: number) => {
     setCancellingRunId(runId);
     try {
-      await api.cancelRun(runId);
+      const result = await api.cancelRun(runId);
+      toast.success(result.status === "cancelled" ? "已清理失联运行状态。" : "已发送停止请求。");
+      loadRuns();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "停止失败。");
       loadRuns();
     } finally {
       setCancellingRunId(null);
