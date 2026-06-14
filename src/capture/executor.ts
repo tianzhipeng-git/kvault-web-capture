@@ -8,6 +8,10 @@ import type { CaptureInput, CaptureResult, CaptureTool, CaptureToolResult } from
 import { isSiteAutomationAdapter } from './types.js';
 import { CaptureToolRegistry } from './tool-registry.js';
 
+function isArtifactNeed(need: CaptureCapability): boolean {
+  return need === 'markdown' || need === 'screenshot' || need === 'structured';
+}
+
 function toolResultHasCapability(toolResult: CaptureToolResult, need: CaptureCapability): boolean {
   switch (need) {
     case 'base':
@@ -259,7 +263,13 @@ export class PageCaptureExecutor {
     }
 
     const missing = input.needs.filter((need) => !isNeedSatisfied(result, need));
-    if (missing.length > 0) {
+    const artifactNeeds = input.needs.filter(isArtifactNeed);
+    const satisfiedArtifacts = artifactNeeds.filter((need) => isNeedSatisfied(result, need));
+    const shouldFail =
+      missing.includes('base') ||
+      (artifactNeeds.length === input.needs.length && satisfiedArtifacts.length === 0);
+
+    if (missing.length > 0 && shouldFail) {
       const messages = result.diagnostics
         .filter((diagnostic) => diagnostic.status === 'failed' || diagnostic.status === 'skipped')
         .map((diagnostic) => `${diagnostic.toolName}: ${diagnostic.message}`)

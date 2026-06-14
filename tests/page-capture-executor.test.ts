@@ -71,6 +71,39 @@ describe('PageCaptureExecutor', () => {
     expect(result.screenshot?.data.toString()).toBe('png');
   });
 
+  it('returns partial artifact success when another requested artifact is missing', async () => {
+    const executor = new PageCaptureExecutor([
+      {
+        name: 'partial-artifacts',
+        capabilities: ['markdown', 'screenshot'],
+        async capture() {
+          return {
+            toolName: 'partial-artifacts',
+            markdown: '# Docs\n',
+          };
+        },
+      },
+    ]);
+
+    const result = await executor.capture({
+      runId: 1,
+      siteId: 1,
+      url: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      needs: ['markdown', 'screenshot'],
+      siteConfig: createDefaultSiteConfig('https://example.com'),
+      runtime,
+    });
+
+    expect(result.markdown?.content).toBe('# Docs\n');
+    expect(result.screenshot).toBeUndefined();
+    expect(result.diagnostics[0]).toMatchObject({
+      toolName: 'partial-artifacts',
+      status: 'succeeded',
+    });
+    expect(result.diagnostics[0].message).toContain('screenshot: missing');
+  });
+
   it('runs tools that cover only one of several remaining needs', async () => {
     const calls: Array<{ tool: string; needs: string[] }> = [];
     const tools: CaptureTool[] = [

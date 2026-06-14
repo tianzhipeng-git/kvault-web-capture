@@ -39,6 +39,14 @@ function artifactNeeds(needs: PageCaptureTask['needs']): ArtifactType[] {
   ));
 }
 
+function captureResultHasArtifact(result: CaptureResult, artifactType: ArtifactType): boolean {
+  return artifactType === 'markdown'
+    ? result.markdown !== undefined
+    : artifactType === 'screenshot'
+      ? result.screenshot !== undefined
+      : result.structured !== undefined;
+}
+
 function renderBaseCaptureMarkdown(input: {
   url: string;
   title: string;
@@ -683,14 +691,27 @@ async function handleArtifactOnlyTask(input: PageCaptureHandlerInput): Promise<v
   });
 
   for (const artifactType of artifacts) {
-    await recordArtifactResult({
-      result,
-      artifactType,
+    if (captureResultHasArtifact(result, artifactType)) {
+      await recordArtifactResult({
+        result,
+        artifactType,
+        task,
+        pageRunId,
+        artifactRunRepository: deps.artifactRunRepository,
+        sitePageRepository: deps.sitePageRepository,
+        artifactWriter: deps.artifactWriter,
+        runLog: deps.runLog,
+      });
+      continue;
+    }
+
+    await recordArtifactFailure({
       task,
+      artifactType,
       pageRunId,
+      error: new Error(`${artifactType} result missing for ${task.normalizedUrl}`),
       artifactRunRepository: deps.artifactRunRepository,
       sitePageRepository: deps.sitePageRepository,
-      artifactWriter: deps.artifactWriter,
       runLog: deps.runLog,
     });
   }

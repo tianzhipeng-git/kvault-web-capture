@@ -502,6 +502,61 @@ describe('createPageCaptureRequestHandler – artifact-only task', () => {
     expect((sitePageCalls[0] as { artifactType: string; status: string }).artifactType).toBe('structured');
   });
 
+  it('records successful and missing artifacts independently in one artifact-only task', async () => {
+    const executor = {
+      capture: async () => makeMarkdownCaptureResult(),
+    } as unknown as PageCaptureExecutor;
+
+    const artifactRunCalls: unknown[] = [];
+    const artifactRunRepository = makeArtifactRunRepository({
+      create: async (args: unknown) => { artifactRunCalls.push(args); return 1; },
+    });
+
+    const sitePageCalls: unknown[] = [];
+    const sitePageRepository = makeSitePageRepository({
+      recordArtifactResult: async (args: unknown) => { sitePageCalls.push(args); },
+    });
+
+    const { writer, textCalls, binaryCalls } = makeArtifactWriter();
+    const handler = createPageCaptureRequestHandler({
+      executor,
+      classifier: new FakeClassifier(),
+      siteConfig,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      pageCaptureQueue: makeNoopRequestQueue().queue,
+      artifactWriter: writer,
+      artifactRunRepository,
+      pageRunRepository: makePageRunRepository(),
+      sitePageRepository,
+      runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
+      runLog: noopRunLog,
+    });
+
+    await handler({
+      task: makeArtifactTask({ needs: ['markdown', 'screenshot'], pageRunId: 999 }),
+      runtime,
+    });
+
+    expect(textCalls).toHaveLength(1);
+    expect(binaryCalls).toHaveLength(0);
+    expect(artifactRunCalls).toHaveLength(2);
+    expect(artifactRunCalls).toEqual([
+      expect.objectContaining({ artifactType: 'markdown', status: 'succeeded' }),
+      expect.objectContaining({
+        artifactType: 'screenshot',
+        status: 'failed',
+        errorMessage: 'screenshot result missing for https://example.com/docs',
+      }),
+    ]);
+    expect(sitePageCalls).toEqual([
+      expect.objectContaining({ artifactType: 'markdown', status: 'succeeded' }),
+      expect.objectContaining({ artifactType: 'screenshot', status: 'failed' }),
+    ]);
+  });
+
   it('throws when artifact-only task has no pageRunId', async () => {
     const executor = {
       capture: async () => makeMarkdownCaptureResult(),
