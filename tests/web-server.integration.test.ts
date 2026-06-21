@@ -845,4 +845,114 @@ describe('web server', () => {
     expect(simpleDownloadResponse.headers['content-type']).toContain('application/zip');
     await db.close();
   });
+
+  it('submits simple capture runs with multiple URLs', async () => {
+    const dir = createTempDir('kvault-web-simple-capture-urls-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 1,
+      apiKey: 'external-secret',
+    });
+    servers.push(webServer);
+
+    const siteServer = await startTestSiteServer();
+    siteServers.push(siteServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const config = {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: {
+        seedMaxDepth: 1,
+        crawlMaxDepth: 0,
+      },
+    };
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Simple Project', 'simple-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'simple-site',
+        siteServer.baseUrl,
+        join(dir, 'storage'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+
+    const authCookie = await login(webServer);
+    const setDefaultResponse = await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-site',
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: {
+        siteId: site.lastInsertId,
+      },
+    });
+    expect(setDefaultResponse.statusCode).toBe(200);
+
+    const singleUrlResponse = await webServer.inject({
+      method: 'POST',
+      url: '/api/simple-capture/runs',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: {
+        url: `${siteServer.baseUrl}/docs`,
+      },
+    });
+    expect(singleUrlResponse.statusCode).toBe(400);
+
+    const submitResponse = await webServer.inject({
+      method: 'POST',
+      url: '/api/simple-capture/runs',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: {
+        urls: [
+          `${siteServer.baseUrl}/docs`,
+          `${siteServer.baseUrl}/product`,
+        ],
+      },
+    });
+    expect(submitResponse.statusCode).toBe(200);
+    const submitted = submitResponse.json() as { siteId: number };
+    expect(submitted.siteId).toBe(site.lastInsertId);
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const row = await db.get<{ page_count: number }>(
+        'SELECT COUNT(*) AS page_count FROM site_pages WHERE site_id = ?',
+        [site.lastInsertId],
+      );
+      if ((row?.page_count ?? 0) >= 2) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    const pages = await db.all<{ normalized_url: string }>(
+      'SELECT normalized_url FROM site_pages WHERE site_id = ? ORDER BY normalized_url',
+      [site.lastInsertId],
+    );
+    expect(pages.map((page) => page.normalized_url)).toEqual([
+      `${siteServer.baseUrl}/docs`,
+      `${siteServer.baseUrl}/product`,
+    ]);
+
+    await db.close();
+  });
 });

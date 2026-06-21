@@ -337,10 +337,10 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   }),
-  submitSimpleCapture: (url: string): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
+  submitSimpleCapture: (urls: string[]): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, updatePolicy: 'force_recrawl_all' }),
+    body: JSON.stringify({ urls, updatePolicy: 'force_recrawl_all' }),
   }),
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),

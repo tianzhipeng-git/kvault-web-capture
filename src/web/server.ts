@@ -373,12 +373,24 @@ function parseOptionalSiteId(value: unknown): number | null {
   return siteId;
 }
 
-function parseSimpleCaptureUrl(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error('URL 不能为空。');
+function parseSimpleCaptureUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error('urls 必须是非空 URL 数组。');
   }
 
-  return value.trim();
+  if (!value.every((item) => typeof item === 'string')) {
+    throw new Error('urls 必须是字符串数组。');
+  }
+
+  const urls = [...new Set(value
+    .map((item) => item.trim())
+    .filter(Boolean))];
+
+  if (urls.length === 0) {
+    throw new Error('urls 不能为空。');
+  }
+
+  return urls;
 }
 
 export interface WebServerOptions {
@@ -545,7 +557,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
         updatePolicy: runInput.updatePolicy,
         targetSuccessCount: runInput.targetSuccessCount,
         staleAfterMs: runInput.staleAfterMs,
-        initialUrls: [parseSimpleCaptureUrl(body.url)],
+        initialUrls: parseSimpleCaptureUrls(body.urls),
         crawlMaxDepthOverride: 0,
       },
     };

@@ -1,6 +1,17 @@
 # 简易采集 API 对接文档
 
-本文档面向外部系统调用方，描述如何通过 API 提交单个 URL 到系统默认站点，并获取本次运行结果。
+本文档面向外部系统调用方，描述如何通过 API 提交多个 URL 到系统默认站点，并获取本次运行结果。
+
+## 基础地址
+
+**Base URL：** `https://vt-sys.fastinsight.info/capture`
+
+下文中的接口路径均为相对路径，调用时需拼接到上述 Base URL 之后。例如：
+
+| 文档中的路径 | 完整请求地址 |
+| --- | --- |
+| `POST /api/simple-capture/runs` | `https://vt-sys.fastinsight.info/capture/api/simple-capture/runs` |
+| `GET /api/simple-capture/runs/456` | `https://vt-sys.fastinsight.info/capture/api/simple-capture/runs/456` |
 
 ## 认证
 
@@ -26,13 +37,13 @@ Authorization: Bearer your-secret-key
 
 ## 前置配置
 
-简易采集入口依赖系统默认站点。默认站点由系统管理员预先在 Web UI 中配置，外部调度方不需要、也不能通过本文档接口修改默认站点。
+简易采集入口依赖系统默认站点。默认站点由系统管理员预先在 Web UI 中配置，外部调度方不需要、也不能通过本文档接口修改默认站点。(由本系统管理员已完成)
 
 ## 分步接口
 
 分步接口适合外部系统自行轮询状态，并在运行完成后下载结果。
 
-### 1. 提交 URL
+### 1. 提交 URL 列表
 
 ```http
 POST /api/simple-capture/runs
@@ -43,7 +54,10 @@ Content-Type: application/json
 
 ```json
 {
-  "url": "https://example.com/page"
+  "urls": [
+    "https://example.com/page-a",
+    "https://example.com/page-b"
+  ]
 }
 ```
 
@@ -51,7 +65,10 @@ Content-Type: application/json
 
 ```json
 {
-  "url": "https://example.com/page",
+  "urls": [
+    "https://example.com/page-a",
+    "https://example.com/page-b"
+  ],
   "updatePolicy": "force_recrawl_all",
   "targetSuccessCount": null,
   "staleAfterMs": null
@@ -61,8 +78,8 @@ Content-Type: application/json
 说明：
 
 - 该接口会在系统默认站点下启动一次 `crawl_run`。
-- `initialUrls` 固定为本次提交的 URL。
-- `crawlMaxDepthOverride` 固定为 `0`，只采集提交 URL，不递归扩展。
+- `initialUrls` 固定为本次提交的 `urls`。
+- `crawlMaxDepthOverride` 固定为 `0`，只采集提交的 URL 列表，不递归扩展。
 - 默认 `updatePolicy` 为 `force_recrawl_all`。
 
 响应：
@@ -128,7 +145,7 @@ GET /api/simple-capture/runs/456/download
 
 ## 同步阻塞接口
 
-同步阻塞接口会在 HTTP 请求内完成“提交 URL -> 等待运行结束 -> 返回结果”。调用方需要设置足够长的 HTTP 超时时间。
+同步阻塞接口会在 HTTP 请求内完成“提交 URL 列表 -> 等待运行结束 -> 返回结果”。调用方需要设置足够长的 HTTP 超时时间。
 
 ### 提交并直接下载 ZIP
 
@@ -141,7 +158,10 @@ Content-Type: application/json
 
 ```json
 {
-  "url": "https://example.com/page"
+  "urls": [
+    "https://example.com/page-a",
+    "https://example.com/page-b"
+  ]
 }
 ```
 
@@ -161,7 +181,10 @@ Content-Type: application/json
 
 ```json
 {
-  "url": "https://example.com/page"
+  "urls": [
+    "https://example.com/page-a",
+    "https://example.com/page-b"
+  ]
 }
 ```
 
@@ -175,7 +198,7 @@ Content-Type: application/json
 ```http
 X-Kvault-Run-Id: 456
 X-Kvault-Site-Id: 12
-X-Kvault-Page-Count: 1
+X-Kvault-Page-Count: 2
 ```
 
 如果站点规则没有产出成功的 Markdown artifact，该接口会返回错误：
@@ -191,19 +214,19 @@ X-Kvault-Page-Count: 1
 ### 分步调用
 
 ```bash
-curl -X POST 'https://capture.example.com/api/simple-capture/runs' \
+curl -X POST 'https://vt-sys.fastinsight.info/capture/api/simple-capture/runs' \
   -H 'X-API-Key: your-secret-key' \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com/page"}'
+  -d '{"urls":["https://example.com/page-a","https://example.com/page-b"]}'
 ```
 
 ```bash
-curl 'https://capture.example.com/api/simple-capture/runs/456' \
+curl 'https://vt-sys.fastinsight.info/capture/api/simple-capture/runs/456' \
   -H 'X-API-Key: your-secret-key'
 ```
 
 ```bash
-curl 'https://capture.example.com/api/simple-capture/runs/456/download' \
+curl 'https://vt-sys.fastinsight.info/capture/api/simple-capture/runs/456/download' \
   -H 'X-API-Key: your-secret-key' \
   -o result.zip
 ```
@@ -211,18 +234,18 @@ curl 'https://capture.example.com/api/simple-capture/runs/456/download' \
 ### 同步下载 ZIP
 
 ```bash
-curl -X POST 'https://capture.example.com/api/simple-capture/submit-and-download' \
+curl -X POST 'https://vt-sys.fastinsight.info/capture/api/simple-capture/submit-and-download' \
   -H 'X-API-Key: your-secret-key' \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com/page"}' \
+  -d '{"urls":["https://example.com/page-a","https://example.com/page-b"]}' \
   -o result.zip
 ```
 
 ### 同步返回 Markdown
 
 ```bash
-curl -X POST 'https://capture.example.com/api/simple-capture/submit-markdown' \
+curl -X POST 'https://vt-sys.fastinsight.info/capture/api/simple-capture/submit-markdown' \
   -H 'X-API-Key: your-secret-key' \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com/page"}'
+  -d '{"urls":["https://example.com/page-a","https://example.com/page-b"]}'
 ```

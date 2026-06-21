@@ -14,7 +14,7 @@ export function Projects() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<any[]>([]);
   const [defaultSite, setDefaultSite] = useState<any>(null);
-  const [quickUrl, setQuickUrl] = useState("");
+  const [quickUrlsText, setQuickUrlsText] = useState("");
   const [isSubmittingQuickUrl, setIsSubmittingQuickUrl] = useState(false);
   const [expandUrl, setExpandUrl] = useState("");
   const [expandedLinks, setExpandedLinks] = useState<Awaited<ReturnType<typeof api.expandLinks>> | null>(null);
@@ -41,13 +41,21 @@ export function Projects() {
     loadProjects();
   };
 
-  const submitQuickUrl = async () => {
-    if (!quickUrl.trim()) return;
+  const parseQuickUrls = () => [...new Set(
+    quickUrlsText
+      .split(/\r?\n/)
+      .map((url) => url.trim())
+      .filter(Boolean),
+  )];
+
+  const submitQuickUrls = async () => {
+    const urls = parseQuickUrls();
+    if (urls.length === 0) return;
     setIsSubmittingQuickUrl(true);
     try {
-      const result = await api.submitSimpleCapture(quickUrl.trim());
-      setQuickUrl("");
-      toast.success(`已提交 Run #${result.runId}。`);
+      const result = await api.submitSimpleCapture(urls);
+      setQuickUrlsText("");
+      toast.success(`已提交 ${urls.length} 个 URL，Run #${result.runId}。`);
       navigate(`/sites/${result.siteId}/crawl?runId=${result.runId}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "提交失败。");
@@ -138,18 +146,14 @@ export function Projects() {
             </CardDescription>
           </div>
           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-            <Input
-              placeholder="粘贴要采集的 URL"
-              value={quickUrl}
-              onChange={(event) => setQuickUrl(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  submitQuickUrl();
-                }
-              }}
+            <textarea
+              className="min-h-[88px] w-full resize-y rounded-md border bg-background px-3 py-2 text-sm"
+              placeholder="每行一个要采集的 URL"
+              value={quickUrlsText}
+              onChange={(event) => setQuickUrlsText(event.target.value)}
               disabled={!defaultSite || isSubmittingQuickUrl}
             />
-            <Button className="gap-2" onClick={submitQuickUrl} disabled={!defaultSite || !quickUrl.trim() || isSubmittingQuickUrl}>
+            <Button className="gap-2 self-start" onClick={submitQuickUrls} disabled={!defaultSite || parseQuickUrls().length === 0 || isSubmittingQuickUrl}>
               {isSubmittingQuickUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               提交
             </Button>
