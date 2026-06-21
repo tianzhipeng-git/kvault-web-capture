@@ -199,6 +199,8 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
   private readonly contexts = new Map<string, BrowserContextEntry>();
 
+  private readonly cdpLeaseLocks = new Map<string, Promise<void>>();
+
   private lightpandaLeaseId = 0;
 
   constructor(private readonly siteConfig?: { browser?: BrowserConfig }) {}
@@ -286,9 +288,17 @@ export class PlaywrightBrowserManager implements BrowserManager {
     runtime: RuntimeContext;
   }): Promise<CdpLease> {
     const startedAt = Date.now();
-    const entry = await this.getBrowserProcess(input.identity);
-    if (!entry.cdpHttpUrl || !entry.cdpWebSocketUrl) {
-      throw new Error(`CDP endpoint leases are not available for browser engine ${input.identity.engine}`);
+    const key = processKey(input.identity, this.siteConfig?.browser);
+    const releaseLock = await this.acquireCdpLeaseLock(key);
+    let entry: BrowserProcessEntry;
+    try {
+      entry = await this.getBrowserProcess(input.identity);
+      if (!entry.cdpHttpUrl || !entry.cdpWebSocketUrl) {
+        throw new Error(`CDP endpoint leases are not available for browser engine ${input.identity.engine}`);
+      }
+    } catch (error) {
+      releaseLock();
+      throw error;
     }
 
     logger.info('Browser CDP lease acquired', {
@@ -297,11 +307,17 @@ export class PlaywrightBrowserManager implements BrowserManager {
       cdpHttpUrl: entry.cdpHttpUrl,
       durationMs: Date.now() - startedAt,
     });
+    let released = false;
     return {
       cdpHttpUrl: entry.cdpHttpUrl,
       cdpWebSocketUrl: entry.cdpWebSocketUrl,
       identity: input.identity,
       release: async () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        releaseLock();
         logger.info('Browser CDP lease released', {
           requestId: input.runtime.requestId,
           identity: browserIdentityLogMeta(input.identity),
@@ -349,6 +365,30 @@ export class PlaywrightBrowserManager implements BrowserManager {
         entry.process.kill('SIGTERM');
       }
     }));
+  }
+
+  private async acquireCdpLeaseLock(key: string): Promise<() => void> {
+    const previous = this.cdpLeaseLocks.get(key) ?? Promise.resolve();
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+
+    const next = previous.catch(() => {}).then(() => current);
+    this.cdpLeaseLocks.set(key, next);
+    await previous.catch(() => {});
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      releaseCurrent();
+      if (this.cdpLeaseLocks.get(key) === next) {
+        this.cdpLeaseLocks.delete(key);
+      }
+    };
   }
 
   private async getBrowser(identity: BrowserIdentity): Promise<Browser> {
