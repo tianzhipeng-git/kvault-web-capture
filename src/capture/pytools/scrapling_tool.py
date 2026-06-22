@@ -15,10 +15,8 @@ def build_page_action(needs_screenshot):
 
     async def page_action(page):
         try:
-            from playwright.async_api import TimeoutError as PlaywrightTimeoutError
-
             await page.wait_for_load_state("networkidle", timeout=SOFT_NETWORK_IDLE_TIMEOUT_MS)
-        except PlaywrightTimeoutError:
+        except Exception:
             pass
 
         if needs_screenshot:
