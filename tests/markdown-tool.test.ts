@@ -20,7 +20,7 @@ function makeInput(overrides: Partial<CaptureInput> = {}): CaptureInput {
       sitemaps: [],
       rulesBeforeBaseEq: [],
       rulesBeforeStage2Eq: [],
-      runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+      runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0, maxRequestRetries: 3 },
     },
     runtime: {
       requestId: 'test-request',

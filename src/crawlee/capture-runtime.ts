@@ -18,6 +18,7 @@ export interface CrawleeCaptureRuntimeOptions {
   requestQueue: RequestQueue;
   configuration: Configuration;
   maxConcurrency?: number;
+  maxRequestRetries?: number;
   requestHandlerTimeoutSecs?: number;
   abortSignal?: AbortSignal;
   requestHandler: (input: {
@@ -45,6 +46,7 @@ export class CrawleeCaptureRuntime {
       {
         requestQueue: options.requestQueue,
         maxConcurrency: options.maxConcurrency ?? 5,
+        maxRequestRetries: options.maxRequestRetries ?? 3,
         requestHandlerTimeoutSecs: handlerTimeoutSecs,
         ...ANTI_BLOCKING_OPTIONS,
         sessionPoolOptions: SESSION_POOL_OPTIONS,

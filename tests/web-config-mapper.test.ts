@@ -13,6 +13,7 @@ describe('web config mapper', () => {
       runOptions: {
         seedMaxDepth: 2,
         crawlMaxDepth: 4,
+        maxRequestRetries: 1,
       },
       urlNormalization: {
         stripQueryParams: ['sessionId'],
@@ -27,6 +28,7 @@ describe('web config mapper', () => {
       runOptions: {
         seedMaxDepth: 2,
         crawlMaxDepth: 4,
+        maxRequestRetries: 1,
       },
       urlNormalization: {
         stripQueryParams: ['sessionId'],

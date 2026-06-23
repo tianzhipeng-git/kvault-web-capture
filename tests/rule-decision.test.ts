@@ -188,6 +188,7 @@ describe('rule decision', () => {
         runOptions: {
           seedMaxDepth: 1,
           crawlMaxDepth: 2,
+          maxRequestRetries: 3,
         },
       },
       url: 'https://example.com/docs/api',
@@ -233,6 +234,7 @@ describe('rule decision', () => {
         runOptions: {
           seedMaxDepth: 1,
           crawlMaxDepth: 2,
+          maxRequestRetries: 3,
         },
       },
       url: 'https://example.com/docs',
@@ -291,6 +293,7 @@ describe('rule decision', () => {
       runOptions: {
         seedMaxDepth: 1,
         crawlMaxDepth: 2,
+        maxRequestRetries: 3,
       },
     };
 

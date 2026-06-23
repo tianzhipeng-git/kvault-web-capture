@@ -63,7 +63,7 @@ describe('PlaywrightScreenshotTool', () => {
         sitemaps: [],
         rulesBeforeBaseEq: [],
         rulesBeforeStage2Eq: [],
-        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0, maxRequestRetries: 3 },
       },
       runtime,
     });
@@ -105,7 +105,7 @@ describe('PlaywrightScreenshotTool', () => {
         sitemaps: [],
         rulesBeforeBaseEq: [],
         rulesBeforeStage2Eq: [],
-        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0 },
+        runOptions: { seedMaxDepth: 0, crawlMaxDepth: 0, maxRequestRetries: 3 },
         browser: {
           engine: 'chromium',
           profileMode: 'ephemeral',

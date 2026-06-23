@@ -9,6 +9,7 @@ export interface SiteConfigFormInput {
   runOptions?: {
     seedMaxDepth?: number;
     crawlMaxDepth?: number;
+    maxRequestRetries?: number;
   };
   captureProfile?: SiteConfig['captureProfile'];
   urlNormalization?: SiteConfig['urlNormalization'];
@@ -34,6 +35,7 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
     runOptions: {
       seedMaxDepth: input.runOptions?.seedMaxDepth ?? 1,
       crawlMaxDepth: input.runOptions?.crawlMaxDepth ?? 2,
+      maxRequestRetries: input.runOptions?.maxRequestRetries ?? 3,
     },
     captureProfile: input.captureProfile,
     urlNormalization: input.urlNormalization,

@@ -504,6 +504,7 @@ export class RunService {
       requestQueue: pageCaptureQueue,
       configuration,
       abortSignal: input.abortSignal,
+      maxRequestRetries: effectiveConfig.runOptions.maxRequestRetries,
       requestHandlerTimeoutSecs: REQUEST_HANDLER_TIMEOUT_SECS,
       requestHandler: createPageCaptureRequestHandler({
         executor,

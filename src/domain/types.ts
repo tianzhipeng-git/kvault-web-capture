@@ -70,6 +70,7 @@ export interface LabelRule {
 export interface SiteRunOptions {
   seedMaxDepth: number;
   crawlMaxDepth: number;
+  maxRequestRetries: number;
 }
 
 export interface UrlNormalizationConfig {

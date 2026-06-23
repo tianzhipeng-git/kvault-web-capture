@@ -77,6 +77,7 @@ function makeSiteConfig(baseUrl: string): SiteConfig {
     runOptions: {
       seedMaxDepth: 0,
       crawlMaxDepth: 0,
+      maxRequestRetries: 3,
     },
   };
 }

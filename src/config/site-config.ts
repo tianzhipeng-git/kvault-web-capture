@@ -159,13 +159,17 @@ function parseRunOptions(value: unknown): SiteRunOptions {
     typeof value.seedMaxDepth === 'number' ? value.seedMaxDepth : 1;
   const crawlMaxDepth =
     typeof value.crawlMaxDepth === 'number' ? value.crawlMaxDepth : 2;
+  const maxRequestRetries =
+    typeof value.maxRequestRetries === 'number' ? value.maxRequestRetries : 3;
 
   assert(seedMaxDepth >= 0, 'runOptions.seedMaxDepth must be >= 0');
   assert(crawlMaxDepth >= 0, 'runOptions.crawlMaxDepth must be >= 0');
+  assert(maxRequestRetries >= 0, 'runOptions.maxRequestRetries must be >= 0');
 
   return {
     seedMaxDepth,
     crawlMaxDepth,
+    maxRequestRetries,
   };
 }
 
@@ -409,6 +413,7 @@ export function createDefaultSiteConfig(baseUrl: string): SiteConfig {
     runOptions: {
       seedMaxDepth: 1,
       crawlMaxDepth: 2,
+      maxRequestRetries: 3,
     },
   };
 }

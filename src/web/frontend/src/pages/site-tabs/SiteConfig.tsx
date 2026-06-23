@@ -138,6 +138,7 @@ interface SiteConfigShape extends SiteConfigM2Fields {
   runOptions: {
     seedMaxDepth: number;
     crawlMaxDepth: number;
+    maxRequestRetries: number;
   };
   urlNormalization?: {
     stripQueryParams: string[];
@@ -189,6 +190,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
   const [rulesBeforeStage2Eq, setRulesBeforeStage2Eq] = useState<Rule[]>([]);
   const [seedMaxDepth, setSeedMaxDepth] = useState("1");
   const [crawlMaxDepth, setCrawlMaxDepth] = useState("2");
+  const [maxRequestRetries, setMaxRequestRetries] = useState("3");
   const [sites, setSites] = useState<Array<{ siteId: number; siteName: string }>>([]);
   const [sourceSiteId, setSourceSiteId] = useState("");
   const [projectId, setProjectId] = useState<number | null>(null);
@@ -208,6 +210,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     setRulesBeforeStage2Eq((nextConfig.rulesBeforeStage2Eq || []) as Rule[]);
     setSeedMaxDepth(String(nextConfig.runOptions.seedMaxDepth));
     setCrawlMaxDepth(String(nextConfig.runOptions.crawlMaxDepth));
+    setMaxRequestRetries(String(nextConfig.runOptions.maxRequestRetries));
     setCaptureConfig(captureConfigFromApi(nextConfig));
   };
 
@@ -236,6 +239,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
     runOptions: {
       seedMaxDepth: Number(seedMaxDepth),
       crawlMaxDepth: Number(crawlMaxDepth),
+      maxRequestRetries: Number(maxRequestRetries),
     },
     urlNormalization: config?.urlNormalization,
     ...captureConfigToApi(captureConfig),
@@ -400,7 +404,7 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               <CardTitle>入口与深度</CardTitle>
               <CardDescription>每行一个 URL；seed 只用于摸底，crawl 用于正式递归深度。</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 grid-cols-[1fr_1fr_8rem_8rem]">
+            <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_8rem_8rem_9rem]">
               <div className="space-y-2">
                 <Label>Seed URLs</Label>
                 <textarea className="h-[48px] w-full rounded-md border bg-background px-3 py-1 text-sm resize-none" value={seedUrlsText} onChange={(event) => setSeedUrlsText(event.target.value)} />
@@ -416,6 +420,10 @@ export function SiteConfig({ siteId }: { siteId: number }) {
               <div className="space-y-2">
                 <Label>Crawl Max Depth</Label>
                 <Input type="number" min="0" value={crawlMaxDepth} onChange={(event) => setCrawlMaxDepth(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Max Retries</Label>
+                <Input type="number" min="0" value={maxRequestRetries} onChange={(event) => setMaxRequestRetries(event.target.value)} />
               </div>
             </CardContent>
           </Card>
