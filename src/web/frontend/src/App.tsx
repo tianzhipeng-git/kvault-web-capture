@@ -120,7 +120,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto bg-muted/20">
-        <div className="p-8 max-w-7xl mx-auto min-h-full">
+        <div className="p-8 max-w-screen-2xl mx-auto min-h-full">
           <Routes>
             <Route path="/" element={<Projects />} />
             <Route path="/settings" element={<SettingsPage />} />

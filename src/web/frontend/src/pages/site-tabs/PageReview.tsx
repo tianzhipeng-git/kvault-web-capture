@@ -917,7 +917,7 @@ export function PageReview({
                   )}
                   <TableHead className="w-24">Page ID</TableHead>
                   <TableHead>页面</TableHead>
-                  <TableHead>状态</TableHead>
+                  <TableHead className="min-w-36 whitespace-nowrap">状态</TableHead>
                   <TableHead>发现来源</TableHead>
                   <TableHead>采集摘要</TableHead>
                   <TableHead>最近更新</TableHead>
@@ -943,7 +943,7 @@ export function PageReview({
                       <div className="font-medium truncate">{item.title}</div>
                       <div className="text-xs text-muted-foreground truncate">{item.url}</div>
                     </TableCell>
-                    <TableCell onClick={() => openDetail(item.sitePageId)}><Badge variant={statusVariant(item)}>{item.businessStatus}</Badge></TableCell>
+                    <TableCell className="min-w-36 whitespace-nowrap" onClick={() => openDetail(item.sitePageId)}><Badge variant={statusVariant(item)}>{item.businessStatus}</Badge></TableCell>
                     <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{item.discoverySource}</TableCell>
                     <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{item.captureSummary}</TableCell>
                     <TableCell className="text-muted-foreground" onClick={() => openDetail(item.sitePageId)}>{formatDate(item.latestHandledAt)}</TableCell>
