@@ -2,6 +2,10 @@
 
 本文档面向外部系统调用方，描述如何通过 API 提交多个 URL 到系统默认站点，并获取本次运行结果。
 
+上述提交爬取的接口分为两类
+- 第一类是分步调用的接口, 即提交、查询、下载, 每个接口都能立刻返回. 
+- 第二类是同步阻塞接口, 提交后 接口会一直阻塞 等到运行完成返回结果; 仅当要提交的任务量很小的时候 使用这类接口.
+
 ## 基础地址
 
 **Base URL：** `https://vt-sys.fastinsight.info/capture`
@@ -169,6 +173,14 @@ Content-Type: application/json
 
 - `Content-Type: application/zip`
 - Body 为标准页面导出 ZIP。
+
+响应头：
+
+```http
+X-Kvault-Run-Id: 456
+X-Kvault-Site-Id: 12
+```
+如果本同步接口中途出现连接中断 可以利用响应头里的这两个ID 配合上述分步接口 获取状态和结果.
 
 ### 提交并直接返回 Markdown
 

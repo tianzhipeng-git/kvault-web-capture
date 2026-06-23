@@ -777,20 +777,23 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.post('/api/simple-capture/submit-and-download', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const { runInput } = await buildSimpleCaptureInput(body);
+    const { defaultSite, runInput } = await buildSimpleCaptureInput(body);
     const summary = await coordinator.startCrawl(app, runInput);
+    reply
+      .header('X-Kvault-Run-Id', String(summary.runId))
+      .header('X-Kvault-Site-Id', String(defaultSite.siteId));
     return sendZipFile(reply, await app.exportRunPages(summary.runId));
   });
 
   server.post('/api/simple-capture/submit-markdown', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const { runInput } = await buildSimpleCaptureInput(body);
+    const { defaultSite, runInput } = await buildSimpleCaptureInput(body);
     const summary = await coordinator.startCrawl(app, runInput);
     const result = await runQuery.getRunMarkdown(summary.runId);
     return reply
       .type('text/markdown; charset=utf-8')
       .header('X-Kvault-Run-Id', String(result.runId))
-      .header('X-Kvault-Site-Id', String(result.siteId))
+      .header('X-Kvault-Site-Id', String(defaultSite.siteId))
       .header('X-Kvault-Page-Count', String(result.pageCount))
       .send(result.markdown);
   });

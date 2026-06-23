@@ -955,4 +955,81 @@ describe('web server', () => {
 
     await db.close();
   });
+
+  it('returns run metadata headers for synchronous simple capture download', async () => {
+    const dir = createTempDir('kvault-web-simple-capture-sync-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 1,
+      apiKey: 'external-secret',
+    });
+    servers.push(webServer);
+
+    const siteServer = await startTestSiteServer();
+    siteServers.push(siteServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Simple Project', 'simple-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'simple-site',
+        siteServer.baseUrl,
+        join(dir, 'storage'),
+        JSON.stringify({
+          seedUrls: [],
+          sitemaps: [],
+          rulesBeforeBaseEq: [],
+          rulesBeforeStage2Eq: [],
+          runOptions: {
+            seedMaxDepth: 1,
+            crawlMaxDepth: 0,
+          },
+        }),
+        now,
+        now,
+      ],
+    );
+
+    const authCookie = await login(webServer);
+    const setDefaultResponse = await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-site',
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+      payload: {
+        siteId: site.lastInsertId,
+      },
+    });
+    expect(setDefaultResponse.statusCode).toBe(200);
+
+    const response = await webServer.inject({
+      method: 'POST',
+      url: '/api/simple-capture/submit-and-download',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: {
+        urls: [`${siteServer.baseUrl}/docs`],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('application/zip');
+    expect(Number(response.headers['x-kvault-run-id'])).toBeGreaterThan(0);
+    expect(response.headers['x-kvault-site-id']).toBe(String(site.lastInsertId));
+    expect(response.rawPayload.length).toBeGreaterThan(0);
+
+    await db.close();
+  });
 });

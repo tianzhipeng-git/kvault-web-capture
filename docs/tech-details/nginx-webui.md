@@ -65,6 +65,8 @@ server {
     location /capture/api/ {
         proxy_pass http://127.0.0.1:3100/api/;
         proxy_max_temp_file_size 0;
+        proxy_read_timeout 7200s;
+        proxy_send_timeout 7200s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -86,6 +88,8 @@ server {
 这个配置不是让 Nginx 直接读 `dist` 静态文件，而是把 `/capture/` 下的所有请求统一转给 Fastify。Fastify 会负责返回前端构建产物，并处理 API。
 
 如果把 `proxy_pass` 写成没有尾斜杠的 `http://127.0.0.1:3100`，Nginx 会把 `/capture/...` 原样转发给后端，后端收到的路径会变成 `/capture/api/...`、`/capture/projects/1`，通常会导致 API 404 或 SPA fallback 不符合预期。
+
+`/api/simple-capture/submit-and-download` 和 `/api/simple-capture/submit-markdown` 是同步阻塞接口，采集完成前不会发送响应体。`proxy_read_timeout` 必须大于“采集 + 导出”的最坏耗时，且不要和客户端 `curl --max-time` 设置成相同边界值；两边都设成 `3600` 秒时，只要运行接近 1 小时，就可能在结果写出前断连。
 
 ## 验证
 
