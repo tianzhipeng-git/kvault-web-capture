@@ -26,8 +26,8 @@ export function SiteSeed({ siteId }: { siteId: number }) {
   const [cancellingRunId, setCancellingRunId] = useState<number | null>(null);
 
   const loadRuns = () => {
-    api.getSiteRuns(siteId).then((data) => {
-      const seedRuns = (data.items || []).filter((run: SiteRunListItem) => run.runType === "seed_run");
+    api.getSiteRuns(siteId, { runType: "seed_run" }).then((data) => {
+      const seedRuns = data.items || [];
       setRuns(seedRuns);
       setSelectedRunId((current) => current ?? seedRuns[0]?.runId ?? null);
     });

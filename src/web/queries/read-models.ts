@@ -2,7 +2,7 @@ import { access, readFile } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 
 import type { DbClient, DbValue } from '../../db/database.js';
-import type { SiteConfig } from '../../domain/types.js';
+import type { RunType, SiteConfig, UpdatePolicy } from '../../domain/types.js';
 
 function parseJson<T>(value: string | null): T | null {
   if (value === null) {
@@ -1134,6 +1134,41 @@ export class SitePageDetailQuery {
 export class RunSummaryQuery {
   constructor(private readonly db: DbClient) { }
 
+  private mapRunListRow(row: Record<string, unknown>): {
+    runId: number;
+    runType: RunType;
+    runTypeLabel: string;
+    updatePolicy: UpdatePolicy;
+    status: string;
+    statusLabel: string;
+    startedAt: string;
+    finishedAt: string | null;
+    successfulPages: number;
+    pendingPages: number;
+    deniedPages: number;
+    targetSuccessCount: number | null;
+    configSummary: ReturnType<typeof summarizeConfig>;
+  } {
+    const config = JSON.parse(String(row.config_snapshot_json)) as SiteConfig;
+
+    return {
+      runId: Number(row.id),
+      runType: row.run_type as RunType,
+      runTypeLabel: toRunTypeLabel(String(row.run_type)),
+      updatePolicy: row.update_policy as UpdatePolicy,
+      status: String(row.status),
+      statusLabel: toRunStatusLabel(String(row.status)),
+      startedAt: String(row.started_at),
+      finishedAt: (row.finished_at as string | null | undefined) ?? null,
+      successfulPages: Number(row.successful_page_count),
+      pendingPages: Number(row.pending_page_count),
+      deniedPages: Number(row.denied_page_count),
+      targetSuccessCount:
+        (row.target_success_count as number | null | undefined) ?? null,
+      configSummary: summarizeConfig(config),
+    };
+  }
+
   async getRunPageIds(runId: number): Promise<{
     runId: number;
     siteId: number;
@@ -1237,10 +1272,20 @@ export class RunSummaryQuery {
     };
   }
 
-  async listSiteRuns(siteId: number): Promise<Array<{
+  async listSiteRuns(input: {
+    siteId: number;
+    page: number;
+    pageSize: number;
+    runType?: RunType;
+  }): Promise<{
+    total: number;
+    page: number;
+    pageSize: number;
+    items: Array<{
     runId: number;
-    runType: string;
+    runType: RunType;
     runTypeLabel: string;
+    updatePolicy: UpdatePolicy;
     status: string;
     statusLabel: string;
     startedAt: string;
@@ -1250,11 +1295,27 @@ export class RunSummaryQuery {
     deniedPages: number;
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
-  }>> {
-    const rows = await this.db.all(
+    }>;
+  }> {
+    const filters = ['site_id = ?'];
+    const args: DbValue[] = [input.siteId];
+
+    if (input.runType) {
+      filters.push('run_type = ?');
+      args.push(input.runType);
+    }
+
+    const whereClause = filters.join(' AND ');
+    const totalRow = await this.db.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM crawl_runs WHERE ${whereClause}`,
+      args,
+    );
+    const offset = (input.page - 1) * input.pageSize;
+    const rows = await this.db.all<Record<string, unknown>>(
         `SELECT
            id,
            run_type,
+           update_policy,
            status,
            started_at,
            finished_at,
@@ -1264,30 +1325,18 @@ export class RunSummaryQuery {
            target_success_count,
            config_snapshot_json
          FROM crawl_runs
-         WHERE site_id = ?
-         ORDER BY id DESC`,
-      [siteId],
+         WHERE ${whereClause}
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`,
+      [...args, input.pageSize, offset],
     );
-    return rows.map((row) => {
-        const record = row as Record<string, unknown>;
-        const config = JSON.parse(String(record.config_snapshot_json)) as SiteConfig;
 
-        return {
-          runId: Number(record.id),
-          runType: String(record.run_type),
-          runTypeLabel: toRunTypeLabel(String(record.run_type)),
-          status: String(record.status),
-          statusLabel: toRunStatusLabel(String(record.status)),
-          startedAt: String(record.started_at),
-          finishedAt: (record.finished_at as string | null | undefined) ?? null,
-          successfulPages: Number(record.successful_page_count),
-          pendingPages: Number(record.pending_page_count),
-          deniedPages: Number(record.denied_page_count),
-          targetSuccessCount:
-            (record.target_success_count as number | null | undefined) ?? null,
-          configSummary: summarizeConfig(config),
-        };
-      });
+    return {
+      total: Number(totalRow?.count ?? 0),
+      page: input.page,
+      pageSize: input.pageSize,
+      items: rows.map((row) => this.mapRunListRow(row)),
+    };
   }
 
   async getLatestRunForSite(siteId: number, runType: 'seed_run' | 'crawl_run'): Promise<{
@@ -1300,7 +1349,13 @@ export class RunSummaryQuery {
     pendingPages: number;
     deniedPages: number;
   } | null> {
-    return (await this.listSiteRuns(siteId)).find((run) => run.runType === runType) ?? null;
+    const result = await this.listSiteRuns({
+      siteId,
+      runType,
+      page: 1,
+      pageSize: 1,
+    });
+    return result.items[0] ?? null;
   }
 
   async getRunSummary(runId: number): Promise<{

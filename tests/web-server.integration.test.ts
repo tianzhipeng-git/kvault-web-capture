@@ -660,6 +660,95 @@ describe('web server', () => {
     await db.close();
   });
 
+  it('paginates site run records and returns update policy', async () => {
+    const dir = createTempDir('kvault-web-run-list-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 2,
+    });
+    servers.push(webServer);
+    const authCookie = await login(webServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const config = {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: {
+        seedMaxDepth: 1,
+        crawlMaxDepth: 0,
+      },
+    };
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Run List Project', 'run-list-project', '[]', now],
+    );
+    const site = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'run-list-site',
+        'https://example.com',
+        join(dir, 'storage'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+
+    for (const [runType, updatePolicy] of [
+      ['crawl_run', 'skip_existing'],
+      ['seed_run', 'force_recrawl_all'],
+      ['crawl_run', 'stale_after_duration'],
+    ] as const) {
+      await db.run(
+        `INSERT INTO crawl_runs (
+          site_id, run_type, update_policy, config_snapshot_json, status, started_at, finished_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          site.lastInsertId,
+          runType,
+          updatePolicy,
+          JSON.stringify(config),
+          'succeeded',
+          now,
+          now,
+        ],
+      );
+    }
+
+    const response = await webServer.inject({
+      method: 'GET',
+      url: `/api/sites/${site.lastInsertId}/runs?runType=crawl_run&page=2&pageSize=1`,
+      cookies: {
+        kvault_session: authCookie.split('=')[1],
+      },
+    });
+    const result = response.json() as {
+      total: number;
+      page: number;
+      pageSize: number;
+      items: Array<{ runType: string; updatePolicy: string }>;
+    };
+
+    expect(response.statusCode).toBe(200);
+    expect(result.total).toBe(2);
+    expect(result.page).toBe(2);
+    expect(result.pageSize).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      runType: 'crawl_run',
+      updatePolicy: 'skip_existing',
+    });
+    await db.close();
+  });
+
   it('stores a default site and exports pages by run id', async () => {
     const dir = createTempDir('kvault-web-simple-');
     const dbPath = join(dir, 'state.db');

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import type { SiteRunListItem } from "@/lib/api";
+import type { SiteRunListItem, UpdatePolicy } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,34 +18,86 @@ function formatDate(value: string | null): string {
   return value ? new Date(value).toLocaleString() : "-";
 }
 
+function formatDuration(startedAt: string, finishedAt: string | null, now: number): string {
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : now;
+  const seconds = Math.max(Math.floor((end - start) / 1000), 0);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}小时${minutes}分`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}分${remainingSeconds}秒`;
+  }
+
+  return `${remainingSeconds}秒`;
+}
+
+function updatePolicyLabel(value: UpdatePolicy): string {
+  switch (value) {
+    case "force_recrawl_all":
+      return "强制重新采集";
+    case "stale_after_duration":
+      return "超过时间后更新";
+    default:
+      return "跳过已有成功结果";
+  }
+}
+
+const runPageSize = 10;
+
 export function SiteCrawl({ siteId }: { siteId: number }) {
   const [searchParams] = useSearchParams();
   const queryRunId = Number(searchParams.get("runId") ?? "");
   const [isStarting, setIsStarting] = useState(false);
   const [runs, setRuns] = useState<SiteRunListItem[]>([]);
+  const [runPage, setRunPage] = useState(1);
+  const [runTotal, setRunTotal] = useState(0);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"pages" | "logs">("pages");
   const [updatePolicy, setUpdatePolicy] = useState("skip_existing");
   const [targetSuccessCount, setTargetSuccessCount] = useState("");
   const [staleAfterDays, setStaleAfterDays] = useState("");
   const [cancellingRunId, setCancellingRunId] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const loadRuns = () => {
-    api.getSiteRuns(siteId).then((data) => {
-      const crawlRuns = (data.items || []).filter((run: SiteRunListItem) => run.runType === "crawl_run");
+    api.getSiteRuns(siteId, { runType: "crawl_run", page: runPage, pageSize: runPageSize }).then((data) => {
+      const crawlRuns = data.items || [];
       setRuns(crawlRuns);
+      setRunTotal(data.total);
       setSelectedRunId((current) => {
         if (Number.isInteger(queryRunId) && crawlRuns.some((run: SiteRunListItem) => run.runId === queryRunId)) {
           return queryRunId;
         }
-        return current ?? crawlRuns[0]?.runId ?? null;
+        if (current && crawlRuns.some((run: SiteRunListItem) => run.runId === current)) {
+          return current;
+        }
+        return crawlRuns[0]?.runId ?? null;
       });
     });
   };
 
   useEffect(() => {
     loadRuns();
-  }, [queryRunId, siteId]);
+  }, [queryRunId, runPage, siteId]);
+
+  useEffect(() => {
+    setRunPage(1);
+  }, [siteId]);
+
+  useEffect(() => {
+    if (!runs.some((run) => run.status === "running")) {
+      return;
+    }
+
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [runs]);
 
   const startCrawl = async () => {
     setIsStarting(true);
@@ -79,6 +131,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
   };
 
   const selectedRun = runs.find((r) => r.runId === selectedRunId);
+  const runTotalPages = Math.max(Math.ceil(runTotal / runPageSize), 1);
 
   return (
     <div className="space-y-6">
@@ -128,6 +181,8 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
                 <TableHead>状态</TableHead>
                 <TableHead>成功 / 待确认 / 拒绝</TableHead>
                 <TableHead>目标成功数</TableHead>
+                <TableHead>更新策略</TableHead>
+                <TableHead>执行时长</TableHead>
                 <TableHead>开始时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
@@ -154,6 +209,8 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
                   </TableCell>
                   <TableCell>{run.successfulPages} / {run.pendingPages} / {run.deniedPages}</TableCell>
                   <TableCell>{run.targetSuccessCount ?? "不限"}</TableCell>
+                  <TableCell className="text-muted-foreground">{updatePolicyLabel(run.updatePolicy)}</TableCell>
+                  <TableCell className="text-muted-foreground">{formatDuration(run.startedAt, run.finishedAt, now)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(run.startedAt)}</TableCell>
                   <TableCell className="text-right">
                     {run.status === "running" && (
@@ -176,11 +233,32 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
               ))}
               {runs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div>共 {runTotal} 条，当前第 {runPage} / {runTotalPages} 页，每页 {runPageSize} 条</div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={runPage <= 1}
+                onClick={() => setRunPage((current) => Math.max(current - 1, 1))}
+              >
+                上一页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={runPage >= runTotalPages}
+                onClick={() => setRunPage((current) => Math.min(current + 1, runTotalPages))}
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

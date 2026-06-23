@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 export type RunType = "seed_run" | "crawl_run";
 export type RunStatus = "running" | "succeeded" | "failed" | "cancelled";
+export type UpdatePolicy = "skip_existing" | "force_recrawl_all" | "stale_after_duration";
 
 function buildQueryString(params: object): string {
   const q = new URLSearchParams();
@@ -21,6 +22,7 @@ export interface SiteRunListItem {
   runId: number;
   runType: RunType;
   runTypeLabel: string;
+  updatePolicy: UpdatePolicy;
   status: RunStatus;
   statusLabel: string;
   startedAt: string;
@@ -30,6 +32,13 @@ export interface SiteRunListItem {
   deniedPages: number;
   targetSuccessCount: number | null;
   errorMessage?: string | null;
+}
+
+export interface SiteRunListResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: SiteRunListItem[];
 }
 
 export interface RunLogItem {
@@ -380,7 +389,10 @@ export const api = {
     body: JSON.stringify(config)
   }),
   
-  getSiteRuns: (siteId: number) => fetchApi(`/api/sites/${siteId}/runs`),
+  getSiteRuns: (siteId: number, params: { page?: number; pageSize?: number; runType?: RunType } = {}): Promise<SiteRunListResponse> => {
+    const q = buildQueryString(params);
+    return fetchApi(`/api/sites/${siteId}/runs${q ? `?${q}` : ""}`);
+  },
   getRunSummary: (runId: number) => fetchApi(`/api/runs/${runId}`),
   cancelRun: (runId: number): Promise<{ runId: number; status: "cancelling" | "cancelled"; statusLabel: string }> => fetchApi(`/api/runs/${runId}/cancel`, {
     method: 'POST',

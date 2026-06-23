@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 import { CaptureApp } from '../app/capture-app.js';
+import type { RunType } from '../domain/types.js';
 import type { ProjectExportArtifact, ProjectExportOptions } from '../export/project-exporter.js';
 import { openDatabase } from '../db/database.js';
 import { chatCompletion, type ChatCompletionMessageParam } from '../utils/llm_chat.js';
@@ -77,6 +78,18 @@ function parseStatusFilter(value: string | string[] | undefined): string[] | und
     .map((item) => item.trim())
     .filter(Boolean);
   return statuses.length > 0 ? statuses : undefined;
+}
+
+function parseRunType(value: string | undefined): RunType | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+
+  if (value !== 'seed_run' && value !== 'crawl_run') {
+    throw new Error('runType 无效。');
+  }
+
+  return value;
 }
 
 function parseProjectId(value: string): number {
@@ -1048,9 +1061,13 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
 
   server.get('/api/sites/:siteId/runs', async (request) => {
     const params = request.params as { siteId: string };
-    return {
-      items: await runQuery.listSiteRuns(parseSiteId(params.siteId)),
-    };
+    const query = request.query as { page?: string; pageSize?: string; runType?: string };
+    return runQuery.listSiteRuns({
+      siteId: parseSiteId(params.siteId),
+      page: parsePositiveNumber(query.page, 1),
+      pageSize: parsePositiveNumber(query.pageSize, 20),
+      runType: parseRunType(query.runType),
+    });
   });
 
   server.get('/api/runs/:runId', async (request) => {
