@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import * as fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
@@ -21,43 +21,51 @@ interface LLMConfig {
 
 const _clients: Record<string, OpenAI> = {};
 let _config: LLMConfig | null = null;
+let _configPromise: Promise<LLMConfig> | null = null;
 
 /**
  * 加载并解析 YAML 配置文件
  */
-export function loadLLMConfig(): LLMConfig {
+export async function loadLLMConfig(): Promise<LLMConfig> {
 	if (_config) return _config;
+	if (_configPromise) return _configPromise;
 
-	const __dirname = path.dirname(fileURLToPath(import.meta.url));
-	const configPath = path.join(__dirname, 'llm_config.yaml');
-	try {
-		const fileContents = fs.readFileSync(configPath, 'utf8');
+	_configPromise = (async () => {
+		const __dirname = path.dirname(fileURLToPath(import.meta.url));
+		const configPath = path.join(__dirname, 'llm_config.yaml');
+		try {
+			const fileContents = await fsPromises.readFile(configPath, 'utf8');
 
-		// 动态替换环境变量，形式如 ${VAR_NAME}
-		// 如果环境变量不存在，则替换为空字符串
-		const envSubstituted = fileContents.replace(/\$\{([^}]+)\}/g, (match, envVar) => {
-			return process.env[envVar] || '';
-		});
+			// 动态替换环境变量，形式如 ${VAR_NAME}
+			// 如果环境变量不存在，则替换为空字符串
+			const envSubstituted = fileContents.replace(/\$\{([^}]+)\}/g, (match, envVar) => {
+				return process.env[envVar] || '';
+			});
 
-		_config = yaml.load(envSubstituted) as LLMConfig;
-	} catch (e) {
-		console.error('Failed to load llm_config.yaml', e);
-		throw new Error('llm_config.yaml 读取或解析失败');
-	}
+			_config = yaml.load(envSubstituted) as LLMConfig;
+		} catch (e) {
+			console.error('Failed to load llm_config.yaml', e);
+			_configPromise = null;
+			throw new Error('llm_config.yaml 读取或解析失败');
+		}
 
-	if (!_config || !_config.models) {
-		throw new Error('llm_config.yaml 格式错误或缺少 models 配置');
-	}
+		if (!_config || !_config.models) {
+			_configPromise = null;
+			throw new Error('llm_config.yaml 格式错误或缺少 models 配置');
+		}
 
-	return _config;
+		return _config;
+	})();
+
+	return _configPromise;
 }
 
 /**
  * 获取特定模型的 OpenAI 客户端实例
  * @param modelKey yaml配置文件中的模型键名
  */
-export function getOpenAIClient(modelKey?: string): OpenAI {
-	const config = loadLLMConfig();
+export async function getOpenAIClient(modelKey?: string): Promise<OpenAI> {
+	const config = await loadLLMConfig();
 
 	// 兼容通过环境变量指定的方式
 	const key = modelKey || process.env.LLM_MODEL || config.default;
@@ -103,9 +111,9 @@ export function getOpenAIClient(modelKey?: string): OpenAI {
 /**
  * 检查目前是否配置了 LLM
  */
-export function isLLMConfigured(): boolean {
+export async function isLLMConfigured(): Promise<boolean> {
 	try {
-		const config = loadLLMConfig();
+		const config = await loadLLMConfig();
 
 		return !!config && !!config.models;
 	} catch {
@@ -124,7 +132,7 @@ export async function chatCompletion(
 		response_format?: { type: 'json_object' | 'text' };
 	},
 ): Promise<string> {
-	const config = loadLLMConfig();
+	const config = await loadLLMConfig();
 
 	// options?.model 用作去找这套配置（匹配 YAML 里的 key）
 	const key = options?.model || process.env.LLM_MODEL || config.default;
@@ -134,7 +142,7 @@ export async function chatCompletion(
 		throw new Error(`未找到指定的模型配置: ${key}`);
 	}
 
-	const client = getOpenAIClient(key);
+	const client = await getOpenAIClient(key);
 
 	const response = await client.chat.completions.create({
 		// 转换成服务商真正的模型名称
