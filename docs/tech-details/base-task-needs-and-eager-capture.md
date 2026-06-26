@@ -50,7 +50,7 @@ handleBaseTask                 → 分类 + stage2 后决定落盘 / 补抓入�
 
 ## 3. 何时计算 needs
 
-`resolveBaseTaskNeeds(...)` 在两处调用：
+`resolveBaseTaskNeeds` 在两处调用：
 
 1. **启动入队**（`RunService.executeRunWithRuntime`）：seed / sitemap / inventory URL 展开后，每个通过 `RunPlanner.planRequest` 的 URL。
 2. **链接发现入队**（`handleBaseTask`）：base 完成后从 `extracted.links` 扩展子 URL 时。
