@@ -1,5 +1,3 @@
-
-
 保留通过 CLI 直接跑的能力。这是为了未来安在调度机上后，就不用走 HTTP 接口了(这里要注意，python工具所使用的两个 ENV 的合并)。
 
 CLI 里加入一键爬整站的功能，还有一键爬单个 URL 的功能 这个页面里有
@@ -8,13 +6,15 @@ CLI的打包方式优化一下 让用户能直接通过一个命令执行
 
 
 
-s是否要新增 Update Policy 这个里如果新加一种策略 就是re evaluate validator
-
-
+是否要新增 Update Policy 这个里如果新加一种策略 就是re evaluate validator
 
 直接上传oss、vault
 
+速度的问题
 
+Default run只输出Markdown的功能
+
+Gabby的skills
 
 ## skill写法
 
