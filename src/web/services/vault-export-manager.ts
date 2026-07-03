@@ -132,6 +132,7 @@ export class VaultExportManager {
     },
   ): Promise<void> {
     let outputPath: string | null = null;
+    let terminalUpdate: Partial<VaultExportTaskSnapshot> | null = null;
 
     try {
       const targetProject = await this.resolveTargetProject(input.targetProjectKey);
@@ -157,23 +158,27 @@ export class VaultExportManager {
           rootFolderId: targetProject.driveFolderId,
         }),
       );
-      this.update(taskId, {
+      terminalUpdate = {
         uploadResult,
         phase: 'succeeded',
         message: '已上传到 Vault Drive。',
         finishedAt: new Date().toISOString(),
-      });
+      };
     } catch (error) {
-      this.update(taskId, {
+      terminalUpdate = {
         phase: 'failed',
         message: '导出到 Vault Drive 失败。',
         errorMessage: error instanceof Error ? error.message : '未知错误',
         finishedAt: new Date().toISOString(),
-      });
+      };
     } finally {
       if (outputPath) {
         await rm(outputPath, { force: true });
       }
+    }
+
+    if (terminalUpdate) {
+      this.update(taskId, terminalUpdate);
     }
   }
 
@@ -244,6 +249,11 @@ export class VaultExportManager {
 
   private failExpiredRunningTask(): void {
     if (!this.task || !isRunningPhase(this.task.phase)) {
+      return;
+    }
+
+    // uploading_drive 由 runTask 内的 withUploadTimeout 处理，避免重复超时与清理竞态。
+    if (this.task.phase === 'uploading_drive') {
       return;
     }
 
