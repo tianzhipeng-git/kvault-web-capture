@@ -95,6 +95,33 @@ export interface PreparedExport {
   downloadUrl: string;
 }
 
+export type VaultExportPhase = "queued" | "exporting_zip" | "uploading_drive" | "succeeded" | "failed";
+
+export interface VaultProject {
+  id: string;
+  key: string;
+  name: string;
+  driveFolderId: string;
+}
+
+export interface VaultExportTask {
+  taskId: string;
+  phase: VaultExportPhase;
+  message: string;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  targetProject: VaultProject;
+  fileName: string | null;
+  uploadResult: {
+    fileId: string;
+    fileName: string;
+    webViewLink: string | null;
+    folderId: string;
+  } | null;
+  errorMessage: string | null;
+}
+
 export interface DefaultSiteSetting {
   defaultSite: {
     siteId: number;
@@ -330,6 +357,19 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options ?? {}),
     }),
+  getVaultProjects: (): Promise<{ items: VaultProject[] }> =>
+    fetchApi('/api/vault-drive/projects'),
+  getVaultExportTasks: (): Promise<{ items: VaultExportTask[] }> =>
+    fetchApi('/api/vault-drive/export-tasks'),
+  startProjectVaultExport: (
+    projectId: number,
+    input: ProjectExportOptions & { targetProjectKey: string },
+  ): Promise<{ task: VaultExportTask }> =>
+    fetchApi(`/api/projects/${projectId}/export/vault-drive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
 
   getDefaultSite: (): Promise<DefaultSiteSetting> => fetchApi('/api/system/default-site'),
   setDefaultSite: (siteId: number | null): Promise<DefaultSiteSetting & { status: string }> => fetchApi('/api/system/default-site', {
@@ -405,6 +445,15 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options ?? {}),
     }),
+  startRunVaultExport: (
+    runId: number,
+    input: { artifacts?: ProjectExportArtifact[]; targetProjectKey: string },
+  ): Promise<{ task: VaultExportTask }> =>
+    fetchApi(`/api/runs/${runId}/export/vault-drive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
   
   getSitePages: (siteId: number, params: SitePageListParams) => {
     const q = buildQueryString(params);
@@ -424,6 +473,15 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options),
+    }),
+  startSitePagesByIdsVaultExport: (
+    siteId: number,
+    input: SitePageIdExportOptions & { targetProjectKey: string },
+  ): Promise<{ task: VaultExportTask }> =>
+    fetchApi(`/api/sites/${siteId}/pages/export-by-ids/vault-drive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
     }),
   getSitePageDetail: (siteId: number, sitePageId: number) => fetchApi(`/api/sites/${siteId}/pages/${sitePageId}`),
   previewPageClassification: (

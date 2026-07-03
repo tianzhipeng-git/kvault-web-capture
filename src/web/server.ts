@@ -24,6 +24,7 @@ import {
 } from './http/event-loop-delay-monitor.js';
 import { registerWebRoutes } from './routes/register-web-routes.js';
 import { RunCoordinator } from './services/run-coordinator.js';
+import { VaultExportManager } from './services/vault-export-manager.js';
 
 export interface WebServerOptions {
   dbPath: string;
@@ -73,6 +74,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     getActiveRunCount: () => coordinator.listActiveRuns().length,
   });
   const exportDownloads = new ExportDownloadStore();
+  const vaultExports = new VaultExportManager();
 
   await auth.register(server);
 
@@ -104,6 +106,7 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
     pendingReviewQuery,
     eventLoopDelayMonitor,
     exportDownloads,
+    vaultExports,
   });
 
   return server;

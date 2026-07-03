@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
-import { FolderKanban, Settings, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
+import { CloudUpload, FolderKanban, Settings, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "./lib/api";
 import { Projects } from "./pages/Projects";
 import { ProjectDetails } from "./pages/ProjectDetails";
 import { SiteDashboard } from "./pages/SiteDashboard";
 import { Login } from "./pages/Login";
 import { Settings as SettingsPage } from "./pages/Settings";
+import { ExportRecords } from "./pages/ExportRecords";
 import { Button } from "./components/ui/button";
 
 export default function App() {
@@ -64,6 +65,7 @@ export default function App() {
 
   const navItems = [
     { name: "项目管理", path: "/", icon: FolderKanban },
+    { name: "导出记录", path: "/exports", icon: CloudUpload },
     { name: "系统设置", path: "/settings", icon: Settings },
   ];
 
@@ -123,6 +125,7 @@ export default function App() {
         <div className="p-8 max-w-screen-2xl mx-auto min-h-full">
           <Routes>
             <Route path="/" element={<Projects />} />
+            <Route path="/exports" element={<ExportRecords />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/projects/:projectId" element={<ProjectDetails />} />
             <Route path="/sites/:siteId/*" element={<SiteDashboard />} />

@@ -40,6 +40,7 @@ import type {
 } from '../queries/read-models.js';
 import { mapConfigFormToSiteConfig, mapRunForm } from '../services/config-mapper.js';
 import type { RunCoordinator } from '../services/run-coordinator.js';
+import type { VaultExportManager } from '../services/vault-export-manager.js';
 
 interface RegisterWebRoutesOptions {
   server: FastifyInstance;
@@ -55,6 +56,7 @@ interface RegisterWebRoutesOptions {
   pendingReviewQuery: PendingReviewQuery;
   eventLoopDelayMonitor: Pick<EventLoopDelayMonitorHandle, 'getSnapshot'>;
   exportDownloads: ExportDownloadStore;
+  vaultExports: VaultExportManager;
 }
 
 async function waitForLatestRun(
@@ -89,6 +91,7 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     pendingReviewQuery,
     eventLoopDelayMonitor,
     exportDownloads,
+    vaultExports,
   } = options;
 
   const requireDefaultSite = async () => {
@@ -125,6 +128,14 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
       reply.code(403);
       throw new Error('该接口仅允许 Web UI 登录态访问。');
     }
+  };
+
+  const parseTargetProjectKey = (body: Record<string, unknown>): string => {
+    const key = typeof body.targetProjectKey === 'string' ? body.targetProjectKey.trim() : '';
+    if (!key) {
+      throw new Error('targetProjectKey 不能为空。');
+    }
+    return key;
   };
 
   server.get('/health', async () => ({
@@ -252,6 +263,31 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     requireSessionAuth(request, reply);
     return {
       config: await app.getSystemConfig(),
+    };
+  });
+
+  server.get('/api/vault-drive/projects', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    const query = request.query as { key?: string };
+
+    return {
+      items: query.key?.trim()
+        ? await vaultExports.findTargetProjects(query.key)
+        : await vaultExports.listTargetProjects(),
+    };
+  });
+
+  server.get('/api/vault-drive/export-task', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    return {
+      task: vaultExports.getSnapshot(),
+    };
+  });
+
+  server.get('/api/vault-drive/export-tasks', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    return {
+      items: vaultExports.listSnapshots(),
     };
   });
 
@@ -405,6 +441,18 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
       parseProjectExportOptions(request.body),
     );
     return exportDownloads.buildPreparedExportResponse(result);
+  });
+
+  server.post('/api/projects/:projectId/export/vault-drive', async (request) => {
+    const params = request.params as { projectId: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const projectId = parseProjectId(params.projectId);
+    return {
+      task: vaultExports.start({
+        targetProjectKey: parseTargetProjectKey(body),
+        exportZip: () => app.exportProject(projectId, undefined, parseProjectExportOptions(body)),
+      }),
+    };
   });
 
   server.delete('/api/sites/:siteId', async (request, reply) => {
@@ -641,6 +689,18 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     return exportDownloads.buildPreparedExportResponse(result);
   });
 
+  server.post('/api/runs/:runId/export/vault-drive', async (request) => {
+    const params = request.params as { runId: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const runId = parseRunId(params.runId);
+    return {
+      task: vaultExports.start({
+        targetProjectKey: parseTargetProjectKey(body),
+        exportZip: () => app.exportRunPages(runId, parseExportArtifacts(body.artifacts)),
+      }),
+    };
+  });
+
   server.post('/api/runs/:runId/export', async (request, reply) => {
     const params = request.params as { runId: string };
     const body = (request.body ?? {}) as { artifacts?: unknown };
@@ -731,6 +791,22 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
       artifacts: parseExportArtifacts(body.artifacts),
     });
     return exportDownloads.buildPreparedExportResponse(result);
+  });
+
+  server.post('/api/sites/:siteId/pages/export-by-ids/vault-drive', async (request) => {
+    const params = request.params as { siteId: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const siteId = parseSiteId(params.siteId);
+    return {
+      task: vaultExports.start({
+        targetProjectKey: parseTargetProjectKey(body),
+        exportZip: () => app.exportSitePagesByIds({
+          siteId,
+          pageIds: parsePageIdList(body.pageIds),
+          artifacts: parseExportArtifacts(body.artifacts),
+        }),
+      }),
+    };
   });
 
   server.get('/api/sites/:siteId/pages/:sitePageId', async (request) => {

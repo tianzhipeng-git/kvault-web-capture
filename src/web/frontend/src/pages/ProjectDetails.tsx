@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Globe, ChevronRight, ChevronDown, Download, Loader2, Trash2 } from "lucide-react";
+import { Plus, Globe, ChevronRight, ChevronDown, Download, Loader2, Trash2, CloudUpload } from "lucide-react";
 import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
 import { motion } from "framer-motion";
 import { ProjectLabelDefinitions } from "./ProjectLabelDefinitions";
-import type { ProjectExportArtifact } from "@/lib/api";
+import type { ProjectExportArtifact, VaultProject } from "@/lib/api";
 
 function toPathSegment(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || name.trim();
@@ -26,7 +26,11 @@ export function ProjectDetails() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [exportError, setExportError] = useState("");
+  const [exportDialogError, setExportDialogError] = useState("");
+  const [exportToVault, setExportToVault] = useState(false);
+  const [selectedVaultProjectKey, setSelectedVaultProjectKey] = useState("");
+  const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([]);
+  const [isLoadingVaultProjects, setIsLoadingVaultProjects] = useState(false);
   const [selectedExportSiteIds, setSelectedExportSiteIds] = useState<Set<number>>(new Set());
   const [selectedExportArtifacts, setSelectedExportArtifacts] = useState<Set<ProjectExportArtifact>>(
     new Set(["base", "markdown", "screenshot", "structured"]),
@@ -60,6 +64,29 @@ export function ProjectDetails() {
     });
   }, [projectId]);
 
+  useEffect(() => {
+    if (!isExportDialogOpen || !exportToVault || vaultProjects.length > 0 || isLoadingVaultProjects) return;
+    loadVaultProjects();
+  }, [exportToVault, isExportDialogOpen]);
+
+  const loadVaultProjects = async () => {
+    setIsLoadingVaultProjects(true);
+    setExportDialogError("");
+    try {
+      const result = await api.getVaultProjects();
+      setVaultProjects(result.items);
+      if (result.items.length === 0) {
+        setExportDialogError("没有可导出的 Vault project。");
+      } else {
+        setSelectedVaultProjectKey((current) => current || result.items[0].key);
+      }
+    } catch (error) {
+      setExportDialogError(error instanceof Error ? error.message : "加载 Vault project 失败");
+    } finally {
+      setIsLoadingVaultProjects(false);
+    }
+  };
+
   const handleCreate = async () => {
     if (!formData.name || !formData.baseUrl || !formData.storageRoot) return;
     const site = await api.createSite({
@@ -80,18 +107,34 @@ export function ProjectDetails() {
   const handleExport = async () => {
     if (!projectId || isExporting) return;
     setIsExporting(true);
-    setExportError("");
+    setExportDialogError("");
 
     try {
-      const prepared = await api.prepareProjectExport(Number(projectId), {
+      const exportOptions = {
         siteIds: [...selectedExportSiteIds],
         artifacts: [...selectedExportArtifacts],
         ...(exportStatuses.length > 0 ? { status: exportStatuses } : {}),
-      });
+      };
+      if (exportToVault) {
+        if (!selectedVaultProjectKey) {
+          setExportDialogError("请选择目标 Vault project。");
+          return;
+        }
+        await api.startProjectVaultExport(Number(projectId), {
+          ...exportOptions,
+          targetProjectKey: selectedVaultProjectKey,
+        });
+        setIsExportDialogOpen(false);
+        toast.success("已开始后台上传到 Vault Drive。");
+        navigate("/exports");
+        return;
+      }
+
+      const prepared = await api.prepareProjectExport(Number(projectId), exportOptions);
       triggerPreparedExportDownload(prepared);
       setIsExportDialogOpen(false);
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "导出失败");
+      setExportDialogError(error instanceof Error ? error.message : "导出失败");
     } finally {
       setIsExporting(false);
     }
@@ -169,7 +212,15 @@ export function ProjectDetails() {
           <p className="text-muted-foreground mt-1">管理该项目下的采集站点和 LLM 标签定义</p>
         </div>
         <div className="flex gap-2">
-        <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <Dialog
+          open={isExportDialogOpen}
+          onOpenChange={(open) => {
+            setIsExportDialogOpen(open);
+            if (open) {
+              setExportDialogError("");
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button
               variant="outline"
@@ -275,12 +326,52 @@ export function ProjectDetails() {
                 </details>
                 <p className="text-sm text-muted-foreground">不选择时导出全部状态；选择后 Excel 页面列表和 page 文件夹都只包含对应状态的页面。</p>
               </div>
+
+              <div className="space-y-3 rounded-md border p-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={exportToVault}
+                    onChange={(event) => setExportToVault(event.target.checked)}
+                  />
+                  导出到 Vault Drive
+                </label>
+                {exportToVault && (
+                  <div className="space-y-3">
+                    {isLoadingVaultProjects ? (
+                      <div className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        正在加载 Vault projects...
+                      </div>
+                    ) : (
+                      <select
+                        className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                        value={selectedVaultProjectKey}
+                        onChange={(event) => setSelectedVaultProjectKey(event.target.value)}
+                        disabled={vaultProjects.length === 0}
+                      >
+                        {vaultProjects.length === 0 && <option value="">暂无可选 Project</option>}
+                        {vaultProjects.map((project) => (
+                          <option key={project.id} value={project.key}>
+                            {project.name} ({project.key})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </div>
+              {exportDialogError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {exportDialogError}
+                </div>
+              )}
             </div>
             </div>
             <DialogFooter className="shrink-0 border-t pt-4">
               <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>取消</Button>
-              <Button onClick={handleExport} disabled={isExporting || selectedExportSiteIds.size === 0}>
-                {isExporting ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <Download className="mr-2 w-4 h-4" />}
+              <Button onClick={handleExport} disabled={isExporting || selectedExportSiteIds.size === 0 || (exportToVault && !selectedVaultProjectKey)}>
+                {isExporting ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : exportToVault ? <CloudUpload className="mr-2 w-4 h-4" /> : <Download className="mr-2 w-4 h-4" />}
                 开始导出
               </Button>
             </DialogFooter>
@@ -297,12 +388,6 @@ export function ProjectDetails() {
         </Button>
         </div>
       </div>
-
-      {exportError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {exportError}
-        </div>
-      )}
 
       <div className="flex justify-between items-center">
         <div>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { api, triggerPreparedExportDownload } from "@/lib/api";
-import type { ProcessingState, ProjectExportArtifact, SitePageDetail, SitePageListRow } from "@/lib/api";
+import type { ProcessingState, ProjectExportArtifact, SitePageDetail, SitePageListRow, VaultProject } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/rule-assistant";
 import type { Rule } from "./RuleEditor";
 import { inventoryStatusFilterLabel, inventoryStatusOptions } from "@/lib/inventory-status";
-import { CheckCircle2, ChevronDown, CircleDashed, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, Tags, WandSparkles, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDashed, CloudUpload, Download, Filter, History, Image, Loader2, Play, RotateCcw, ScrollText, Search, Tags, WandSparkles, XCircle } from "lucide-react";
 import { RulePreviewResultGrid, labelsArrayToRecord, type RulePreviewResult } from "@/components/RulePreview";
 
 const pendingReasonOptions = [
@@ -548,6 +549,7 @@ export function PageReview({
   onRecrawlStarted?: () => void;
   enableExport?: boolean;
 }) {
+  const navigate = useNavigate();
   const [pages, setPages] = useState<SitePageListRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -570,11 +572,16 @@ export function PageReview({
   const [isExporting, setIsExporting] = useState(false);
   const [pageIdExportOpen, setPageIdExportOpen] = useState(false);
   const [pageIdExportInput, setPageIdExportInput] = useState("");
+  const [pageIdExportError, setPageIdExportError] = useState("");
   const [isExportingPageIds, setIsExportingPageIds] = useState(false);
   const [isPreparingRunExport, setIsPreparingRunExport] = useState(false);
   const [selectedPageIdExportArtifacts, setSelectedPageIdExportArtifacts] = useState<Set<ProjectExportArtifact>>(
     new Set(["base", "markdown", "screenshot", "structured"]),
   );
+  const [pageIdExportToVault, setPageIdExportToVault] = useState(false);
+  const [selectedVaultProjectKey, setSelectedVaultProjectKey] = useState("");
+  const [vaultProjects, setVaultProjects] = useState<VaultProject[]>([]);
+  const [isLoadingVaultProjects, setIsLoadingVaultProjects] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
@@ -593,6 +600,11 @@ export function PageReview({
       })
       .finally(() => setIsLoading(false));
   }, [crawlRunId, page, pageSize, pendingReason, query, siteId, statuses, label]);
+
+  useEffect(() => {
+    if (!pageIdExportOpen || !pageIdExportToVault || vaultProjects.length > 0 || isLoadingVaultProjects) return;
+    loadVaultProjects();
+  }, [pageIdExportOpen, pageIdExportToVault]);
 
   const openDetail = async (sitePageId: number) => {
     const nextDetail = await api.getSitePageDetail(siteId, sitePageId);
@@ -705,16 +717,33 @@ export function PageReview({
   };
 
   const exportPagesByIds = async () => {
+    setPageIdExportError("");
     let pageIds: number[];
     try {
       pageIds = parsePageIdInput(pageIdExportInput);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "page ID 列表无效。");
+      setPageIdExportError(error instanceof Error ? error.message : "page ID 列表无效。");
       return;
     }
 
     setIsExportingPageIds(true);
     try {
+      if (pageIdExportToVault) {
+        if (!selectedVaultProjectKey) {
+          setPageIdExportError("请选择目标 Vault project。");
+          return;
+        }
+        await api.startSitePagesByIdsVaultExport(siteId, {
+          pageIds,
+          artifacts: [...selectedPageIdExportArtifacts],
+          targetProjectKey: selectedVaultProjectKey,
+        });
+        setPageIdExportOpen(false);
+        toast.success("已开始后台上传到 Vault Drive。");
+        navigate("/exports");
+        return;
+      }
+
       const prepared = await api.prepareSitePagesByIdsExport(siteId, {
         pageIds,
         artifacts: [...selectedPageIdExportArtifacts],
@@ -723,9 +752,27 @@ export function PageReview({
       setPageIdExportOpen(false);
       toast.success(`已导出 ${pageIds.length} 个 page ID 对应的页面。`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "导出失败。");
+      setPageIdExportError(error instanceof Error ? error.message : "导出失败。");
     } finally {
       setIsExportingPageIds(false);
+    }
+  };
+
+  const loadVaultProjects = async () => {
+    setIsLoadingVaultProjects(true);
+    setPageIdExportError("");
+    try {
+      const result = await api.getVaultProjects();
+      setVaultProjects(result.items);
+      if (result.items.length === 0) {
+        setPageIdExportError("没有可导出的 Vault project。");
+      } else {
+        setSelectedVaultProjectKey((current) => current || result.items[0].key);
+      }
+    } catch (error) {
+      setPageIdExportError(error instanceof Error ? error.message : "加载 Vault project 失败。");
+    } finally {
+      setIsLoadingVaultProjects(false);
     }
   };
 
@@ -1000,7 +1047,15 @@ export function PageReview({
 
       <PageDetailDialog detail={detail} onClose={() => setDetail(null)} />
 
-      <Dialog open={pageIdExportOpen} onOpenChange={setPageIdExportOpen}>
+      <Dialog
+        open={pageIdExportOpen}
+        onOpenChange={(open) => {
+          setPageIdExportOpen(open);
+          if (open) {
+            setPageIdExportError("");
+          }
+        }}
+      >
         <DialogContent className="w-[calc(100vw-2rem)] max-w-xl min-w-0 overflow-hidden">
           <DialogHeader>
             <DialogTitle>按page_id导出页面</DialogTitle>
@@ -1033,11 +1088,51 @@ export function PageReview({
                 ))}
               </div>
             </div>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={pageIdExportToVault}
+                  onChange={(event) => setPageIdExportToVault(event.target.checked)}
+                />
+                导出到 Vault Drive
+              </label>
+              {pageIdExportToVault && (
+                <div className="space-y-3">
+                  {isLoadingVaultProjects ? (
+                    <div className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      正在加载 Vault projects...
+                    </div>
+                  ) : (
+                    <select
+                      className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                      value={selectedVaultProjectKey}
+                      onChange={(event) => setSelectedVaultProjectKey(event.target.value)}
+                      disabled={vaultProjects.length === 0}
+                    >
+                      {vaultProjects.length === 0 && <option value="">暂无可选 Project</option>}
+                      {vaultProjects.map((project) => (
+                        <option key={project.id} value={project.key}>
+                          {project.name} ({project.key})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+            {pageIdExportError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {pageIdExportError}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPageIdExportOpen(false)} disabled={isExportingPageIds}>取消</Button>
-            <Button onClick={exportPagesByIds} disabled={isExportingPageIds}>
-              {isExportingPageIds ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+            <Button onClick={exportPagesByIds} disabled={isExportingPageIds || (pageIdExportToVault && !selectedVaultProjectKey)}>
+              {isExportingPageIds ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : pageIdExportToVault ? <CloudUpload className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
               开始导出
             </Button>
           </DialogFooter>
