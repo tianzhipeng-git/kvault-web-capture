@@ -173,6 +173,12 @@ describe('repositories', () => {
 
     const settings = new SystemSettingRepository(db, new SystemClock());
 
+    expect(await settings.getDefaultMarkdownSiteId()).toBeNull();
+    await settings.setDefaultMarkdownSiteId(42);
+    expect(await settings.getDefaultMarkdownSiteId()).toBe(42);
+    await settings.setDefaultMarkdownSiteId(null);
+    expect(await settings.getDefaultMarkdownSiteId()).toBeNull();
+
     expect(await settings.getSystemConfig()).toEqual({
       urlNormalization: {
         stripQueryParams: ['wbraid', 'gbraid', 'ref'],

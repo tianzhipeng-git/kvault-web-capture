@@ -83,6 +83,12 @@ export class DeletionService {
       await this.systemSettings.setDefaultSiteId(null);
     }
 
+    const defaultMarkdownSiteId = await this.systemSettings.getDefaultMarkdownSiteId();
+
+    if (defaultMarkdownSiteId === siteId) {
+      await this.systemSettings.setDefaultMarkdownSiteId(null);
+    }
+
     await this.deletions.deleteSite(siteId);
   }
 
@@ -105,6 +111,12 @@ export class DeletionService {
 
     if (defaultSiteId !== null && siteIds.includes(defaultSiteId)) {
       await this.systemSettings.setDefaultSiteId(null);
+    }
+
+    const defaultMarkdownSiteId = await this.systemSettings.getDefaultMarkdownSiteId();
+
+    if (defaultMarkdownSiteId !== null && siteIds.includes(defaultMarkdownSiteId)) {
+      await this.systemSettings.setDefaultMarkdownSiteId(null);
     }
 
     await this.deletions.deleteProject(projectId);

@@ -377,6 +377,12 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ siteId }),
   }),
+  getDefaultMarkdownSite: (): Promise<DefaultSiteSetting> => fetchApi('/api/system/default-markdown-site'),
+  setDefaultMarkdownSite: (siteId: number | null): Promise<DefaultSiteSetting & { status: string }> => fetchApi('/api/system/default-markdown-site', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteId }),
+  }),
   getSystemConfig: (): Promise<SystemConfigResponse> => fetchApi('/api/system/config'),
   updateSystemUrlNormalization: (input: {
     stripQueryParams: string[];
@@ -386,10 +392,10 @@ export const api = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   }),
-  submitSimpleCapture: (urls: string[]): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
+  submitSimpleCapture: (urls: string[], artifactMode: "all" | "markdown" = "all"): Promise<{ runId: number; siteId: number; statusLabel: string }> => fetchApi('/api/simple-capture/runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ urls, updatePolicy: 'force_recrawl_all' }),
+    body: JSON.stringify({ urls, updatePolicy: 'force_recrawl_all', artifactMode }),
   }),
   
   getSites: (projectId: number) => fetchApi(`/api/projects/${projectId}/sites`),

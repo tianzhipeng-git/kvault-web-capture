@@ -42,6 +42,8 @@ import { mapConfigFormToSiteConfig, mapRunForm } from '../services/config-mapper
 import type { RunCoordinator } from '../services/run-coordinator.js';
 import type { VaultExportManager } from '../services/vault-export-manager.js';
 
+type SimpleCaptureArtifactMode = 'all' | 'markdown';
+
 interface RegisterWebRoutesOptions {
   server: FastifyInstance;
   app: CaptureApp;
@@ -104,11 +106,36 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     return defaultSite;
   };
 
+  const requireDefaultMarkdownSite = async () => {
+    const defaultMarkdownSite = await app.getDefaultMarkdownSite();
+
+    if (!defaultMarkdownSite) {
+      throw new Error('系统还没有配置默认 Markdown 站点。');
+    }
+
+    return defaultMarkdownSite;
+  };
+
+  const parseSimpleCaptureArtifactMode = (value: unknown): SimpleCaptureArtifactMode => {
+    if (value === undefined || value === null) {
+      return 'all';
+    }
+    if (value === 'all' || value === 'markdown') {
+      return value;
+    }
+    throw new Error('artifactMode must be all or markdown');
+  };
+
   const buildSimpleCaptureInput = async (body: Record<string, unknown>) => {
-    const defaultSite = await requireDefaultSite();
+    const artifactMode = parseSimpleCaptureArtifactMode(body.artifactMode);
+    const defaultSite =
+      artifactMode === 'markdown'
+        ? await requireDefaultMarkdownSite()
+        : await requireDefaultSite();
     const runInput = mapRunForm(body);
     return {
       defaultSite,
+      artifactMode,
       runInput: {
         siteId: defaultSite.siteId,
         updatePolicy: runInput.updatePolicy,
@@ -259,6 +286,23 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   });
 
+  server.get('/api/system/default-markdown-site', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    return {
+      defaultSite: await app.getDefaultMarkdownSite(),
+    };
+  });
+
+  server.put('/api/system/default-markdown-site', async (request, reply) => {
+    requireSessionAuth(request, reply);
+    const body = (request.body ?? {}) as { siteId?: unknown };
+    await app.setDefaultMarkdownSite(parseOptionalSiteId(body.siteId));
+    return {
+      status: 'ok',
+      defaultSite: await app.getDefaultMarkdownSite(),
+    };
+  });
+
   server.get('/api/system/config', async (request, reply) => {
     requireSessionAuth(request, reply);
     return {
@@ -361,7 +405,10 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
 
   server.post('/api/simple-capture/submit-markdown', async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const { defaultSite, runInput } = await buildSimpleCaptureInput(body);
+    const { defaultSite, runInput } = await buildSimpleCaptureInput({
+      ...body,
+      artifactMode: 'markdown',
+    });
     const summary = await coordinator.startCrawl(app, runInput);
     const result = await runQuery.getRunMarkdown(summary.runId);
     return reply

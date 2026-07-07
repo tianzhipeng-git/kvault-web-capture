@@ -3,6 +3,7 @@ import type { Clock } from '../../utils/clock.js';
 import type { SystemConfig, UrlNormalizationConfig } from '../../domain/types.js';
 
 const DEFAULT_SITE_ID_KEY = 'default_site_id';
+const DEFAULT_MARKDOWN_SITE_ID_KEY = 'default_markdown_site_id';
 const URL_NORMALIZATION_KEY = 'url_normalization';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -36,9 +37,25 @@ export class SystemSettingRepository {
   ) {}
 
   async getDefaultSiteId(): Promise<number | null> {
+    return this.getSiteIdSetting(DEFAULT_SITE_ID_KEY);
+  }
+
+  async setDefaultSiteId(siteId: number | null): Promise<void> {
+    await this.setSiteIdSetting(DEFAULT_SITE_ID_KEY, siteId);
+  }
+
+  async getDefaultMarkdownSiteId(): Promise<number | null> {
+    return this.getSiteIdSetting(DEFAULT_MARKDOWN_SITE_ID_KEY);
+  }
+
+  async setDefaultMarkdownSiteId(siteId: number | null): Promise<void> {
+    await this.setSiteIdSetting(DEFAULT_MARKDOWN_SITE_ID_KEY, siteId);
+  }
+
+  private async getSiteIdSetting(key: string): Promise<number | null> {
     const row = await this.db.get<{ value: string }>(
       'SELECT value FROM system_settings WHERE key = ?',
-      [DEFAULT_SITE_ID_KEY],
+      [key],
     );
 
     if (!row) {
@@ -49,9 +66,9 @@ export class SystemSettingRepository {
     return Number.isInteger(siteId) && siteId > 0 ? siteId : null;
   }
 
-  async setDefaultSiteId(siteId: number | null): Promise<void> {
+  private async setSiteIdSetting(key: string, siteId: number | null): Promise<void> {
     if (siteId === null) {
-      await this.db.run('DELETE FROM system_settings WHERE key = ?', [DEFAULT_SITE_ID_KEY]);
+      await this.db.run('DELETE FROM system_settings WHERE key = ?', [key]);
       return;
     }
 
@@ -59,7 +76,7 @@ export class SystemSettingRepository {
       `INSERT INTO system_settings (key, value, updated_at)
        VALUES (?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      [DEFAULT_SITE_ID_KEY, String(siteId), this.clock.now()],
+      [key, String(siteId), this.clock.now()],
     );
   }
 

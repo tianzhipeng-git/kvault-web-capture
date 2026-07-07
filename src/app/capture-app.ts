@@ -162,6 +162,14 @@ export class CaptureApp {
     return this.sites.setDefaultSite(siteId);
   }
 
+  getDefaultMarkdownSite() {
+    return this.sites.getDefaultMarkdownSite();
+  }
+
+  setDefaultMarkdownSite(siteId: number | null) {
+    return this.sites.setDefaultMarkdownSite(siteId);
+  }
+
   getSystemConfig() {
     return this.sites.getSystemConfig();
   }

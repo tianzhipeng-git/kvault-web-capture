@@ -6,9 +6,9 @@ CLI的打包方式优化一下 让用户能直接通过一个命令执行
 
 
 
-是否要新增 Update Policy 这个里如果新加一种策略 就是re evaluate validator
+~~是否要新增 Update Policy 这个里如果新加一种策略 就是re evaluate validator?~~
 
-直接上传oss、vault
+
 
 速度的问题
 

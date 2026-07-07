@@ -112,7 +112,50 @@ export class SiteService {
     projectId: number;
     baseUrl: string;
   } | null> {
-    const siteId = await this.systemSettings.getDefaultSiteId();
+    return this.getSiteSetting(
+      () => this.systemSettings.getDefaultSiteId(),
+      () => this.systemSettings.setDefaultSiteId(null),
+    );
+  }
+
+  async getDefaultMarkdownSite(): Promise<{
+    siteId: number;
+    siteName: string;
+    projectId: number;
+    baseUrl: string;
+  } | null> {
+    return this.getSiteSetting(
+      () => this.systemSettings.getDefaultMarkdownSiteId(),
+      () => this.systemSettings.setDefaultMarkdownSiteId(null),
+    );
+  }
+
+  async setDefaultSite(siteId: number | null): Promise<void> {
+    if (siteId !== null) {
+      await this.getSite(siteId);
+    }
+
+    await this.systemSettings.setDefaultSiteId(siteId);
+  }
+
+  async setDefaultMarkdownSite(siteId: number | null): Promise<void> {
+    if (siteId !== null) {
+      await this.getSite(siteId);
+    }
+
+    await this.systemSettings.setDefaultMarkdownSiteId(siteId);
+  }
+
+  private async getSiteSetting(
+    getSiteId: () => Promise<number | null>,
+    clearSiteId: () => Promise<void>,
+  ): Promise<{
+    siteId: number;
+    siteName: string;
+    projectId: number;
+    baseUrl: string;
+  } | null> {
+    const siteId = await getSiteId();
 
     if (siteId === null) {
       return null;
@@ -121,7 +164,7 @@ export class SiteService {
     const site = await this.sites.getById(siteId);
 
     if (!site) {
-      await this.systemSettings.setDefaultSiteId(null);
+      await clearSiteId();
       return null;
     }
 
@@ -131,14 +174,6 @@ export class SiteService {
       projectId: site.projectId,
       baseUrl: site.baseUrl,
     };
-  }
-
-  async setDefaultSite(siteId: number | null): Promise<void> {
-    if (siteId !== null) {
-      await this.getSite(siteId);
-    }
-
-    await this.systemSettings.setDefaultSiteId(siteId);
   }
 
   getSystemConfig() {

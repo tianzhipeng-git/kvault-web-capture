@@ -1,6 +1,6 @@
 # 简易采集 API 对接文档
 
-本文档面向外部系统调用方，描述如何通过 API 提交多个 URL 到系统默认站点，并获取本次运行结果。
+本文档面向外部系统调用方，描述如何通过 API 提交多个 URL 到系统默认站点或默认 Markdown 站点，并获取本次运行结果。
 
 上述提交爬取的接口分为两类
 - 第一类是分步调用的接口, 即提交、查询、下载, 每个接口都能立刻返回. 
@@ -41,7 +41,12 @@ Authorization: Bearer your-secret-key
 
 ## 前置配置
 
-简易采集入口依赖系统默认站点。默认站点由系统管理员预先在 Web UI 中配置，外部调度方不需要、也不能通过本文档接口修改默认站点。(由本系统管理员已完成)
+简易采集入口依赖系统管理员预先在 Web UI 中配置的站点：
+
+- 默认站点：用于完整 artifact 采集，包括 `POST /api/simple-capture/runs` 未指定模式时，以及 `POST /api/simple-capture/submit-and-download`。
+- 默认 Markdown 站点：用于只跑 Markdown 的简易提交，包括 `POST /api/simple-capture/runs` 指定 `artifactMode: "markdown"` 时，以及 `POST /api/simple-capture/submit-markdown`。
+
+外部调度方不需要、也不能通过本文档接口修改上述站点配置。(由本系统管理员已完成)
 
 ## 分步接口
 
@@ -74,6 +79,7 @@ Content-Type: application/json
     "https://example.com/page-b"
   ],
   "updatePolicy": "force_recrawl_all",
+  "artifactMode": "all",
   "targetSuccessCount": null,
   "staleAfterMs": null
 }
@@ -81,7 +87,9 @@ Content-Type: application/json
 
 说明：
 
-- 该接口会在系统默认站点下启动一次 `crawl_run`。
+- `artifactMode` 可选值为 `all` 或 `markdown`，默认 `all`。
+- `artifactMode: "all"` 时，该接口会在系统默认站点下启动一次 `crawl_run`，按该站点规则产出完整 artifacts。
+- `artifactMode: "markdown"` 时，该接口会在系统默认 Markdown 站点下启动一次 `crawl_run`，用于只跑 Markdown 的简易采集。
 - `initialUrls` 固定为本次提交的 `urls`。
 - `crawlMaxDepthOverride` 固定为 `0`，只采集提交的 URL 列表，不递归扩展。
 - 默认 `updatePolicy` 为 `force_recrawl_all`。
@@ -147,6 +155,8 @@ GET /api/simple-capture/runs/456/download
 
 该 ZIP 复用 Web UI 的 page ID 导出格式，范围为该 `runId` 对应的所有 `page_id`。
 
+如果提交时使用 `artifactMode: "markdown"`，该 ZIP 通常只包含默认 Markdown 站点配置产出的 Markdown 相关文件。
+
 ## 同步阻塞接口
 
 同步阻塞接口会在 HTTP 请求内完成“提交 URL 列表 -> 等待运行结束 -> 返回结果”。调用方需要设置足够长的 HTTP 超时时间。
@@ -168,6 +178,11 @@ Content-Type: application/json
   ]
 }
 ```
+
+说明：
+
+- 该接口固定使用系统默认站点。
+- 如果只需要 Markdown，请使用 `POST /api/simple-capture/submit-markdown`，或分步接口中的 `artifactMode: "markdown"`。
 
 响应：
 
@@ -200,6 +215,11 @@ Content-Type: application/json
 }
 ```
 
+说明：
+
+- 该接口固定使用系统默认 Markdown 站点。
+- 默认 Markdown 站点应配置为只产出 Markdown artifact。
+
 响应：
 
 - `Content-Type: text/markdown; charset=utf-8`
@@ -230,6 +250,15 @@ curl -X POST 'https://vt-sys.fastinsight.info/capture/api/simple-capture/runs' \
   -H 'X-API-Key: your-secret-key' \
   -H 'Content-Type: application/json' \
   -d '{"urls":["https://example.com/page-a","https://example.com/page-b"]}'
+```
+
+只跑 Markdown：
+
+```bash
+curl -X POST 'https://vt-sys.fastinsight.info/capture/api/simple-capture/runs' \
+  -H 'X-API-Key: your-secret-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"urls":["https://example.com/page-a","https://example.com/page-b"],"artifactMode":"markdown"}'
 ```
 
 ```bash

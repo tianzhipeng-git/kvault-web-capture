@@ -1045,6 +1045,98 @@ describe('web server', () => {
     await db.close();
   });
 
+  it('uses the default markdown site for markdown-only simple capture runs', async () => {
+    const dir = createTempDir('kvault-web-simple-capture-md-site-');
+    const dbPath = join(dir, 'state.db');
+    const webServer = await createWebServer({
+      dbPath,
+      adminPassword: 'secret',
+      maxConcurrentRuns: 1,
+      apiKey: 'external-secret',
+    });
+    servers.push(webServer);
+
+    const siteServer = await startTestSiteServer();
+    siteServers.push(siteServer);
+
+    const db = await openDatabase(dbPath);
+    const now = new Date().toISOString();
+    const config = {
+      seedUrls: [],
+      sitemaps: [],
+      rulesBeforeBaseEq: [],
+      rulesBeforeStage2Eq: [],
+      runOptions: {
+        seedMaxDepth: 1,
+        crawlMaxDepth: 0,
+      },
+    };
+    const project = await db.run(
+      'INSERT INTO projects (name, slug, label_definitions_json, created_at) VALUES (?, ?, ?, ?)',
+      ['Simple Project', 'simple-project', '[]', now],
+    );
+    const fullSite = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'full-site',
+        siteServer.baseUrl,
+        join(dir, 'storage-full'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+    const markdownSite = await db.run(
+      `INSERT INTO sites (
+        project_id, name, base_url, storage_root, config_json, updated_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        project.lastInsertId,
+        'markdown-site',
+        siteServer.baseUrl,
+        join(dir, 'storage-markdown'),
+        JSON.stringify(config),
+        now,
+        now,
+      ],
+    );
+
+    const authCookie = await login(webServer);
+    const sessionCookie = { kvault_session: authCookie.split('=')[1] };
+    expect((await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-site',
+      cookies: sessionCookie,
+      payload: { siteId: fullSite.lastInsertId },
+    })).statusCode).toBe(200);
+    expect((await webServer.inject({
+      method: 'PUT',
+      url: '/api/system/default-markdown-site',
+      cookies: sessionCookie,
+      payload: { siteId: markdownSite.lastInsertId },
+    })).statusCode).toBe(200);
+
+    const response = await webServer.inject({
+      method: 'POST',
+      url: '/api/simple-capture/runs',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: {
+        urls: [`${siteServer.baseUrl}/docs`],
+        artifactMode: 'markdown',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as { siteId: number }).siteId).toBe(markdownSite.lastInsertId);
+
+    await db.close();
+  });
+
   it('returns run metadata headers for synchronous simple capture download', async () => {
     const dir = createTempDir('kvault-web-simple-capture-sync-');
     const dbPath = join(dir, 'state.db');
