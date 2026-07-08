@@ -165,6 +165,38 @@ describe('repositories', () => {
     });
   });
 
+  it('does not overwrite a terminal run status', async () => {
+    const dir = createTempDir('kvault-repos-run-terminal-');
+    const db = await openDatabase(join(dir, 'state.db'));
+    openHandles.push(db);
+    await initializeSchema(db);
+
+    const clock = new SystemClock();
+    const projects = new ProjectRepository(db, clock);
+    const sites = new SiteRepository(db, clock);
+    const runs = new RunRepository(db, clock);
+
+    const project = await projects.create('Run Status Project');
+    const site = await sites.create({
+      projectId: project.id,
+      name: 'run-status-site',
+      baseUrl: 'https://example.com',
+      storageRoot: dir,
+      config: createDefaultSiteConfig('https://example.com/docs'),
+    });
+    const runId = await runs.createRun({
+      siteId: site.id,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      configSnapshot: site.config,
+    });
+
+    expect(await runs.finishRun(runId, 'cancelled', 'cancel requested')).toBe(true);
+    expect(await runs.finishRun(runId, 'succeeded')).toBe(false);
+    expect((await runs.getById(runId))?.status).toBe('cancelled');
+  });
+
   it('stores system URL normalization config with database defaults', async () => {
     const dir = createTempDir('kvault-system-settings-');
     const db = await openDatabase(join(dir, 'state.db'));

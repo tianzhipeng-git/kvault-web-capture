@@ -79,6 +79,24 @@ export class RunCoordinator {
     return true;
   }
 
+  cancelRunForSite(runId: number, siteId: number): boolean {
+    const activeRunById = this.activeRunIds.get(runId);
+    if (activeRunById) {
+      activeRunById.abortController.abort();
+      return true;
+    }
+
+    const activeRun = this.activeRuns.get(siteId);
+    if (!activeRun || (activeRun.runId !== null && activeRun.runId !== runId)) {
+      return false;
+    }
+
+    activeRun.runId = runId;
+    this.activeRunIds.set(runId, activeRun);
+    activeRun.abortController.abort();
+    return true;
+  }
+
   private start(
     siteId: number,
     kind: 'seed' | 'crawl',

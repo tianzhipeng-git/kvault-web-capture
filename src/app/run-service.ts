@@ -185,7 +185,10 @@ export class RunService {
 
     const errorMessage = 'Run marked cancelled because no active worker exists for it.';
     await this.runs.refreshCounts(runId);
-    await this.runs.finishRun(runId, 'cancelled', errorMessage);
+    const finished = await this.runs.finishRun(runId, 'cancelled', errorMessage);
+    if (!finished) {
+      return false;
+    }
     await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
     logger.warn('Marked orphan running run as cancelled', {
       runId,
@@ -248,16 +251,11 @@ export class RunService {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const status = isRunCancelledError(error) ? 'cancelled' : 'failed';
         await this.runs.refreshCounts(runId);
-        await this.runs.finishRun(runId, status, errorMessage);
-        if (status === 'cancelled') {
-          await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
-        } else {
-          await this.runLogs.crawl_error(
-            runId,
-            errorMessage,
-            { stack: error instanceof Error ? (error.stack ?? null) : null },
-          );
+        const finished = await this.runs.finishRun(runId, status, errorMessage);
+        if (!finished) {
+          throw error;
         }
+        await this.writeRunErrorLog(runId, status, errorMessage, error);
         logger[status === 'cancelled' ? 'warn' : 'error']('Run ended before completion', {
           runId,
           siteId: site.id,
@@ -544,7 +542,15 @@ export class RunService {
       throwIfAborted(input.abortSignal);
 
       await this.runs.refreshCounts(runId);
-      await this.runs.finishRun(runId, 'succeeded');
+      const finished = await this.runs.finishRun(runId, 'succeeded');
+      if (!finished) {
+        logger.warn('Skipped successful run finalization because run is no longer running', {
+          runId,
+          siteId: site.id,
+          runType: input.runType,
+        });
+        return this.buildRunSummary(runId, site.id, firstSitePageId, firstNormalizedUrl);
+      }
       await this.runLogs.crawl_finished(runId);
       await this.notifyRunFinished({
         runId,
@@ -557,16 +563,11 @@ export class RunService {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const status = isRunCancelledError(error) ? 'cancelled' : 'failed';
       await this.runs.refreshCounts(runId);
-      await this.runs.finishRun(runId, status, errorMessage);
-      if (status === 'cancelled') {
-        await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
-      } else {
-        await this.runLogs.crawl_error(
-          runId,
-          errorMessage,
-          { stack: error instanceof Error ? (error.stack ?? null) : null },
-        );
+      const finished = await this.runs.finishRun(runId, status, errorMessage);
+      if (!finished) {
+        throw error;
       }
+      await this.writeRunErrorLog(runId, status, errorMessage, error);
       await this.notifyRunFinished({
         runId,
         site,
@@ -580,14 +581,7 @@ export class RunService {
       await browserManager.close();
     }
 
-    return {
-      runId,
-      siteId: site.id,
-      sitePageId: firstSitePageId,
-      normalizedUrl: firstNormalizedUrl,
-      pageRuns: await this.pageRuns.countByRun(runId),
-      artifactRuns: await this.artifactRuns.countByRun(runId),
-    };
+    return this.buildRunSummary(runId, site.id, firstSitePageId, firstNormalizedUrl);
   }
 
   private async buildEffectiveConfig(
@@ -622,6 +616,40 @@ export class RunService {
 
     this.runNotificationBot = new FeishuSimpleBot();
     return this.runNotificationBot;
+  }
+
+  private async writeRunErrorLog(
+    runId: number,
+    status: 'failed' | 'cancelled',
+    errorMessage: string,
+    error: unknown,
+  ): Promise<void> {
+    if (status === 'cancelled') {
+      await this.runLogs.crawl_error(runId, errorMessage, { stack: null });
+      return;
+    }
+
+    await this.runLogs.crawl_error(
+      runId,
+      errorMessage,
+      { stack: error instanceof Error ? (error.stack ?? null) : null },
+    );
+  }
+
+  private async buildRunSummary(
+    runId: number,
+    siteId: number,
+    sitePageId: number,
+    normalizedUrl: string,
+  ): Promise<RunSummary> {
+    return {
+      runId,
+      siteId,
+      sitePageId,
+      normalizedUrl,
+      pageRuns: await this.pageRuns.countByRun(runId),
+      artifactRuns: await this.artifactRuns.countByRun(runId),
+    };
   }
 
   private async notifyRunFinished(input: RunNotificationInput): Promise<void> {

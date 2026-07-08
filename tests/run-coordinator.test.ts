@@ -52,4 +52,35 @@ describe('RunCoordinator', () => {
 
     expect(coordinator.cancelRun(123)).toBe(false);
   });
+
+  it('cancels an active site run before its run id is attached', async () => {
+    const coordinator = new RunCoordinator(1);
+    const receivedSignal: { value: AbortSignal | null } = { value: null };
+    const resolveRun: { value: ((summary: RunSummary) => void) | null } = { value: null };
+    const app = {
+      runCrawl: (input: { abortSignal?: AbortSignal }) => {
+        receivedSignal.value = input.abortSignal ?? null;
+        return new Promise<RunSummary>((resolve) => {
+          resolveRun.value = resolve;
+        });
+      },
+    };
+
+    const promise = coordinator.startCrawl(app as never, {
+      siteId: 1,
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      staleAfterMs: null,
+      initialUrls: null,
+      crawlMaxDepthOverride: null,
+    });
+
+    await Promise.resolve();
+
+    expect(coordinator.cancelRunForSite(123, 1)).toBe(true);
+    expect(receivedSignal.value?.aborted).toBe(true);
+
+    resolveRun.value?.(createSummary(123));
+    await expect(promise).resolves.toEqual(createSummary(123));
+  });
 });

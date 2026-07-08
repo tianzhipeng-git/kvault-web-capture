@@ -84,13 +84,15 @@ export class RunRepository {
     return row !== undefined;
   }
 
-  async finishRun(runId: number, status: RunStatus, errorMessage?: string): Promise<void> {
-    await this.db.run('UPDATE crawl_runs SET status = ?, finished_at = ?, error_message = ? WHERE id = ?', [
+  async finishRun(runId: number, status: RunStatus, errorMessage?: string): Promise<boolean> {
+    const result = await this.db.run('UPDATE crawl_runs SET status = ?, finished_at = ?, error_message = ? WHERE id = ? AND status = ?', [
       status,
       this.clock.now(),
       errorMessage ?? null,
       runId,
+      'running',
     ]);
+    return result.changes === null || result.changes > 0;
   }
 
   async refreshCounts(runId: number): Promise<void> {

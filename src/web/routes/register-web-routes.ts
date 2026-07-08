@@ -707,6 +707,15 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
       };
     }
 
+    const runSummary = await runQuery.getRunSummary(runId).catch(() => null);
+    if (runSummary && coordinator.cancelRunForSite(runId, runSummary.siteId)) {
+      return {
+        runId,
+        status: 'cancelling',
+        statusLabel: '正在取消',
+      };
+    }
+
     if (await app.cancelOrphanRun(runId)) {
       return {
         runId,
