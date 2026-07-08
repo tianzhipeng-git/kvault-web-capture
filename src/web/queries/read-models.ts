@@ -1404,39 +1404,67 @@ export class PendingReviewQuery {
       [siteId],
     );
 
-    return Promise.all(groups.map(async (group) => {
-      const record = group as Record<string, unknown>;
-      const reason = String(record.last_pending_reason ?? 'unknown');
-      const pages = (await this.db.all(
-          `SELECT
+    const pagesQuery = await this.db.all(
+        `WITH RankedPages AS (
+           SELECT
              sp.id,
              sp.normalized_url,
              COALESCE(sp.latest_title, sp.normalized_url) AS title,
-             pr.body_text
+             sp.last_pending_reason,
+             ROW_NUMBER() OVER(PARTITION BY COALESCE(sp.last_pending_reason, 'unknown') ORDER BY sp.id DESC) as rn
            FROM site_pages sp
-           LEFT JOIN page_runs pr ON pr.id = (
-             SELECT pr2.id
-             FROM page_runs pr2
-             WHERE pr2.site_page_id = sp.id
-             ORDER BY pr2.id DESC
-             LIMIT 1
-           )
-           WHERE sp.site_id = ? AND sp.inventory_status = 'stage2_pending' AND sp.last_pending_reason = ?
-           ORDER BY sp.id DESC
-           LIMIT 5`,
-        [siteId, reason],
-      )).map((page) => {
-          const pageRecord = page as Record<string, unknown>;
-          const previewSource = String(pageRecord.body_text ?? '');
+           WHERE sp.site_id = ? AND sp.inventory_status = 'stage2_pending'
+         )
+         SELECT
+           rp.id,
+           rp.normalized_url,
+           rp.title,
+           COALESCE(rp.last_pending_reason, 'unknown') AS last_pending_reason,
+           pr.body_text
+         FROM RankedPages rp
+         LEFT JOIN page_runs pr ON pr.id = (
+           SELECT pr2.id
+           FROM page_runs pr2
+           WHERE pr2.site_page_id = rp.id
+           ORDER BY pr2.id DESC
+           LIMIT 1
+         )
+         WHERE rp.rn <= 5
+         ORDER BY rp.id DESC`,
+      [siteId],
+    );
 
-          return {
-            sitePageId: Number(pageRecord.id),
-            title: String(pageRecord.title),
-            url: String(pageRecord.normalized_url),
-            preview: previewSource.slice(0, 140),
-            matchedRules: [],
-          };
-        });
+    const pagesByReason = new Map<string, Array<{
+      sitePageId: number;
+      title: string;
+      url: string;
+      preview: string;
+      matchedRules: string[];
+    }>>();
+
+    for (const page of pagesQuery) {
+      const pageRecord = page as Record<string, unknown>;
+      const reason = String(pageRecord.last_pending_reason);
+      const previewSource = String(pageRecord.body_text ?? '');
+
+      const mappedPage = {
+        sitePageId: Number(pageRecord.id),
+        title: String(pageRecord.title),
+        url: String(pageRecord.normalized_url),
+        preview: previewSource.slice(0, 140),
+        matchedRules: [],
+      };
+
+      if (!pagesByReason.has(reason)) {
+        pagesByReason.set(reason, []);
+      }
+      pagesByReason.get(reason)!.push(mappedPage);
+    }
+
+    return groups.map((group) => {
+      const record = group as Record<string, unknown>;
+      const reason = String(record.last_pending_reason ?? 'unknown');
+      const pages = pagesByReason.get(reason) ?? [];
 
       return {
         reason,
@@ -1448,7 +1476,7 @@ export class PendingReviewQuery {
             : '调整分类或采集规则后，再重新发起一次运行。',
         pages,
       };
-    }));
+    });
   }
 }
 
