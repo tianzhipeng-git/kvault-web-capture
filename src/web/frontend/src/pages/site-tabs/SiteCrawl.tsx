@@ -90,14 +90,19 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
     setRunPage(1);
   }, [siteId]);
 
+  const hasRunningRun = runs.some((run) => run.status === "running");
+
   useEffect(() => {
-    if (!runs.some((run) => run.status === "running")) {
+    if (!hasRunningRun) {
       return;
     }
 
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      loadRuns();
+    }, 2000);
     return () => window.clearInterval(timer);
-  }, [runs]);
+  }, [hasRunningRun, queryRunId, runPage, siteId]);
 
   const startCrawl = async () => {
     setIsStarting(true);
@@ -179,7 +184,9 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
               <TableRow>
                 <TableHead>Run</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>成功 / 待确认 / 拒绝</TableHead>
+                <TableHead>页面 成功 / 失败</TableHead>
+                <TableHead>制品 成功 / 失败</TableHead>
+                <TableHead>待确认 / 拒绝</TableHead>
                 <TableHead>目标成功数</TableHead>
                 <TableHead>更新策略</TableHead>
                 <TableHead>执行时长</TableHead>
@@ -207,7 +214,9 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{run.successfulPages} / {run.pendingPages} / {run.deniedPages}</TableCell>
+                  <TableCell>{run.successfulPages} / {run.failedPages}</TableCell>
+                  <TableCell>{run.successfulArtifacts} / {run.failedArtifacts}</TableCell>
+                  <TableCell>{run.pendingPages} / {run.deniedPages}</TableCell>
                   <TableCell>{run.targetSuccessCount ?? "不限"}</TableCell>
                   <TableCell className="text-muted-foreground">{updatePolicyLabel(run.updatePolicy)}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDuration(run.startedAt, run.finishedAt, now)}</TableCell>
@@ -233,7 +242,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
               ))}
               {runs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
+                  <TableCell colSpan={10} className="py-8 text-center text-muted-foreground">还没有正式采集记录。</TableCell>
                 </TableRow>
               )}
             </TableBody>

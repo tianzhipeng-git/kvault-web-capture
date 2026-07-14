@@ -121,8 +121,11 @@ GET /api/simple-capture/runs/456
   "startedAt": "2026-06-08T07:20:00.000Z",
   "finishedAt": "2026-06-08T07:20:12.000Z",
   "successfulPages": 1,
+  "failedPages": 0,
   "pendingPages": 0,
   "deniedPages": 0,
+  "successfulArtifacts": 1,
+  "failedArtifacts": 0,
   "targetSuccessCount": null,
   "configSummary": {
     "seedUrlCount": 0,
@@ -135,6 +138,8 @@ GET /api/simple-capture/runs/456
   "issues": []
 }
 ```
+
+页面和制品的成功/失败数量直接根据已落库的逐项结果计算，运行中重复查询也会返回近实时进度。
 
 `statusLabel` 可能为：
 

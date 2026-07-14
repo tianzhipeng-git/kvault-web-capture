@@ -37,6 +37,17 @@ export function SiteSeed({ siteId }: { siteId: number }) {
     loadRuns();
   }, [siteId]);
 
+  const hasRunningRun = runs.some((run) => run.status === "running");
+
+  useEffect(() => {
+    if (!hasRunningRun) {
+      return;
+    }
+
+    const timer = window.setInterval(loadRuns, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasRunningRun, siteId]);
+
   const startSeed = async () => {
     setIsStarting(true);
     try {
@@ -104,7 +115,9 @@ export function SiteSeed({ siteId }: { siteId: number }) {
               <TableRow>
                 <TableHead>Run</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>成功 / 待确认 / 拒绝</TableHead>
+                <TableHead>页面 成功 / 失败</TableHead>
+                <TableHead>制品 成功 / 失败</TableHead>
+                <TableHead>待确认 / 拒绝</TableHead>
                 <TableHead>目标成功数</TableHead>
                 <TableHead>开始时间</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -130,7 +143,9 @@ export function SiteSeed({ siteId }: { siteId: number }) {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{run.successfulPages} / {run.pendingPages} / {run.deniedPages}</TableCell>
+                  <TableCell>{run.successfulPages} / {run.failedPages}</TableCell>
+                  <TableCell>{run.successfulArtifacts} / {run.failedArtifacts}</TableCell>
+                  <TableCell>{run.pendingPages} / {run.deniedPages}</TableCell>
                   <TableCell>{run.targetSuccessCount ?? "不限"}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(run.startedAt)}</TableCell>
                   <TableCell className="text-right">
@@ -154,7 +169,7 @@ export function SiteSeed({ siteId }: { siteId: number }) {
               ))}
               {runs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">还没有初步摸底记录。</TableCell>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">还没有初步摸底记录。</TableCell>
                 </TableRow>
               )}
             </TableBody>

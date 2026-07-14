@@ -28,8 +28,11 @@ export interface SiteRunListItem {
   startedAt: string;
   finishedAt: string | null;
   successfulPages: number;
+  failedPages: number;
   pendingPages: number;
   deniedPages: number;
+  successfulArtifacts: number;
+  failedArtifacts: number;
   targetSuccessCount: number | null;
   errorMessage?: string | null;
 }

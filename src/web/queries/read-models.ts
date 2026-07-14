@@ -3,6 +3,7 @@ import { resolve, sep } from 'node:path';
 
 import type { DbClient, DbValue } from '../../db/database.js';
 import type { RunType, SiteConfig, UpdatePolicy } from '../../domain/types.js';
+import { loadRunProgress, type RunProgress } from './run-progress.js';
 
 function parseJson<T>(value: string | null): T | null {
   if (value === null) {
@@ -1134,7 +1135,7 @@ export class SitePageDetailQuery {
 export class RunSummaryQuery {
   constructor(private readonly db: DbClient) { }
 
-  private mapRunListRow(row: Record<string, unknown>): {
+  private mapRunListRow(row: Record<string, unknown>, progress: RunProgress): {
     runId: number;
     runType: RunType;
     runTypeLabel: string;
@@ -1144,8 +1145,11 @@ export class RunSummaryQuery {
     startedAt: string;
     finishedAt: string | null;
     successfulPages: number;
+    failedPages: number;
     pendingPages: number;
     deniedPages: number;
+    successfulArtifacts: number;
+    failedArtifacts: number;
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
   } {
@@ -1160,9 +1164,12 @@ export class RunSummaryQuery {
       statusLabel: toRunStatusLabel(String(row.status)),
       startedAt: String(row.started_at),
       finishedAt: (row.finished_at as string | null | undefined) ?? null,
-      successfulPages: Number(row.successful_page_count),
-      pendingPages: Number(row.pending_page_count),
-      deniedPages: Number(row.denied_page_count),
+      successfulPages: progress.successfulPages,
+      failedPages: progress.failedPages,
+      pendingPages: progress.pendingPages,
+      deniedPages: progress.deniedPages,
+      successfulArtifacts: progress.successfulArtifacts,
+      failedArtifacts: progress.failedArtifacts,
       targetSuccessCount:
         (row.target_success_count as number | null | undefined) ?? null,
       configSummary: summarizeConfig(config),
@@ -1291,8 +1298,11 @@ export class RunSummaryQuery {
     startedAt: string;
     finishedAt: string | null;
     successfulPages: number;
+    failedPages: number;
     pendingPages: number;
     deniedPages: number;
+    successfulArtifacts: number;
+    failedArtifacts: number;
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
     }>;
@@ -1331,11 +1341,19 @@ export class RunSummaryQuery {
       [...args, input.pageSize, offset],
     );
 
+    const progressByRun = await loadRunProgress(
+      this.db,
+      rows.map((row) => Number(row.id)),
+    );
+
     return {
       total: Number(totalRow?.count ?? 0),
       page: input.page,
       pageSize: input.pageSize,
-      items: rows.map((row) => this.mapRunListRow(row)),
+      items: rows.map((row) => this.mapRunListRow(
+        row,
+        progressByRun.get(Number(row.id))!,
+      )),
     };
   }
 
@@ -1346,8 +1364,11 @@ export class RunSummaryQuery {
     startedAt: string;
     finishedAt: string | null;
     successfulPages: number;
+    failedPages: number;
     pendingPages: number;
     deniedPages: number;
+    successfulArtifacts: number;
+    failedArtifacts: number;
   } | null> {
     const result = await this.listSiteRuns({
       siteId,
@@ -1366,8 +1387,11 @@ export class RunSummaryQuery {
     startedAt: string;
     finishedAt: string | null;
     successfulPages: number;
+    failedPages: number;
     pendingPages: number;
     deniedPages: number;
+    successfulArtifacts: number;
+    failedArtifacts: number;
     targetSuccessCount: number | null;
     configSummary: ReturnType<typeof summarizeConfig>;
     issues: string[];
@@ -1406,14 +1430,15 @@ export class RunSummaryQuery {
       throw new Error(`Run ${runId} not found`);
     }
 
+    const progress = (await loadRunProgress(this.db, [runId])).get(runId)!;
     const issues: string[] = [];
 
-    if (row.pending_page_count > 0) {
-      issues.push(`本次运行后还有 ${row.pending_page_count} 个页面需要人工确认。`);
+    if (progress.pendingPages > 0) {
+      issues.push(`本次运行后还有 ${progress.pendingPages} 个页面需要人工确认。`);
     }
 
-    if (row.denied_page_count > 0) {
-      issues.push(`有 ${row.denied_page_count} 个页面被排除在本次采集范围之外。`);
+    if (progress.deniedPages > 0) {
+      issues.push(`有 ${progress.deniedPages} 个页面被排除在本次采集范围之外。`);
     }
 
     if (row.status === 'failed') {
@@ -1431,9 +1456,12 @@ export class RunSummaryQuery {
       statusLabel: toRunStatusLabel(row.status),
       startedAt: row.started_at,
       finishedAt: row.finished_at,
-      successfulPages: row.successful_page_count,
-      pendingPages: row.pending_page_count,
-      deniedPages: row.denied_page_count,
+      successfulPages: progress.successfulPages,
+      failedPages: progress.failedPages,
+      pendingPages: progress.pendingPages,
+      deniedPages: progress.deniedPages,
+      successfulArtifacts: progress.successfulArtifacts,
+      failedArtifacts: progress.failedArtifacts,
       targetSuccessCount: row.target_success_count,
       configSummary: summarizeConfig(JSON.parse(row.config_snapshot_json) as SiteConfig),
       issues,
