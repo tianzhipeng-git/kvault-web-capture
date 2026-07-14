@@ -112,6 +112,7 @@ export type BrowserProfileMode = 'ephemeral' | 'persistent' | 'storage_state';
 export interface BrowserConfig {
   engine: BrowserEngine;
   profileMode: BrowserProfileMode;
+  cdpPoolSize?: number;
   reuse?: 'run_browser' | 'site_browser';
   contextReuse?: 'site_session_proxy' | 'site_run';
   pageReuse?: 'none';

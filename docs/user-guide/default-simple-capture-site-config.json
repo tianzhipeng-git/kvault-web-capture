@@ -72,6 +72,7 @@
   "browser": {
     "engine": "cloakbrowser",
     "profileMode": "ephemeral",
+    "cdpPoolSize": 1,
     "reuse": "run_browser",
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",

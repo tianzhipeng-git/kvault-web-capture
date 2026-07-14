@@ -72,6 +72,7 @@ describe('web config mapper', () => {
         contextReuse: 'site_session_proxy',
         pageReuse: 'none',
         proxyBinding: 'session',
+        cdpPoolSize: 2,
       },
       proxyPolicy: {
         mode: 'retry_on_failure',
@@ -86,6 +87,7 @@ describe('web config mapper', () => {
       contextReuse: 'site_session_proxy',
       pageReuse: 'none',
       proxyBinding: 'session',
+      cdpPoolSize: 2,
     });
     expect(config.proxyPolicy).toEqual({
       mode: 'retry_on_failure',
@@ -111,5 +113,16 @@ describe('web config mapper', () => {
         },
       }),
     ).toThrow('validation.markdown.rejectRegex contains invalid regex');
+
+    expect(() =>
+      parseSiteConfig({
+        seedUrls: ['https://example.com'],
+        browser: {
+          engine: 'cloakbrowser',
+          profileMode: 'ephemeral',
+          cdpPoolSize: 5,
+        },
+      }),
+    ).toThrow('browser.cdpPoolSize must be an integer between 1 and 4');
   });
 });

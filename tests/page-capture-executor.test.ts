@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { NonRetryableError } from 'crawlee';
 import { describe, expect, it } from 'vitest';
 
 import type { BrowserManager } from '../src/capture/browser-provider.js';
@@ -353,6 +354,75 @@ describe('PageCaptureExecutor', () => {
       status: 'failed',
     });
     expect(result.diagnostics[0].message).toContain('rejectRegex');
+  });
+
+  it('marks blocked 4xx base responses as non-retryable without proxy rotation', async () => {
+    const executor = new PageCaptureExecutor([{
+      name: 'blocked-base',
+      capabilities: ['base'],
+      async capture() {
+        return {
+          toolName: 'blocked-base',
+          statusCode: 429,
+          html: '<html><body>Too many requests</body></html>',
+          extracted: {
+            url: 'https://example.com/docs',
+            normalizedUrl: 'https://example.com/docs',
+            title: '',
+            metaDescription: '',
+            bodyText: 'Too many requests',
+            links: [],
+          },
+        };
+      },
+    }]);
+
+    await expect(executor.capture({
+      runId: 1,
+      siteId: 1,
+      url: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      needs: ['base'],
+      siteConfig: createDefaultSiteConfig('https://example.com'),
+      runtime,
+    })).rejects.toBeInstanceOf(NonRetryableError);
+  });
+
+  it('keeps blocked 4xx responses retryable when retry-on-failure proxy rotation is configured', async () => {
+    const executor = new PageCaptureExecutor([{
+      name: 'blocked-base',
+      capabilities: ['base'],
+      async capture() {
+        return {
+          toolName: 'blocked-base',
+          statusCode: 403,
+          html: '<html><body>Forbidden</body></html>',
+          extracted: {
+            url: 'https://example.com/docs',
+            normalizedUrl: 'https://example.com/docs',
+            title: '',
+            metaDescription: '',
+            bodyText: 'Forbidden',
+            links: [],
+          },
+        };
+      },
+    }]);
+    const siteConfig = createDefaultSiteConfig('https://example.com');
+    siteConfig.proxyPolicy = { mode: 'retry_on_failure', provider: 'crawlee' };
+
+    const error = await executor.capture({
+      runId: 1,
+      siteId: 1,
+      url: 'https://example.com/docs',
+      normalizedUrl: 'https://example.com/docs',
+      needs: ['base'],
+      siteConfig,
+      runtime,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(NonRetryableError);
   });
 
   it('parses Python bridge JSON, base64 buffers, stderr diagnostics, and invalid JSON failures', async () => {

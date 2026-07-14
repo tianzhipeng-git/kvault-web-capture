@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { spawn, type ChildProcess } from 'node:child_process';
 
 import {
@@ -16,6 +15,13 @@ import type {
   BrowserProfileMode,
 } from '../domain/types.js';
 import { logger } from '../utils/runtime-logger.js';
+import {
+  getFreePort,
+  importCloakBrowser,
+  readCdpWebSocketUrl,
+  waitForCdpWebSocketUrl,
+} from './browser-runtime-utils.js';
+import { CdpSlotPool } from './cdp-slot-pool.js';
 import type { RuntimeContext } from './types.js';
 
 const HAS_SYSTEM_CHROME =
@@ -199,7 +205,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
 
   private readonly contexts = new Map<string, BrowserContextEntry>();
 
-  private readonly cdpLeaseLocks = new Map<string, Promise<void>>();
+  private readonly cdpSlotPool = new CdpSlotPool();
 
   private lightpandaLeaseId = 0;
 
@@ -288,16 +294,20 @@ export class PlaywrightBrowserManager implements BrowserManager {
     runtime: RuntimeContext;
   }): Promise<CdpLease> {
     const startedAt = Date.now();
-    const key = processKey(input.identity, this.siteConfig?.browser);
-    const releaseLock = await this.acquireCdpLeaseLock(key);
+    const baseKey = processKey(input.identity, this.siteConfig?.browser);
+    const slotLease = await this.cdpSlotPool.acquire(
+      baseKey,
+      this.siteConfig?.browser?.cdpPoolSize ?? 1,
+    );
+    const processSlotKey = `${baseKey}:cdp:${slotLease.slot}`;
     let entry: BrowserProcessEntry;
     try {
-      entry = await this.getBrowserProcess(input.identity);
+      entry = await this.getBrowserProcess(input.identity, processSlotKey);
       if (!entry.cdpHttpUrl || !entry.cdpWebSocketUrl) {
         throw new Error(`CDP endpoint leases are not available for browser engine ${input.identity.engine}`);
       }
     } catch (error) {
-      releaseLock();
+      slotLease.release();
       throw error;
     }
 
@@ -317,7 +327,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
           return;
         }
         released = true;
-        releaseLock();
+        slotLease.release();
         logger.info('Browser CDP lease released', {
           requestId: input.runtime.requestId,
           identity: browserIdentityLogMeta(input.identity),
@@ -367,36 +377,14 @@ export class PlaywrightBrowserManager implements BrowserManager {
     }));
   }
 
-  private async acquireCdpLeaseLock(key: string): Promise<() => void> {
-    const previous = this.cdpLeaseLocks.get(key) ?? Promise.resolve();
-    let releaseCurrent!: () => void;
-    const current = new Promise<void>((resolve) => {
-      releaseCurrent = resolve;
-    });
-
-    const next = previous.catch(() => {}).then(() => current);
-    this.cdpLeaseLocks.set(key, next);
-    await previous.catch(() => {});
-
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
-      releaseCurrent();
-      if (this.cdpLeaseLocks.get(key) === next) {
-        this.cdpLeaseLocks.delete(key);
-      }
-    };
-  }
-
   private async getBrowser(identity: BrowserIdentity): Promise<Browser> {
     return (await this.getBrowserProcess(identity)).browser;
   }
 
-  private async getBrowserProcess(identity: BrowserIdentity): Promise<BrowserProcessEntry> {
-    const key = processKey(identity, this.siteConfig?.browser);
+  private async getBrowserProcess(
+    identity: BrowserIdentity,
+    key = processKey(identity, this.siteConfig?.browser),
+  ): Promise<BrowserProcessEntry> {
     const existing = this.browserProcesses.get(key);
     if (existing?.browser.isConnected()) {
       return existing;
@@ -547,76 +535,6 @@ export class PlaywrightBrowserManager implements BrowserManager {
       cookieCount: cookies.length,
     });
   }
-}
-
-async function importCloakBrowser(): Promise<{
-  launch: (options: {
-    headless?: boolean;
-    humanize?: boolean;
-    proxy?: string;
-    args?: string[];
-  }) => Promise<Browser>;
-}> {
-  try {
-    const moduleName = 'cloakbrowser';
-    return await import(moduleName) as {
-      launch: (options: {
-        headless?: boolean;
-        humanize?: boolean;
-        proxy?: string;
-        args?: string[];
-      }) => Promise<Browser>;
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`cloakbrowser package is required for browser.engine=cloakbrowser: ${message}`);
-  }
-}
-
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      server.close(() => {
-        if (typeof address === 'object' && address !== null) {
-          resolve(address.port);
-          return;
-        }
-        reject(new Error('Could not allocate a local port'));
-      });
-    });
-  });
-}
-
-async function waitForCdpWebSocketUrl(httpUrl: string): Promise<string> {
-  const startedAt = Date.now();
-  let lastError: Error | null = null;
-
-  while (Date.now() - startedAt < 10_000) {
-    try {
-      return await readCdpWebSocketUrl(httpUrl);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-
-  throw new Error(`Timed out waiting for CDP endpoint at ${httpUrl}: ${lastError?.message ?? 'unknown error'}`);
-}
-
-async function readCdpWebSocketUrl(httpUrl: string): Promise<string> {
-  const response = await fetch(`${httpUrl}/json/version`);
-  if (!response.ok) {
-    throw new Error(`CDP version endpoint failed with status ${response.status}`);
-  }
-
-  const body = await response.json() as { webSocketDebuggerUrl?: unknown };
-  if (typeof body.webSocketDebuggerUrl !== 'string' || body.webSocketDebuggerUrl === '') {
-    throw new Error('CDP version endpoint did not return webSocketDebuggerUrl');
-  }
-  return body.webSocketDebuggerUrl;
 }
 
 function normalizeCookieForPlaywright(cookie: unknown, url: string) {

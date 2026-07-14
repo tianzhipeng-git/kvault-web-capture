@@ -460,6 +460,7 @@ persistent profile active context = 1
   "browser": {
     "engine": "chromium",
     "profileMode": "ephemeral",
+    "cdpPoolSize": 1,
     "reuse": "run_browser",
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",
@@ -474,6 +475,7 @@ persistent profile active context = 1
 |------|------|
 | `engine` | `chromium` / `cloakbrowser` / `lightpanda` |
 | `profileMode` | `ephemeral` / `persistent` / `storage_state` |
+| `cdpPoolSize` | Python CDP 工具可并行使用的 browser process 数，默认 `1`，范围 `1-4` |
 | `reuse` | browser process 复用级别 |
 | `contextReuse` | context 复用级别 |
 | `pageReuse` | 是否复用 page，初期建议 `none` |
@@ -493,6 +495,8 @@ capture profile 仍负责 tool 顺序：
 
 - `captureProfile` 决定“用什么工具抓”。
 - `browser` 决定“这些工具使用什么浏览器身份”。
+
+当 capture profile 包含 `scrapling-page` 或 `crawl4ai-page` 时，Crawlee request 并发会自动对齐 `cdpPoolSize`。每个池槽使用独立 browser process，避免 handler 在共享 CDP endpoint 前排队并耗尽自身 timeout。
 
 ## 11. 已落地与后续方向
 

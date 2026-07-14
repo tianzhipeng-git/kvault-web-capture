@@ -313,6 +313,7 @@ function parseBrowserConfig(value: unknown): BrowserConfig | undefined {
   const contextReuse = value.contextReuse ?? 'site_session_proxy';
   const pageReuse = value.pageReuse ?? 'none';
   const proxyBinding = value.proxyBinding ?? 'session';
+  const cdpPoolSize = value.cdpPoolSize;
 
   assert(
     engine === 'chromium' || engine === 'cloakbrowser' || engine === 'lightpanda',
@@ -335,10 +336,20 @@ function parseBrowserConfig(value: unknown): BrowserConfig | undefined {
     proxyBinding === 'session' || proxyBinding === 'none',
     'browser.proxyBinding must be session or none',
   );
+  assert(
+    cdpPoolSize === undefined || (
+      typeof cdpPoolSize === 'number' &&
+      Number.isInteger(cdpPoolSize) &&
+      cdpPoolSize >= 1 &&
+      cdpPoolSize <= 4
+    ),
+    'browser.cdpPoolSize must be an integer between 1 and 4',
+  );
 
   return {
     engine,
     profileMode,
+    ...(typeof cdpPoolSize === 'number' ? { cdpPoolSize } : {}),
     reuse,
     contextReuse,
     pageReuse,

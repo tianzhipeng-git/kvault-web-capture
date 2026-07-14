@@ -266,6 +266,19 @@ export function CaptureConfigEditor({
               </select>
             </div>
             <div className="space-y-1">
+              <Label>CDP 进程池大小</Label>
+              <Input
+                type="number"
+                min={1}
+                max={4}
+                value={value.browser.cdpPoolSize}
+                onChange={(event) => onChange({
+                  ...value,
+                  browser: { ...value.browser, cdpPoolSize: Number(event.target.value) },
+                })}
+              />
+            </div>
+            <div className="space-y-1">
               <Label>Context 复用</Label>
               <select
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"

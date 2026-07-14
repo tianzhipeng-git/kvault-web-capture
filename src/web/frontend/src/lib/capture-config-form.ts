@@ -33,6 +33,7 @@ export interface CaptureProfileFormState {
 export interface BrowserFormState {
   engine: "chromium" | "cloakbrowser" | "lightpanda";
   profileMode: "ephemeral" | "persistent" | "storage_state";
+  cdpPoolSize: number;
   reuse: "run_browser" | "site_browser";
   contextReuse: "site_session_proxy" | "site_run";
   proxyBinding: "session" | "none";
@@ -113,6 +114,7 @@ export function defaultBrowserFormState(): BrowserFormState {
   return {
     engine: "chromium",
     profileMode: "ephemeral",
+    cdpPoolSize: 1,
     reuse: "run_browser",
     contextReuse: "site_session_proxy",
     proxyBinding: "session",
@@ -198,6 +200,7 @@ export function captureConfigFromApi(config: SiteConfigM2Fields): CaptureConfigF
     ? {
       engine: config.browser.engine,
       profileMode: config.browser.profileMode,
+      cdpPoolSize: config.browser.cdpPoolSize ?? 1,
       reuse: config.browser.reuse ?? "run_browser",
       contextReuse: config.browser.contextReuse ?? "site_session_proxy",
       proxyBinding: config.browser.proxyBinding ?? "session",

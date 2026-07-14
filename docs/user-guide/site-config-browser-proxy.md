@@ -11,6 +11,7 @@
   "browser": {
     "engine": "chromium",
     "profileMode": "ephemeral",
+    "cdpPoolSize": 1,
     "reuse": "run_browser",
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",
@@ -28,6 +29,7 @@
   "browser": {
     "engine": "chromium",
     "profileMode": "ephemeral",
+    "cdpPoolSize": 1,
     "reuse": "run_browser",
     "contextReuse": "site_session_proxy",
     "pageReuse": "none",
@@ -42,6 +44,7 @@
 | --- | --- | --- | --- |
 | `engine` | `chromium`, `cloakbrowser`, `lightpanda` | `chromium` | 使用的浏览器引擎 |
 | `profileMode` | `ephemeral`, `persistent`, `storage_state` | `ephemeral` | 浏览器身份的 profile 模式 |
+| `cdpPoolSize` | `1`-`4` | `1` | Scrapling/Crawl4AI 的 CDP browser process 池大小 |
 | `reuse` | `run_browser`, `site_browser` | `run_browser` | browser process 的复用范围 |
 | `contextReuse` | `site_session_proxy`, `site_run` | `site_session_proxy` | BrowserContext 的复用 key |
 | `pageReuse` | `none` | `none` | 当前版本只支持不复用 page |

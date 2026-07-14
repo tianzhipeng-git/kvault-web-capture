@@ -1,3 +1,5 @@
+import { NonRetryableError } from 'crawlee';
+
 import type { CaptureCapability } from '../domain/types.js';
 import { formatToolFallbackSummary } from './diagnostics-utils.js';
 import { logger } from '../utils/runtime-logger.js';
@@ -106,6 +108,7 @@ export class PageCaptureExecutor {
       url: input.url,
       diagnostics: [],
     };
+    const nonRetryableRejections = new Set<CaptureCapability>();
     const resolvedProfile = this.profileResolver.resolve({
       siteConfig: input.siteConfig,
       needs: input.needs,
@@ -202,6 +205,11 @@ export class PageCaptureExecutor {
           });
           if (!validation.accepted) {
             validationMessages.push(`${need}: ${validation.message ?? 'rejected'}`);
+            if (validation.retryable === false) {
+              nonRetryableRejections.add(need);
+            }
+          } else {
+            nonRetryableRejections.delete(need);
           }
           return validation.accepted;
         });
@@ -288,9 +296,11 @@ export class PageCaptureExecutor {
         diagnostics: result.diagnostics,
         durationMs: Date.now() - captureStartedAt,
       });
-      throw new Error(
-        `Capture failed for ${input.url}; missing ${missing.join(', ')}${messages || profileMessage ? `. ${messages || profileMessage}` : ''}`,
-      );
+      const failureMessage =
+        `Capture failed for ${input.url}; missing ${missing.join(', ')}${messages || profileMessage ? `. ${messages || profileMessage}` : ''}`;
+      throw missing.some((need) => nonRetryableRejections.has(need))
+        ? new NonRetryableError(failureMessage)
+        : new Error(failureMessage);
     }
 
     logger.info('Page capture executor succeeded', {

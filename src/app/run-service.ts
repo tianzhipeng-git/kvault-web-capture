@@ -42,6 +42,7 @@ import { CaptureProfileResolver } from '../capture/profile-resolver.js';
 import { CaptureToolRegistry } from '../capture/tool-registry.js';
 import { RunTargetTracker } from '../planner/run-target-tracker.js';
 import { CrawleeCaptureRuntime } from '../crawlee/capture-runtime.js';
+import { resolveCaptureConcurrency } from '../crawlee/capture-concurrency.js';
 import { REQUEST_HANDLER_TIMEOUT_SECS } from '../capture/python-bridge-config.js';
 import {
   createPageCaptureFailedRequestHandler,
@@ -502,6 +503,7 @@ export class RunService {
       requestQueue: pageCaptureQueue,
       configuration,
       abortSignal: input.abortSignal,
+      maxConcurrency: resolveCaptureConcurrency(effectiveConfig),
       maxRequestRetries: effectiveConfig.runOptions.maxRequestRetries,
       requestHandlerTimeoutSecs: REQUEST_HANDLER_TIMEOUT_SECS,
       requestHandler: createPageCaptureRequestHandler({

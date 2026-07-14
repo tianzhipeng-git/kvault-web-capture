@@ -15,6 +15,7 @@ const DEFAULT_REJECT_PATTERNS = [
 export interface CapabilityValidationResult {
   accepted: boolean;
   message?: string;
+  retryable?: boolean;
 }
 
 function textMatchesAny(text: string, patterns: readonly string[]): string | null {
@@ -30,6 +31,7 @@ function validateText(
   value: string,
   rule: CaptureValidationRule | undefined,
   defaultRejectPatterns: readonly string[] = [],
+  retryBlockedResult = false,
 ): CapabilityValidationResult {
   const minLength = rule?.minLength ?? 1;
   if (value.trim().length < minLength) {
@@ -41,7 +43,11 @@ function validateText(
     ...(rule?.rejectRegex ?? []),
   ]);
   if (rejectedBy) {
-    return { accepted: false, message: `text matched rejectRegex ${rejectedBy}` };
+    return {
+      accepted: false,
+      message: `text matched rejectRegex ${rejectedBy}`,
+      retryable: retryBlockedResult,
+    };
   }
 
   for (const pattern of rule?.requireRegex ?? []) {
@@ -57,6 +63,7 @@ function validateBaseText(
   html: string,
   bodyText: string,
   rule: CaptureValidationRule | undefined,
+  retryBlockedResult: boolean,
 ): CapabilityValidationResult {
   const minLength = rule?.minLength ?? 1;
   if (bodyText.trim().length < minLength) {
@@ -68,7 +75,11 @@ function validateBaseText(
     ...(rule?.rejectRegex ?? []),
   ]);
   if (rejectedBy) {
-    return { accepted: false, message: `html matched rejectRegex ${rejectedBy}` };
+    return {
+      accepted: false,
+      message: `html matched rejectRegex ${rejectedBy}`,
+      retryable: retryBlockedResult,
+    };
   }
 
   for (const pattern of rule?.requireRegex ?? []) {
@@ -105,12 +116,14 @@ export class ResultValidator {
     siteConfig: SiteConfig;
   }): CapabilityValidationResult {
     const rules = this.rules(input.siteConfig);
+    const retryBlockedResult = input.siteConfig.proxyPolicy?.mode === 'retry_on_failure';
 
     switch (input.capability) {
       case 'base': {
         const statusCode = input.result.statusCode;
         if (statusCode !== undefined && (statusCode < 200 || statusCode >= 400)) {
-          return { accepted: false, message: `statusCode ${statusCode} is not successful` };
+          const retryable = retryBlockedResult || statusCode === 408 || statusCode >= 500;
+          return { accepted: false, message: `statusCode ${statusCode} is not successful`, retryable };
         }
         if (!input.result.html || input.result.html.trim() === '') {
           return { accepted: false, message: 'html is empty' };
@@ -118,13 +131,23 @@ export class ResultValidator {
         if (!input.result.extracted) {
           return { accepted: false, message: 'extracted page is missing' };
         }
-        return validateBaseText(input.result.html, input.result.extracted.bodyText, rules.base);
+        return validateBaseText(
+          input.result.html,
+          input.result.extracted.bodyText,
+          rules.base,
+          retryBlockedResult,
+        );
       }
       case 'markdown': {
         if (!input.result.markdown) {
           return { accepted: false, message: 'markdown is missing' };
         }
-        return validateText(input.result.markdown, rules.markdown, DEFAULT_REJECT_PATTERNS);
+        return validateText(
+          input.result.markdown,
+          rules.markdown,
+          DEFAULT_REJECT_PATTERNS,
+          retryBlockedResult,
+        );
       }
       case 'screenshot': {
         const minBytes = rules.screenshot?.minBytes ?? 1;
