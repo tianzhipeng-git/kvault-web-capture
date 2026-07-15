@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json && cp src/utils/llm_config.yaml dist/src/utils/ && mkdir -p dist/src/capture/pytools && cp src/capture/pytools/*.py src/capture/pytools/requirements.txt src/capture/pytools/uv-overrides.txt dist/src/capture/pytools/",
+    "cli": "node --import tsx src/cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:migrate:sqlite-to-postgres": "node --import tsx src/scripts/migrate-sqlite-to-postgres.ts",
     "web": "node --import tsx src/web/server.ts",

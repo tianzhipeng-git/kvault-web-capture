@@ -41,12 +41,12 @@ Authorization: Bearer your-secret-key
 
 ## 前置配置
 
-简易采集入口依赖系统管理员预先在 Web UI 中配置的站点：
+简易采集入口依赖系统管理员预先配置的站点：
 
 - 默认站点：用于完整 artifact 采集，包括 `POST /api/simple-capture/runs` 未指定模式时，以及 `POST /api/simple-capture/submit-and-download`。
 - 默认 Markdown 站点：用于只跑 Markdown 的简易提交，包括 `POST /api/simple-capture/runs` 指定 `artifactMode: "markdown"` 时，以及 `POST /api/simple-capture/submit-markdown`。
 
-外部调度方不需要、也不能通过本文档接口修改上述站点配置。(由本系统管理员已完成)
+管理员可在 WebUI 或 [CLI](./cli.md) 中配置上述站点，例如 `system:default-site --set <site-id>`。外部调度方不需要、也不能通过本文档接口修改上述站点配置。
 
 ## 分步接口
 
@@ -146,6 +146,7 @@ GET /api/simple-capture/runs/456
 - `进行中`
 - `已完成`
 - `失败`
+- `已取消`
 
 ### 3. 下载运行结果
 

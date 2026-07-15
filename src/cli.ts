@@ -8,6 +8,7 @@ import type { UpdatePolicy } from './domain/types.js';
 import type { ProjectExportArtifact } from './export/project-exporter.js';
 import { isRunCancelledError } from './utils/cancellation.js';
 import { expandLinks } from './utils/link-expander.js';
+import { runExtendedCommand } from './cli/extended-commands.js';
 
 const exportArtifacts = new Set<ProjectExportArtifact>(['base', 'markdown', 'screenshot', 'structured']);
 
@@ -131,7 +132,10 @@ function installRunSignalHandlers(): {
 }
 
 function printUsage(): void {
-  console.log(`Usage:
+  console.log(`Usage (recommended; run from the repository root):
+  pnpm cli <command> [options]
+
+Equivalent raw commands:
   node --import tsx src/cli.ts project:create --name <name> [--db ./.local/state.db]
   node --import tsx src/cli.ts project:delete --project <project-id> [--yes] [--db ./.local/state.db]
   node --import tsx src/cli.ts project:export --project <project-id> [--output ./.local/exports/project.zip] [--site-ids <id,id>] [--artifacts base,markdown,screenshot,structured] [--status <status,status>] [--db ./.local/state.db]
@@ -143,7 +147,29 @@ function printUsage(): void {
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts run:seed --site <site-id> [--target-success-count <n>] [--db ./.local/state.db]
-  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--urls <url,url>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:list --site <site-id> [--type seed_run|crawl_run] [--page <n>] [--page-size <n>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:get --run <run-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:cancel --run <run-id> [--web-url <url> --api-key <key>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:logs --run <run-id> [--page-id <id>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:runtime-log --run <run-id> [--tail 500] [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:pages --site <site-id> [--status <status,status>] [--query <text>] [--label <text>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:page --site <site-id> --page-id <id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:artifact-file --site <site-id> --artifact-run <id> --output <path> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:classification-preview --site <site-id> --page-id <id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts project:labels --project <project-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts project:update-labels --project <project-id> --file <labels.json> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:config --site <site-id> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:update-config --site <site-id> --file <config.json> [--db ./.local/state.db]
+  node --import tsx src/cli.ts site:rules-preview --site <site-id> --url <url> [--labels-file <labels.json>] [--rules-before-base-file <rules.json>] [--rules-before-stage2-file <rules.json>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts system:default-site [--set <site-id|none>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts system:default-markdown-site [--set <site-id|none>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts system:config [--db ./.local/state.db]
+  node --import tsx src/cli.ts system:url-normalization [--strip-query-params <name,name>] [--strip-query-param-prefixes <prefix,prefix>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts vault:projects [--key <key>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts vault:export-project --project <project-id> --target-project-key <key> [--site-ids <id,id>] [--artifacts <types>] [--status <status,status>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts vault:export-run --run <run-id> --target-project-key <key> [--artifacts <types>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts vault:export-pages --site <site-id> --page-ids <id,id> --target-project-key <key> [--artifacts <types>] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:inventory-summary --site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:path-tree --site <site-id> [--format text|json] [--db ./.local/state.db]
   node --import tsx src/cli.ts site:pending --site <site-id> [--db ./.local/state.db]
@@ -170,6 +196,16 @@ async function main(): Promise<void> {
   const app = await CaptureApp.create({ dbPath, databaseUrl: process.env.KVAULT_DATABASE_URL });
 
   try {
+    if (await runExtendedCommand({
+      app,
+      command,
+      dbPath,
+      databaseUrl: process.env.KVAULT_DATABASE_URL,
+      argv: process.argv,
+    })) {
+      return;
+    }
+
     switch (command) {
       case 'project:create': {
         const result = await app.createProject(getRequiredArg('--name'));
@@ -324,6 +360,8 @@ async function main(): Promise<void> {
             updatePolicy,
             targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
             staleAfterMs: staleAfterMs ? Number(staleAfterMs) : null,
+            initialUrls: getArgList('--urls'),
+            crawlMaxDepthOverride: getArgList('--urls') ? 0 : null,
             abortSignal: cancellation.abortSignal,
           });
           console.log(JSON.stringify(result, null, 2));
