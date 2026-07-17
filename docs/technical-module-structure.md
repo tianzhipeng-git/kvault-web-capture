@@ -90,7 +90,7 @@ flowchart TD
 
 - `discovered_only`：已发现但还没有`base抓取`结果。
 - `url_rule_denied`：在 base 抓取前被 URL 规则排除。
-- `base_captured`：已完成 base，且没有需要继续采集的 artifact。
+- `base_captured`：已完成 base，且没有需要继续采集的 artifact (requiredArtifacts 为空)。
 - `stage2_pending`：需要人工或规则进一步确认。
 - `stage2_skipped`：base 后判定不需要继续采集。
 - `stage2_captured`：所需 artifact 均已成功。
