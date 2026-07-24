@@ -18,6 +18,7 @@
 5. 规则仍只决定是否需要 screenshot；命中后由 run 配置展开全部 variants。
 6. 页面成功要求全部所需 variants 成功，部分成功不能进入 `stage2_captured`。
 7. variant 配置指纹参与历史复用，防止同名规格变更后误用旧截图。
+8. 未配置 screenshot 或 `mode: basic` 时保持当前单截图和 eager capture 行为；只有 `mode: complete` 才启用多 variant 独立任务。
 
 ## 2. 目标与非目标
 
@@ -51,13 +52,16 @@ interface ArtifactRequirement {
 
 ```text
 markdown/default/null
+screenshot/default/null                    # basic/未配置，保持旧行为
 screenshot/desktop-1440/<sha256>
 screenshot/mobile-iphone-15/<sha256>
 ```
 
-`variantKey` 必须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，在同一截图配置内唯一，用于任务、日志、文件和 API。它不能单独决定历史复用。
+complete variant 的 `variantKey` 必须匹配 `^[a-z0-9][a-z0-9-]{0,63}$`，在同一截图配置内唯一，用于任务、日志、文件和 API。它不能单独决定历史复用。basic screenshot 固定为 `default/NULL`，继续沿用当前历史状态和 update policy。
 
 ### 3.2 配置指纹
+
+complete screenshot 使用：
 
 ```text
 SHA-256(canonical JSON(
@@ -68,7 +72,7 @@ SHA-256(canonical JSON(
 ))
 ```
 
-canonical JSON 对对象 key 排序、数组保序、剔除 `undefined` 并补齐默认值。`protocolVersion` 必须参与指纹，确保未来准备算法语义变化时旧结果失效。
+canonical JSON 对对象 key 排序、数组保序、剔除 `undefined` 并补齐默认值。`protocolVersion` 必须参与指纹，确保未来准备算法语义变化时旧结果失效。basic screenshot 不生成新指纹，继续使用 `default/NULL`。
 
 ## 4. SiteConfig
 
@@ -126,8 +130,8 @@ type ScreenshotMode = 'basic' | 'complete';
 
 interface ScreenshotConfig {
   mode: ScreenshotMode;
-  preparation: ScreenshotPreparationConfig;
-  variants: ScreenshotVariantConfig[];
+  preparation?: Partial<ScreenshotPreparationConfig>;
+  variants?: ScreenshotVariantConfig[];
 }
 
 type ScreenshotVariantConfig =
@@ -155,16 +159,20 @@ interface ScreenshotPreparationConfig {
 }
 ```
 
+`SiteConfig.screenshot` 可选。未配置时等价于 legacy basic：`mode: basic`，不执行高级 preparation，不展开 variants。显式 `mode: basic` 时允许 preparation/variants 缺省或为空，仍产出一个 `screenshot/default/NULL`。
+
 ### 4.3 校验
 
-variants 数量为 1 到 10，key 唯一且满足安全字符规则。viewport width 320 到 7680、height 320 到 4320、DPR 1 到 4；`scrollStepRatio` 0.1 到 1，`maxScrollRounds` 1 到 1000，`maxCaptureHeight` 1000 到 200000（部署默认建议 50000）。`timeoutMs` 小于 Crawlee handler timeout并为清理预留时间；device preset 来自明确 allowlist。complete profile 没有合格 tool 时在 run 启动前失败。
+只有 `mode: complete` 要求 variants 数量为 1 到 10、preparation 补齐默认值、key 唯一且满足安全字符规则。viewport width 320 到 7680、height 320 到 4320、DPR 1 到 4；`scrollStepRatio` 0.1 到 1，`maxScrollRounds` 1 到 1000，`maxCaptureHeight` 1000 到 200000（部署默认建议 50000）。`timeoutMs` 小于 Crawlee handler timeout并为清理预留时间；device preset 来自明确 allowlist。complete profile 没有合格 tool 时在 run 启动前失败。
 
 ## 5. 运行时流程
 
 ```text
 rulesBeforeStage2Eq → required type: screenshot
         │
-        ▼
+        ├── basic/未配置 → 保持当前单 screenshot 流程
+        │
+        ▼ complete
 expandArtifactRequirements(config snapshot)
         ├── desktop-1440 / fp-a
         ├── mobile-iphone-15 / fp-b
@@ -177,7 +185,7 @@ Update Policy 按 requirement 过滤
 每个 requirement 独立入队
         │
         ▼
-Executor: Playwright → Scrapling fallback
+Executor: 按 captureProfile.tools 顺序 fallback
         │
         ▼
 Validator → PNG + artifact_runs → 聚合状态刷新
@@ -191,7 +199,12 @@ URL/label 规则仍使用：
 { "artifacts": ["markdown", "screenshot"] }
 ```
 
-规则不直接列 variant。Stage 2 命中 screenshot 后，使用本 run 的 `config_snapshot_json.screenshot.variants` 展开全部 requirements。规则回答“是否截图”，SiteConfig 回答“截哪些规格”。按规则选择部分 variants 不在本次范围。
+规则不直接列 variant。Stage 2 命中 screenshot 后：
+
+- 未配置 screenshot 或 `mode: basic`：生成现有 `screenshot/default/NULL` requirement，不展开多规格。
+- `mode: complete`：使用本 run 的 `config_snapshot_json.screenshot.variants` 展开全部 requirements。
+
+规则回答“是否截图”，SiteConfig 回答“截哪些规格”。按规则选择部分 variants 不在本次范围。
 
 ### 5.2 Task
 
@@ -212,21 +225,25 @@ task.artifactRequirement = {
 };
 ```
 
-唯一键：
+complete screenshot artifact-only task 必须携带 `artifactRequirement`；basic/eager task 可继续省略并按 `screenshot/default/NULL` 处理。
+
+complete 唯一键：
 
 ```text
 artifact:{runId}:{sitePageId}:{artifactType}:{variantKey}:{configFingerprint}
 ```
 
-### 5.3 screenshot 不做 eager capture
+basic screenshot 保持当前 `artifact:{runId}:{sitePageId}:screenshot`。
 
-多规格 screenshot 不再合并进 base task：
+### 5.3 complete screenshot 不做 eager capture
+
+只有 `mode: complete` 的多规格 screenshot 不再合并进 base task：
 
 - Stage 2 前尚不确定是否需要截图。
 - 一次 base 调用不能正确返回多个设备 Context 的截图。
 - 独立任务才能隔离 retry、fallback、超时和部分成功。
 
-Markdown/structured 保留现有 eager capture；`resolveBaseTaskNeeds` 只排除 screenshot。
+未配置 screenshot 或 `mode: basic` 时保持当前 eager capture：一体化工具可随 base 提前产出 `screenshot/default/NULL`，未提前产出时再进入现有 artifact-only task。Markdown/structured 也保持当前 eager capture。`resolveBaseTaskNeeds` 只在 `mode: complete` 时排除 screenshot。
 
 ## 6. Tool 支持与 fallback
 
@@ -246,7 +263,7 @@ interface CaptureTool {
 }
 ```
 
-Executor 同时检查粗粒度 capability 和 `supports()`。一体化工具不支持当前 complete screenshot 时，只从该次 `toolNeeds` 排除 screenshot；base、markdown、structured 仍可执行。
+Executor 保持现有 profile 工具链，只增加对 `supports()` 的检查：先检查粗粒度 capability，再检查工具是否支持当前 requirement。一体化工具不支持当前 complete screenshot 时，只从该次 `toolNeeds` 排除 screenshot；base、markdown、structured 仍可执行。
 
 | Tool | basic | complete desktop/custom | complete mobile |
 | --- | --- | --- | --- |
@@ -254,51 +271,68 @@ Executor 同时检查粗粒度 capability 和 `supports()`。一体化工具不�
 | `scrapling-page` | 是 | 是 | Context 级设备模拟验收后支持 |
 | `crawl4ai-page` | 是 | 否 | 否 |
 
-Scrapling 的 `page_action(page)` 可完成滚动、等待和截图，但 mobile 必须在导航前配置 viewport、screen、UA、touch、`isMobile` 和 DPR。只在 `page_action` resize 不能算移动端支持。实现前需验证当前 Scrapling API 能否在 CDP 模式创建正确 Context；不能则扩展 adapter 的标准启动路径，不得静默桌面降级。
+Scrapling 的 `page_action(page)` 可完成滚动、等待和截图，但 mobile 必须在导航前通过 Context 参数配置 viewport、screen、UA、touch、`isMobile` 和 DPR。只在 `page_action` resize 不能算移动端支持。当前 Scrapling API 可通过 `additional_args` 向 Playwright Context 传入这些配置；实现时仍需用合约测试验证 CDP 模式的实际设备语义，不得静默桌面降级。
 
 ### 6.2 Fallback
 
+不为 complete screenshot 新增特殊 fallback 链，也不硬编码 Playwright 和 Scrapling 顺序。继续按 `captureProfile.tools` 遍历：
+
 ```text
-Playwright
-  ├── accepted → variant 完成
-  └── 抛错/metadata 不合格
-                 ▼
-             Scrapling
-               ├── accepted → variant 完成
-               └── failed → executor 抛错 → Crawlee request retry
+当前 artifact requirement
+        │
+        ▼
+按 captureProfile.tools 顺序遍历
+        ├── capability 不匹配 → skip
+        ├── supports() = false → skip
+        ├── capture + validator accepted → requirement 完成
+        └── 抛错/validator rejected → 下一个支持工具
+                                      │
+                                      ▼
+                         所有支持工具均未接受
+                                      │
+                                      ▼
+                             Crawlee request retry
 ```
 
-每个 tool 在单次 handler 中最多一次，variants 互不重试对方。
+每个 variant 是独立 request，失败只重试自己。工具自身重试、Crawlee retry 和现有 handler timeout 保持当前行为。
 
 ## 7. 页面准备协议
 
-### 7.1 跨语言边界
+### 7.1 共享 preparation.js
 
-不构造跨进程 Page 抽象，只共享协议、配置、metadata 和测试：
+不构造跨进程 Page 抽象，也不在 TypeScript/Python 中各维护一份 DOM 滚动算法。项目只维护一个不依赖 Node/Python 模块的 `preparation.js`，由两个 adapter 读取后通过 Playwright `page.evaluate(script, config)` 在目标页面的 JavaScript execution context 中执行：
 
 ```text
-ScreenshotPreparationProtocol v1
-├── preparePlaywrightPage(page, config)
-└── prepare_scrapling_page(page, config)
+TypeScript adapter                 Python adapter
+        │                                │
+        └──── page.evaluate(script, config) ────┘
+                              │
+                              ▼
+                        preparation.js
+                              │
+             DOM 扫描、滚动、资源等待、容器展开
+                              │
+                              ▼
+                    ScreenshotMetadata
 ```
 
-PythonBridge payload 增加当前 `artifactRequirement`、最终 `screenshotConfig` 和 variant。Scrapling 返回与 Playwright 相同的 metadata。
+TypeScript/Python 各自负责 Context/Page 创建、导航、调用脚本、截图和资源释放。`preparation.js` 暴露 `prepare` 和 `cleanup` 两个 action：`prepare` 完成页面内滚动、等待、临时样式和 metadata；adapter 截图后必须在自己的 `finally` 中调用 `cleanup`，恢复临时 DOM 样式并清理 MutationObserver/定时器。构建时将该脚本复制到 `dist`；TypeScript 可缓存脚本文本，Python 子进程按次读取。PythonBridge payload 增加当前 `artifactRequirement`、最终 `screenshotConfig` 和 variant。
 
 ### 7.2 固定阶段
 
 ```text
-1. Context 设备模拟
-2. goto(load)
-3. 初始图片/字体等待
-4. 发现文档和局部滚动容器
-5. 从内到外渐进滚动
-6. 每步等待资源与布局稳定
-7. 动态增长后重新扫描
-8. 展开普通局部滚动容器
-9. 最终稳定检查
-10. full-page PNG
-11. finally 恢复临时 DOM 样式
-12. 返回 metadata
+1. Adapter 创建带设备模拟的 Context/Page
+2. Adapter 执行 goto(load)
+3. preparation.js 初始图片/字体等待
+4. preparation.js 发现文档和局部滚动容器
+5. preparation.js 从内到外渐进滚动
+6. preparation.js 每步等待资源与布局稳定
+7. preparation.js 在动态增长后重新扫描
+8. preparation.js 展开普通局部滚动容器
+9. preparation.js 最终稳定检查并返回 metadata
+10. Adapter 根据 metadata 执行 full-page 或限高 clip PNG
+11. Adapter finally 调用 preparation.js cleanup 恢复临时 DOM 状态
+12. Adapter 返回 PNG + metadata
 ```
 
 所有阶段共享总 deadline，不能为每个阶段分别使用完整 timeout。
@@ -328,15 +362,15 @@ OR (
 
 普通容器截图前临时设置 height/max-height、`overflow-y: visible`、`scrollTop: 0`，保存原 style 并在 finally 恢复。展开后重新等待布局稳定。
 
-以下情况不强制展开并标记 truncated：虚拟列表回收 DOM、超过高度/像素预算、跨域 iframe、展开后持续不稳定。
+以下情况不强制展开并标记 truncated：虚拟列表回收 DOM、超过高度限制、跨域 iframe、展开后持续不稳定。
 
 ### 7.5 稳定与上限
 
 连续 `stableRounds` 次采样中，文档/容器高度、未完成图片和 mutation 无实质变化才稳定；使用像素 tolerance 避免亚像素动画永久阻塞。可注入固定 CSS 暂停 animation/transition，此行为必须固定并进入 fingerprint。
 
-达到 `timeoutMs`、`maxScrollRounds`、`maxCaptureHeight` 或像素预算时：
+达到 `timeoutMs`、`maxScrollRounds` 或 `maxCaptureHeight` 时立即终止继续准备：
 
-- `onLimit: truncate`：截图并设置 `truncated: true` 和 `limitReason`。
+- `onLimit: truncate`：设置 `truncated: true` 和 `limitReason`。页面高度不超过限制时可用 full-page；已经超过 `maxCaptureHeight` 时由 adapter 使用 clip 截取不超过该高度的区域，不能继续执行无上限的 `fullPage: true`。
 - `onLimit: fail`：拒绝结果并 fallback；所有工具失败后 Crawlee retry。
 
 ## 8. Metadata 与 Validator
@@ -369,10 +403,9 @@ handler 将 metadata 与 tool 名写入 `artifact_runs.meta_json`。complete val
 
 - metadata 和协议版本存在。
 - key/fingerprint、设备和 viewport 与 requirement 一致。
-- 文档及要求的非豁免滚动容器已完成。
-- 图片/字体状态符合配置。
-- truncated 与 `onLimit` 一致。
-- PNG 尺寸、字节和像素量在限制内。
+- 非 truncated 结果的文档、要求的非豁免滚动容器及配置要求的图片/字体状态已完成。
+- `truncated: true` 时必须有 `limitReason`；`onLimit: fail` 不接受 truncated，`onLimit: truncate` 可接受因限制而未完成的滚动、图片或容器。
+- PNG 字节满足现有 `minBytes`；限高截图的 capture height 不超过 `maxCaptureHeight`。
 
 仅返回 PNG 不能满足 complete；metadata 不合格时 fallback。
 
@@ -418,7 +451,28 @@ ON artifact_runs(
 部分成功且仍有缺失            → NULL
 ```
 
-每次 artifact 成功或最终失败后，统一根据最新 page run requirements 和 artifact_runs 刷新。不能在第一张 screenshot 成功时直接写 succeeded。
+历史复用保持当前 update policy 的实现方式，不在当前 `page_run` 复制 reused artifact 行。完成计算合并两部分：
+
+```text
+当前 page_run requirements
+        │
+        ├── update policy 允许复用的历史最新同 requirement 成功记录
+        └── 当前 page_run 新生成的 artifact_runs
+```
+
+`force_recrawl_all` 只接受当前 page run 新生成的结果；`skip_existing` 和 `stale_after_duration` 可以按现有语义使用历史结果。每次 artifact 成功或最终失败后，统一根据最新 page run requirements、可复用历史结果和当前 artifact_runs 刷新，不能在第一张 screenshot 成功时直接写 succeeded。
+
+多个 variant task 可能并发完成。为避免现有“读状态、计算、再更新”流程互相覆盖，artifact result 写入和页面聚合刷新按 `sitePageId` 使用进程内 mutex 串行执行：
+
+```text
+acquire sitePageId mutex
+  → 写 artifact_run
+  → 查询/合并 requirement 状态
+  → 更新 site_pages 聚合缓存
+release mutex
+```
+
+该方案同时适用于当前 SQLite/PostgreSQL client，不新增通用 transaction API。它基于项目现有的单应用进程执行模型；未来若允许多个进程同时处理同一 run，再升级为数据库事务或 PostgreSQL advisory lock。
 
 run/page 完成计算的 Map key 从 `artifact_type` 改为：
 
@@ -436,7 +490,7 @@ artifactType + variantKey + configFingerprint
 | `skip_existing` | 仅跳过最新成功且 key + fingerprint 匹配的 variant |
 | `stale_after_duration` | 按每个 variant 的成功时间判断 |
 
-只要任一当前 requirement 缺失、失败、过期或 fingerprint 改变，页面就不能因粗粒度 `last_screenshot_status` 整体跳过。历史查询必须返回 requirement 级最新结果。
+行为继续沿用当前 update policy：planner 先查询历史状态，满足的 requirement 不入队；完成统计再合并历史满足项和当前 page run 的新 artifact rows。只要任一当前 requirement 缺失、失败、过期或 fingerprint 改变，页面就不能因粗粒度 `last_screenshot_status` 整体跳过。历史查询必须返回 requirement 级最新结果。
 
 ## 11. BrowserManager 与 Scrapling
 
@@ -446,14 +500,14 @@ Playwright 移动模拟必须在 `browser.newContext()` 应用完整 device desc
 engine + site/run/session/proxy/profile + variant config fingerprint
 ```
 
-`acquirePage` 输入增加明确 emulation 配置；BrowserManager 只管理资源与身份，滚动/等待/DOM 展开放在 Preparer。
+`acquirePage` 输入增加明确 emulation 配置；BrowserManager 只管理资源与身份，滚动/等待/DOM 展开放在共享 `preparation.js`。
 
 Scrapling 继续通过 PythonBridge 使用 CDP endpoint，但 endpoint 仅代表浏览器进程，不代表设备配置。它必须：
 
 1. 导航前创建符合 variant 的独立 Context/Page。
-2. 导航后在 `page_action` 执行 Preparer、截图和 metadata 收集。
+2. 导航后在 `page_action` 调用共享 `preparation.js`、截图和收集 metadata。
 
-如果 Scrapling 公开 API 无法在 CDP 模式传入 Context 参数，先扩展 adapter 的标准启动路径；不能只 `set_viewport_size()` 后声称 mobile 完整支持。
+Scrapling adapter 使用 `additional_args` 传入 Context 参数；若当前安装版本在 CDP 模式下不能正确应用这些参数，再扩展 adapter 的标准启动路径。不能只 `set_viewport_size()` 后声称 mobile 完整支持。
 
 ## 12. 文件、导出与 UI
 
@@ -464,6 +518,7 @@ Scrapling 继续通过 PythonBridge 使用 CDP endpoint，但 endpoint 仅代表
 ├── base.md
 ├── markdown.md
 ├── structured.json
+├── screenshot.png                    # basic/未配置，保持当前路径
 └── screenshots/
     ├── desktop-1440.png
     ├── mobile-iphone-15.png
@@ -485,11 +540,11 @@ run 始终使用 config snapshot，运行中修改站点配置不影响已启动
 `P` 个页面、`V` 个 variants 的最坏导航数约为 `P × V × attempts`。要求：
 
 - variants 独立任务，共享 run 级 browser process，Context 按设备/身份隔离。
-- screenshot task 使用独立浏览器并发预算，避免 PNG 同时编码导致 OOM。
-- 除 `maxCaptureHeight` 外限制 `width × height × DPR²`。
+- 保持现有 Crawlee `maxConcurrency` 和 CDP pool 控制，不新增 screenshot queue、semaphore 或独立并发配置。
+- 使用 `maxCaptureHeight` 限制超长截图，不增加像素预算配置。
 - Buffer 落盘后及时释放，不长期聚合多个 variants。
 - Scrapling bridge、Preparer、Crawlee handler timeout 从内到外递增。
-- 生产并发值由 1/3/10 variants benchmark 决定，不在方案中猜测硬编码。
+- 1/3/10 variants benchmark 只观察现有并发设置下的资源和耗时，不在本功能中新增并发调优机制。
 
 ## 14. 失败语义
 
@@ -499,11 +554,11 @@ run 始终使用 config snapshot，运行中修改站点配置不影响已启动
 | 长连接导致 network idle 不出现 | 继续按资源和布局稳定判断 |
 | 无限滚动/虚拟列表 | 达上限后 truncated 或 failed |
 | 展开容器导致布局抖动 | finally 恢复样式，fallback |
-| Playwright 崩溃 | 释放 lease，fallback Scrapling |
+| 浏览器工具崩溃 | 释放 lease，executor 尝试 profile 中下一个支持工具 |
 | Scrapling 超时 | 终止子进程、释放 CDP lease，进入 retry |
 | 单 variant 失败 | 只重试该 variant，其他成功保留 |
 | 同 key 配置变化 | fingerprint 不匹配，重新截图 |
-| PNG 超像素预算 | 截图前阻止并给出 limitReason |
+| 页面超过 `maxCaptureHeight` | truncate 时限高 clip，fail 时尝试下一个支持工具 |
 | 跨域 iframe 不完整 | warning，不宣称 iframe 内完整 |
 
 complete 结果若缺少 metadata、未执行要求步骤且未明确标记 truncated，必须失败，禁止静默接受。
@@ -512,16 +567,17 @@ complete 结果若缺少 metadata、未执行要求步骤且未明确标记 trun
 
 ### 15.1 单元测试
 
-- 配置：桌面/custom/device preset、重复/非法 key、未知 device、边界值。
+- 配置：未配置 screenshot、basic 空 preparation/variants、桌面/custom/device preset、重复/非法 key、未知 device、边界值。
 - fingerprint：默认值补齐、key 顺序无关、任一有效配置变化都会改变。
 - requirement 展开、unique key、variant 级 update policy 和聚合状态。
 - complete validator：metadata 缺失、fingerprint/viewport 不匹配、truncated 两种策略。
+- basic 保持 `screenshot/default/NULL` 和现有 eager capture；complete 从 base eager needs 中排除 screenshot。
 
 ### 15.2 Playwright/Scrapling 合约测试
 
 本地 test server 提供：普通图片、lazy 图片、滚动后插图、延迟字体、单/嵌套滚动容器、动态增长容器、虚拟列表、无限文档、sticky header、跨域 iframe、永久轮询。
 
-同一组断言分别运行两个实现：资源被触发、容器到底或明确 truncated、metadata 与实际一致、成功/超时后资源均释放。Scrapling mobile 必须额外验证 UA、touch、viewport、DPR 和 mobile media query。
+两个 adapter 调用同一 `preparation.js`，合约测试分别验证：资源被触发、容器到底或明确 truncated、metadata 与实际一致、限高 clip 不超过 `maxCaptureHeight`、成功/超时后资源均释放。Scrapling mobile 必须额外验证 UA、touch、viewport、DPR 和 mobile media query。
 
 ### 15.3 集成测试
 
@@ -533,55 +589,57 @@ desktop succeeded + mobile succeeded + custom failed
 → page 不得 stage2_captured
 ```
 
-同时验证不同队列 key、文件不覆盖、三条 artifact_runs、ZIP/manifest、Playwright→Scrapling fallback，以及一体化 Scrapling 不支持截图时仍可产出 base/markdown。
+同时验证不同队列 key、文件不覆盖、三条 artifact_runs、ZIP/manifest、按 capture profile 顺序跳过不支持工具并 fallback，以及一体化工具不支持 complete screenshot 时仍可产出 base/markdown。增加多个 variants 以不同完成顺序并发落库的测试，确认 `sitePageId` mutex 下聚合结果一致。
 
 ### 15.4 Update Policy 与迁移
 
 - 三个匹配 variants 全成功时 `skip_existing` 全跳过；只缺一个时只补一个。
 - 同 key 改 viewport 后只重抓 fingerprint 改变的 variant。
 - stale 按各 variant 时间判断；旧 `fingerprint=NULL` 不满足新 complete requirement。
+- 当前 page run 的完成统计正确合并历史满足项和新 artifact rows；`force_recrawl_all` 不使用历史 variant。
+- 旧站点未配置 screenshot 时仍按 basic/default/NULL 处理。
 - SQLite/PostgreSQL 新库、旧库幂等迁移、JSON 转换和 SQLite→PostgreSQL 复制脚本。
 
 ### 15.5 性能与清理
 
 - 1/3/10 variants 的 RSS、耗时、PNG 大小。
-- 超长页面在 OOM 前被像素预算阻止。
+- 超长页面达到高度限制后停止继续准备，并在 truncate 模式使用限高 clip。
 - 成功、失败、timeout、fallback、取消后 Page/Context/CDP lease/Python 子进程均释放。
 
 ## 16. 实施顺序
 
 ### Phase 1：模型与持久化
 
-实现 ScreenshotConfig、ArtifactRequirement、fingerprint、artifact_runs 字段/索引、JSON 迁移、repository、状态、update policy、variant 文件路径和 exporter；用 fake tool 跑通三规格链路。
+实现可选 ScreenshotConfig、basic legacy 语义、ArtifactRequirement、complete fingerprint、artifact_runs 字段/索引、JSON 迁移、requirement 级历史查询、`sitePageId` 聚合 mutex、variant 文件路径和 exporter；用 fake tool 跑通 basic eager capture 和三规格 complete 链路。
 
 验收：未实现高级滚动前，多 variant 已不会覆盖、折叠或误判完成。
 
 ### Phase 2：Playwright 参考实现
 
-实现 BrowserManager Context emulation identity、TS Preparer、metadata、complete validator 和合约测试页。
+实现 BrowserManager Context emulation identity、共享 `preparation.js`、Playwright adapter、metadata、complete validator 和合约测试页。
 
 验收：桌面、移动、custom、懒加载和局部滚动测试通过。
 
 ### Phase 3：Scrapling 一等实现
 
-实现 PythonBridge 配置透传、Context 级设备模拟、Python Preparer 和统一 metadata，并运行与 Playwright 相同的合约测试。
+实现 PythonBridge 配置透传、Context 级设备模拟和对共享 `preparation.js` 的调用，并运行与 Playwright 相同的合约测试。
 
 验收：声明支持的 variants 达到相同语义；mobile 未通过前不得打开支持标记。
 
 ### Phase 4：API、UI 与上线
 
-实现 variant 进度、错误、预览和导出 manifest，更新关联文档；benchmark 后确定生产并发，小批量试运行再扩大。
+实现 variant 进度、错误、预览和导出 manifest，更新关联文档；在现有并发控制下 benchmark，小批量试运行再扩大。
 
 ## 17. 影响模块
 
 | 模块 | 变化 |
 | --- | --- |
-| `domain/config` | ScreenshotConfig、requirements、解析和 fingerprint |
-| `planner` | requirement 展开、variant update policy、禁用 screenshot eager |
-| `crawlee/handlers` | variant 入队、unique key、逐 requirement 落库 |
-| `capture` | `supports()`、Preparer、metadata、validator、fallback |
+| `domain/config` | 可选 ScreenshotConfig、basic legacy 语义、requirements、解析和 complete fingerprint |
+| `planner` | complete requirement 展开、variant update policy、只对 complete 禁用 screenshot eager |
+| `crawlee/handlers` | variant 入队、unique key、逐 requirement 落库、`sitePageId` 聚合 mutex |
+| `capture` | `supports()`、共享 `preparation.js`、metadata、validator、现有 profile fallback |
 | `browser-provider` | Context emulation 与 identity key |
-| `python-bridge/pytools` | 配置透传、Scrapling Preparer |
+| `python-bridge/pytools` | 配置透传、Scrapling 调用共享 preparation.js |
 | `db` | variant 字段、迁移、聚合和历史查询 |
 | `export/web` | 多文件、manifest、variant 状态和预览 |
 | `tests` | 合约、集成、迁移、性能和泄漏测试 |
@@ -590,6 +648,6 @@ desktop succeeded + mobile succeeded + custom failed
 
 ## 18. 完成标准
 
-一次 run 能为同一页面稳定生成至少 desktop 和 mobile 两个 variants，且 Playwright/Scrapling 通过同一套 complete 合约测试。任一 variant 失败时页面不得误判完整成功；`skip_existing` 必须精确复用 key + fingerprint 并只补缺失项。
+未配置 screenshot 或 `mode: basic` 的站点保持现有单截图、eager capture 和 fallback 行为。一次 complete run 能为同一页面稳定生成至少 desktop 和 mobile 两个 variants，且 Playwright/Scrapling adapter 调用同一 `preparation.js` 并通过同一套 complete 合约测试。任一 variant 失败时页面不得误判完整成功；`skip_existing` 必须精确复用 key + fingerprint 并只补缺失项。
 
 文件、数据库、ZIP、API 和 UI 不得折叠或覆盖 variants；无限流、虚拟列表、跨域 iframe、超长页面必须有明确 truncated/failed。所有资源在成功、失败、超时和取消路径释放；SQLite/PostgreSQL 新库、迁移和复制测试通过，相关文档同步更新。
