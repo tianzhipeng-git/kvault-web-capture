@@ -1,6 +1,7 @@
 import type { DbClient, DbValue } from '../../../db/database.js';
 
 import { parseJson, toInventoryStatusLabel, toPendingReasonLabel } from './read-model-utils.js';
+import { parseArtifactRequirementsJson } from '../../../domain/artifact-requirements.js';
 
 export interface SitePageListInput {
   siteId: number;
@@ -145,9 +146,9 @@ export class SitePageListQuery {
         const labels = parseJson<Record<string, string[]>>(
           (record.classification_labels_json as string | null | undefined) ?? null,
         );
-        const requiredArtifacts =
-          parseJson<string[]>((record.required_artifacts_json as string | null | undefined) ?? null) ??
-          [];
+        const requiredArtifacts = parseArtifactRequirementsJson(
+          (record.required_artifacts_json as string | null | undefined) ?? null,
+        ).map((requirement) => requirement.artifactType);
         const markdownDone = record.last_markdown_status === 'succeeded';
         const screenshotDone = record.last_screenshot_status === 'succeeded';
         const structuredDone = record.last_structured_status === 'succeeded';

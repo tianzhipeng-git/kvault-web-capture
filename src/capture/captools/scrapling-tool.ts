@@ -21,6 +21,16 @@ export class ScraplingTool implements CaptureTool {
 
   private readonly bridge: PythonBridge;
 
+  supports(capability: 'base' | 'markdown' | 'screenshot' | 'structured', input: CaptureInput) {
+    if (capability !== 'screenshot' || input.siteConfig.screenshot?.mode !== 'complete') {
+      return { supported: true };
+    }
+    return {
+      supported: input.artifactRequirement?.artifactType === 'screenshot',
+      reason: 'complete screenshot requires an artifact requirement',
+    };
+  }
+
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
     return this.bridge.capture(input);
   }

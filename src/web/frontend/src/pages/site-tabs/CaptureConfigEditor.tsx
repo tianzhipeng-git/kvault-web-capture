@@ -175,6 +175,38 @@ export function CaptureConfigEditor({
         <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="space-y-1">
+              <CardTitle>完整截图规格</CardTitle>
+              <CardDescription>
+                complete 模式会为每个 variant 创建独立任务；配置会在保存时由服务端完整校验。
+              </CardDescription>
+            </div>
+            <label className="flex items-center gap-2 text-sm shrink-0">
+              <input
+                type="checkbox"
+                checked={value.screenshotEnabled}
+                onChange={(event) => onChange({ ...value, screenshotEnabled: event.target.checked })}
+              />
+              启用
+            </label>
+          </div>
+        </CardHeader>
+        {value.screenshotEnabled && (
+          <CardContent className="space-y-2">
+            <Label>ScreenshotConfig (JSON)</Label>
+            <textarea
+              className="min-h-72 w-full rounded-md border bg-background p-3 font-mono text-xs"
+              value={value.screenshotJson}
+              onChange={(event) => onChange({ ...value, screenshotJson: event.target.value })}
+              spellCheck={false}
+            />
+          </CardContent>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-1">
               <CardTitle>结果校验</CardTitle>
               <CardDescription>
                 定义抓取结果是否可接受；所有工具统一使用此处配置。

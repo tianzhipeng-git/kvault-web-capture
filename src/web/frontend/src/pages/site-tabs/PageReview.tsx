@@ -199,13 +199,22 @@ function PreviewPanel({
   previewMode: PreviewMode;
   onPreviewModeChange: (mode: PreviewMode) => void;
 }) {
+  const [screenshotVariantKey, setScreenshotVariantKey] = useState(
+    detail.latestScreenshotVariants[0]?.variantKey ?? "default",
+  );
+  useEffect(() => {
+    setScreenshotVariantKey(detail.latestScreenshotVariants[0]?.variantKey ?? "default");
+  }, [detail.sitePageId, detail.latestScreenshotVariants]);
+  const screenshotVariant = detail.latestScreenshotVariants.find(
+    (variant) => variant.variantKey === screenshotVariantKey,
+  );
   const preview =
     activePreview === "base"
       ? detail.latestPreviews.base
       : activePreview === "markdown"
         ? detail.latestPreviews.markdown
         : activePreview === "screenshot"
-          ? detail.latestPreviews.screenshot
+          ? (screenshotVariant ?? detail.latestPreviews.screenshot)
           : detail.latestPreviews.structured;
   const title =
     activePreview === "base"
@@ -230,15 +239,28 @@ function PreviewPanel({
             <Button size="sm" variant={previewMode === "markdown" ? "default" : "ghost"} onClick={() => onPreviewModeChange("markdown")}>Markdown</Button>
           </div>
         )}
+        {activePreview === "screenshot" && detail.latestScreenshotVariants.length > 1 && (
+          <select
+            className="h-9 rounded-md border bg-background px-3 text-sm"
+            value={screenshotVariantKey}
+            onChange={(event) => setScreenshotVariantKey(event.target.value)}
+          >
+            {detail.latestScreenshotVariants.map((variant) => (
+              <option key={`${variant.variantKey}:${variant.configFingerprint}`} value={variant.variantKey}>
+                {variant.variantKey} · {variant.status}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {activePreview === "screenshot" ? (
-        detail.latestPreviews.screenshot.artifactRunId ? (
+        (screenshotVariant?.artifactRunId ?? detail.latestPreviews.screenshot.artifactRunId) ? (
           <div className="h-[520px] max-w-full overflow-auto rounded-lg bg-muted/30 p-3">
             <img
               className="max-h-full w-full object-contain"
-              src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/sites/${detail.siteId}/artifacts/${detail.latestPreviews.screenshot.artifactRunId}/file`}
-              alt="Screenshot preview"
+              src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/api/sites/${detail.siteId}/artifacts/${screenshotVariant?.artifactRunId ?? detail.latestPreviews.screenshot.artifactRunId}/file`}
+              alt={`Screenshot preview ${screenshotVariant?.variantKey ?? "default"}`}
             />
           </div>
         ) : (
@@ -500,7 +522,7 @@ function PageDetailDialog({
                       ))}
                       {run.artifactRuns.map((artifact) => (
                         <Badge key={artifact.artifactRunId} variant={artifact.status === "failed" ? "destructive" : "secondary"}>
-                          {artifact.artifactType} · {artifact.status}
+                          {artifact.artifactType}{artifact.variantKey !== "default" ? `/${artifact.variantKey}` : ""} · {artifact.status}
                         </Badge>
                       ))}
                     </div>

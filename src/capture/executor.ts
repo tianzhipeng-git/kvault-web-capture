@@ -58,6 +58,7 @@ function mergeResult(
       data: toolResult.screenshot,
       extension: toolResult.screenshotExtension ?? 'png',
       toolName: toolResult.toolName,
+      metadata: toolResult.screenshotMetadata,
     };
   }
 }
@@ -151,6 +152,19 @@ export class PageCaptureExecutor {
         continue;
       }
 
+      const supportedNeeds = remainingNeeds.filter((need) =>
+        tool.capabilities.includes(need) && (tool.supports?.(need, input).supported ?? true),
+      );
+      if (supportedNeeds.length === 0) {
+        result.diagnostics.push({
+          toolName: tool.name,
+          status: 'skipped',
+          capabilities: [...tool.capabilities],
+          message: 'tool does not support the current artifact requirement',
+        });
+        continue;
+      }
+
       if (isSiteAutomationAdapter(tool) && !tool.matches(input)) {
         result.diagnostics.push({
           toolName: tool.name,
@@ -174,7 +188,7 @@ export class PageCaptureExecutor {
       }
 
       try {
-        const toolNeeds = remainingNeeds.filter((need) => tool.capabilities.includes(need));
+        const toolNeeds = supportedNeeds;
         const toolStartedAt = Date.now();
         logger.info('Page capture tool attempt started', {
           runId: input.runId,
@@ -202,6 +216,7 @@ export class PageCaptureExecutor {
             capability: need,
             result: toolResult,
             siteConfig: input.siteConfig,
+            artifactRequirement: input.artifactRequirement,
           });
           if (!validation.accepted) {
             validationMessages.push(`${need}: ${validation.message ?? 'rejected'}`);

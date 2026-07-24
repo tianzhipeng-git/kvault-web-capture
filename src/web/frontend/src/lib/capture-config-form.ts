@@ -53,6 +53,8 @@ export interface CaptureConfigFormState {
   browser: BrowserFormState;
   proxyPolicyEnabled: boolean;
   proxyPolicy: ProxyPolicyFormState;
+  screenshotEnabled: boolean;
+  screenshotJson: string;
 }
 
 export interface CaptureValidationRuleApi {
@@ -81,6 +83,7 @@ export interface SiteConfigM2Fields {
     mode: ProxyPolicyFormState["mode"];
     provider?: "crawlee" | "apify";
   };
+  screenshot?: Record<string, unknown>;
 }
 
 function linesToArray(value: string): string[] {
@@ -219,6 +222,19 @@ export function captureConfigFromApi(config: SiteConfigM2Fields): CaptureConfigF
       mode: config.proxyPolicy?.mode ?? "off",
       provider: config.proxyPolicy?.provider ?? "",
     },
+    screenshotEnabled: config.screenshot !== undefined,
+    screenshotJson: JSON.stringify(config.screenshot ?? {
+      mode: "complete",
+      variants: [
+        {
+          key: "desktop-1440",
+          device: "desktop",
+          viewport: { width: 1440, height: 900 },
+          deviceScaleFactor: 1,
+        },
+        { key: "mobile-iphone-15", device: "iPhone 15" },
+      ],
+    }, null, 2),
   };
 }
 
@@ -251,6 +267,9 @@ export function captureConfigToApi(state: CaptureConfigFormState): SiteConfigM2F
         ? { provider: state.proxyPolicy.provider }
         : {}),
     };
+  }
+  if (state.screenshotEnabled) {
+    result.screenshot = JSON.parse(state.screenshotJson) as Record<string, unknown>;
   }
 
   return result;

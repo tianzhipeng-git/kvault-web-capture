@@ -1,7 +1,11 @@
 import type { DbClient } from '../database.js';
-import type { ArtifactRunStatus, ArtifactType, BaseCaptureStatus, HistoricalPageState, InventoryStatus, RuleOutcome, StageDecisionSnapshot } from '../../domain/types.js';
+import type { ArtifactRequirement, ArtifactRunStatus, ArtifactType, BaseCaptureStatus, HistoricalPageState, InventoryStatus, RuleOutcome, StageDecisionSnapshot } from '../../domain/types.js';
 import type { Clock } from '../../utils/clock.js';
 import { deriveInventoryStatus, parseJson } from './helpers.js';
+import {
+  parseArtifactRequirementsJson,
+  requirementKey,
+} from '../../domain/artifact-requirements.js';
 
 export interface InventorySummary {
   totalPages: number;
@@ -32,6 +36,8 @@ export interface KnownSitePageRow {
 }
 
 export class SitePageRepository {
+  private readonly artifactWriteChains = new Map<number, Promise<void>>();
+
   constructor(
     private readonly db: DbClient,
     private readonly clock: Clock,
@@ -215,6 +221,36 @@ export class SitePageRepository {
     };
   }
 
+  async getLatestRequirementStatus(input: {
+    sitePageId: number;
+    requirement: ArtifactRequirement;
+  }): Promise<{ status: ArtifactRunStatus; finishedAt: string } | null> {
+    const row = await this.db.get<{
+      status: ArtifactRunStatus;
+      finished_at: string;
+    }>(
+      `SELECT status, finished_at
+       FROM artifact_runs
+       WHERE site_page_id = ?
+         AND artifact_type = ?
+         AND variant_key = ?
+         AND (
+           config_fingerprint = ?
+           OR (config_fingerprint IS NULL AND ? IS NULL)
+         )
+       ORDER BY id DESC
+       LIMIT 1`,
+      [
+        input.sitePageId,
+        input.requirement.artifactType,
+        input.requirement.variantKey,
+        input.requirement.configFingerprint,
+        input.requirement.configFingerprint,
+      ],
+    );
+    return row ? { status: row.status, finishedAt: row.finished_at } : null;
+  }
+
   async markUrlRuleDenied(sitePageId: number): Promise<void> {
     await this.db.run(
       `UPDATE site_pages
@@ -289,7 +325,17 @@ export class SitePageRepository {
     runId: number;
     artifactType: ArtifactType;
     status: ArtifactRunStatus;
+    pageRunId?: number;
   }): Promise<void> {
+    if (input.pageRunId !== undefined) {
+      await this.refreshArtifactStatus({
+        sitePageId: input.sitePageId,
+        runId: input.runId,
+        pageRunId: input.pageRunId,
+      });
+      return;
+    }
+
     const row = await this.db.get<{
       last_stage_decision_json: string | null;
       last_markdown_status: ArtifactRunStatus | null;
@@ -361,6 +407,165 @@ export class SitePageRepository {
            updated_at = ?
        WHERE id = ?`,
       [inventoryStatus, input.status, input.runId, now, now, input.sitePageId],
+    );
+  }
+
+  async refreshArtifactStatus(input: {
+    sitePageId: number;
+    runId: number;
+    pageRunId: number;
+  }): Promise<void> {
+    const previous = this.artifactWriteChains.get(input.sitePageId) ?? Promise.resolve();
+    const current = previous
+      .catch(() => {})
+      .then(() => this.refreshArtifactAggregation(input));
+    this.artifactWriteChains.set(input.sitePageId, current);
+    try {
+      await current;
+    } finally {
+      if (this.artifactWriteChains.get(input.sitePageId) === current) {
+        this.artifactWriteChains.delete(input.sitePageId);
+      }
+    }
+  }
+
+  private async refreshArtifactAggregation(input: {
+    sitePageId: number;
+    runId: number;
+    pageRunId: number;
+  }): Promise<void> {
+    const pageRun = await this.db.get<{
+      required_artifacts_json: string;
+      update_policy: string;
+      last_stage_decision_json: string | null;
+      last_markdown_status: ArtifactRunStatus | null;
+      last_screenshot_status: ArtifactRunStatus | null;
+      last_structured_status: ArtifactRunStatus | null;
+    }>(
+      `SELECT
+         pr.required_artifacts_json,
+         cr.update_policy,
+         sp.last_stage_decision_json,
+         sp.last_markdown_status,
+         sp.last_screenshot_status,
+         sp.last_structured_status
+       FROM page_runs pr
+       INNER JOIN crawl_runs cr ON cr.id = pr.crawl_run_id
+       INNER JOIN site_pages sp ON sp.id = pr.site_page_id
+       WHERE pr.id = ? AND pr.site_page_id = ?`,
+      [input.pageRunId, input.sitePageId],
+    );
+    if (!pageRun || pageRun.last_stage_decision_json === null) {
+      throw new Error(`Missing page run requirements for site page ${input.sitePageId}`);
+    }
+
+    const requirements = parseArtifactRequirementsJson(pageRun.required_artifacts_json);
+    const currentRows = await this.db.all<{
+      artifact_type: ArtifactType;
+      variant_key: string;
+      config_fingerprint: string | null;
+      status: ArtifactRunStatus;
+    }>(
+      `SELECT artifact_type, variant_key, config_fingerprint, status
+       FROM artifact_runs
+       WHERE page_run_id = ?
+       ORDER BY id DESC`,
+      [input.pageRunId],
+    );
+    const statuses = new Map<string, ArtifactRunStatus>();
+    for (const row of currentRows) {
+      const key = requirementKey({
+        artifactType: row.artifact_type,
+        variantKey: row.variant_key,
+        configFingerprint: row.config_fingerprint,
+      });
+      if (!statuses.has(key)) {
+        statuses.set(key, row.status);
+      }
+    }
+
+    if (pageRun.update_policy !== 'force_recrawl_all') {
+      for (const requirement of requirements) {
+        const key = requirementKey(requirement);
+        if (statuses.has(key)) {
+          continue;
+        }
+        const historical = await this.db.get<{ status: ArtifactRunStatus }>(
+          `SELECT status
+           FROM artifact_runs
+           WHERE site_page_id = ?
+             AND artifact_type = ?
+             AND variant_key = ?
+             AND (
+               config_fingerprint = ?
+               OR (config_fingerprint IS NULL AND ? IS NULL)
+             )
+             AND status = 'succeeded'
+           ORDER BY id DESC
+           LIMIT 1`,
+          [
+            input.sitePageId,
+            requirement.artifactType,
+            requirement.variantKey,
+            requirement.configFingerprint,
+            requirement.configFingerprint,
+          ],
+        );
+        if (historical) {
+          statuses.set(key, historical.status);
+        }
+      }
+    }
+
+    const requiredTypes = [...new Set(requirements.map((item) => item.artifactType))];
+    const aggregate = (artifactType: ArtifactType): ArtifactRunStatus | null => {
+      const matching = requirements.filter((item) => item.artifactType === artifactType);
+      if (matching.length === 0) {
+        return artifactType === 'markdown'
+          ? pageRun.last_markdown_status
+          : artifactType === 'screenshot'
+            ? pageRun.last_screenshot_status
+            : pageRun.last_structured_status;
+      }
+      const values = matching.map((item) => statuses.get(requirementKey(item)) ?? null);
+      if (values.some((value) => value === 'failed')) {
+        return 'failed';
+      }
+      return values.every((value) => value === 'succeeded') ? 'succeeded' : null;
+    };
+    const markdown = aggregate('markdown');
+    const screenshot = aggregate('screenshot');
+    const structured = aggregate('structured');
+    const stageDecision = parseJson<StageDecisionSnapshot>(pageRun.last_stage_decision_json);
+    const inventoryStatus = deriveInventoryStatus({
+      pageOutcome: stageDecision.outcome,
+      requiredArtifacts: requiredTypes,
+      artifactStatuses: { markdown, screenshot, structured },
+    });
+    const now = this.clock.now();
+
+    await this.db.run(
+      `UPDATE site_pages
+       SET inventory_status = ?,
+           last_markdown_status = ?,
+           last_markdown_run_id = CASE WHEN ? IS NULL THEN last_markdown_run_id ELSE ? END,
+           last_markdown_at = CASE WHEN ? IS NULL THEN last_markdown_at ELSE ? END,
+           last_screenshot_status = ?,
+           last_screenshot_run_id = CASE WHEN ? IS NULL THEN last_screenshot_run_id ELSE ? END,
+           last_screenshot_at = CASE WHEN ? IS NULL THEN last_screenshot_at ELSE ? END,
+           last_structured_status = ?,
+           last_structured_run_id = CASE WHEN ? IS NULL THEN last_structured_run_id ELSE ? END,
+           last_structured_at = CASE WHEN ? IS NULL THEN last_structured_at ELSE ? END,
+           updated_at = ?
+       WHERE id = ?`,
+      [
+        inventoryStatus,
+        markdown, markdown, input.runId, markdown, now,
+        screenshot, screenshot, input.runId, screenshot, now,
+        structured, structured, input.runId, structured, now,
+        now,
+        input.sitePageId,
+      ],
     );
   }
 

@@ -95,6 +95,25 @@ describe('web config mapper', () => {
     });
   });
 
+  it('preserves and validates complete screenshot configuration', () => {
+    const config = mapConfigFormToSiteConfig({
+      seedUrls: ['https://example.com'],
+      screenshot: {
+        mode: 'complete',
+        variants: [{
+          key: 'desktop',
+          device: 'desktop',
+          viewport: { width: 1440, height: 900 },
+          deviceScaleFactor: 1,
+        }],
+      },
+    });
+
+    expect(config.screenshot?.mode).toBe('complete');
+    expect(config.screenshot?.preparation?.maxCaptureHeight).toBe(50_000);
+    expect(config.screenshot?.variants?.[0].key).toBe('desktop');
+  });
+
   it('reports invalid capture profile and regex field names', () => {
     expect(() =>
       parseSiteConfig({

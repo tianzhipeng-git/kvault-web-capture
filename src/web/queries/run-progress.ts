@@ -1,4 +1,8 @@
 import type { DbClient } from '../../db/database.js';
+import {
+  parseArtifactRequirementsJson,
+  requirementKey,
+} from '../../domain/artifact-requirements.js';
 
 export interface RunProgress {
   successfulPages: number;
@@ -26,6 +30,8 @@ interface ArtifactProgressRow {
   crawl_run_id: number;
   page_run_id: number;
   artifact_type: string;
+  variant_key: string;
+  config_fingerprint: string | null;
   status: string;
 }
 
@@ -71,7 +77,7 @@ export async function loadRunProgress(
       uniqueRunIds,
     ),
     db.all<ArtifactProgressRow>(
-      `SELECT id, crawl_run_id, page_run_id, artifact_type, status
+      `SELECT id, crawl_run_id, page_run_id, artifact_type, variant_key, config_fingerprint, status
        FROM artifact_runs
        WHERE crawl_run_id IN (${placeholders})
        ORDER BY id`,
@@ -94,7 +100,11 @@ export async function loadRunProgress(
     }
 
     const statuses = artifactStatusByPageRun.get(artifact.page_run_id) ?? new Map();
-    statuses.set(artifact.artifact_type, artifact.status);
+    statuses.set(requirementKey({
+      artifactType: artifact.artifact_type as import('../../domain/types.js').ArtifactType,
+      variantKey: artifact.variant_key,
+      configFingerprint: artifact.config_fingerprint,
+    }), artifact.status);
     artifactStatusByPageRun.set(artifact.page_run_id, statuses);
   }
 
@@ -123,15 +133,15 @@ export async function loadRunProgress(
       continue;
     }
 
-    const requiredArtifacts = JSON.parse(page.required_artifacts_json) as string[];
+    const requirements = parseArtifactRequirementsJson(page.required_artifacts_json);
     const currentStatuses = artifactStatusByPageRun.get(page.id);
-    const statuses = requiredArtifacts.map((artifactType) => (
-      currentStatuses?.get(artifactType)
+    const statuses = requirements.map((requirement) => (
+      currentStatuses?.get(requirementKey(requirement))
       ?? (page.update_policy === 'force_recrawl_all'
         ? null
-        : artifactType === 'markdown'
+        : requirement.artifactType === 'markdown'
           ? page.last_markdown_status
-          : artifactType === 'screenshot'
+          : requirement.artifactType === 'screenshot'
             ? page.last_screenshot_status
             : page.last_structured_status)
     ));

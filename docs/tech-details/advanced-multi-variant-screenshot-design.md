@@ -1,9 +1,12 @@
 # 高级多规格完整截图方案
 
-> 状态：设计方案，待实现  
-> 范围：`crawl_run` 的 `screenshot` artifact  
-> 核心实现：Playwright + Scrapling  
-> 更新：2026-07-15
+> 状态：已实现，并完成本地 Chromium/Playwright/Scrapling 实浏览器验收
+>
+> 范围：`crawl_run` 的 `screenshot` artifact
+>
+> 核心实现：Playwright + Scrapling
+>
+> 更新：2026-07-24
 
 ## 1. 背景与结论
 
@@ -651,3 +654,23 @@ desktop succeeded + mobile succeeded + custom failed
 未配置 screenshot 或 `mode: basic` 的站点保持现有单截图、eager capture 和 fallback 行为。一次 complete run 能为同一页面稳定生成至少 desktop 和 mobile 两个 variants，且 Playwright/Scrapling adapter 调用同一 `preparation.js` 并通过同一套 complete 合约测试。任一 variant 失败时页面不得误判完整成功；`skip_existing` 必须精确复用 key + fingerprint 并只补缺失项。
 
 文件、数据库、ZIP、API 和 UI 不得折叠或覆盖 variants；无限流、虚拟列表、跨域 iframe、超长页面必须有明确 truncated/failed。所有资源在成功、失败、超时和取消路径释放；SQLite/PostgreSQL 新库、迁移和复制测试通过，相关文档同步更新。
+
+## 19. 实现落点
+
+当前实现已覆盖配置解析与默认值、稳定指纹、requirement 展开、variant 独立队列键、数据库迁移与聚合、历史精确复用、Playwright/Scrapling adapter、共享页面准备脚本、complete validator、variant 文件路径、ZIP manifest、API 明细和 UI 预览切换。
+
+关键实现文件：
+
+- `src/domain/artifact-requirements.ts`：默认值、canonical fingerprint、requirement 展开和兼容解析。
+- `src/capture/screenshot-preparation.browser.js`：两个 adapter 共用的资源等待、滚动、稳定判断、容器展开和 cleanup。
+- `src/capture/captools/playwright-screenshot-tool.ts`、`src/capture/pytools/scrapling_tool.py`：Context 级设备模拟、截图和 metadata。
+- `src/crawlee/handlers.ts`、`src/db/repositories/site-page-repository.ts`：独立任务、落库和按页面串行聚合。
+- `src/export/project-exporter.ts`、`src/web/queries/read-models.ts`：多文件导出、manifest、variant 状态和预览。
+
+自动化回归覆盖配置边界、fingerprint、metadata validator、文件隔离、两个 variants 的聚合状态、独立任务展开、旧 JSON 兼容和既有抓取链路。`tests/advanced-screenshot.e2e-capture.test.ts` 已在本地真实 Chromium 上运行：Playwright 验证 desktop 与 iPhone 15 两个独立 Context、文档滚动、懒加载、局部滚动容器展开、PNG 实际尺寸和 metadata；Scrapling 通过 CDP 验证同一 desktop complete preparation 合约。运行命令为：
+
+```bash
+npm run test:e2e-capture -- --run tests/advanced-screenshot.e2e-capture.test.ts
+```
+
+真实验收暴露并修复了浏览器脚本与 TypeScript 包装模块同名导致的源码加载/构建覆盖、移动页面实际布局宽度与配置 viewport 不一致时 metadata 错报，以及 Scrapling 仍引用旧脚本路径三个问题。

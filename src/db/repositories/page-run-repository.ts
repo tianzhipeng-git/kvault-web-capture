@@ -1,5 +1,6 @@
 import type { DbClient } from '../database.js';
-import type { ArtifactType, BaseCaptureStatus, RuleOutcome } from '../../domain/types.js';
+import type { ArtifactRequirement, ArtifactType, BaseCaptureStatus, RuleOutcome } from '../../domain/types.js';
+import { defaultArtifactRequirement } from '../../domain/artifact-requirements.js';
 import type { Clock } from '../../utils/clock.js';
 import type { SampleCaptureRow } from './site-page-repository.js';
 
@@ -22,7 +23,7 @@ export class PageRunRepository {
     decisionOutcome: RuleOutcome;
     decisionReason: string | null;
     pendingReason: string | null;
-    requiredArtifacts: ArtifactType[];
+    requiredArtifacts: ArtifactRequirement[] | ArtifactType[];
   }): Promise<number> {
     const now = this.clock.now();
     const result = await this.db.run(
@@ -58,7 +59,9 @@ export class PageRunRepository {
         input.decisionOutcome,
         input.decisionReason,
         input.pendingReason,
-        JSON.stringify(input.requiredArtifacts),
+        JSON.stringify(input.requiredArtifacts.map((artifact) =>
+          typeof artifact === 'string' ? defaultArtifactRequirement(artifact) : artifact,
+        )),
       ],
     );
 

@@ -16,6 +16,10 @@ import {
   toRunStatusLabel,
   toRunTypeLabel,
 } from './read-models/read-model-utils.js';
+import {
+  parseArtifactRequirementsJson,
+  requirementKey,
+} from '../../domain/artifact-requirements.js';
 
 
 
@@ -51,6 +55,16 @@ export class SitePageDetailQuery {
     latestMarkdown: ReturnType<typeof buildProcessingState>;
     latestScreenshot: ReturnType<typeof buildProcessingState>;
     latestStructured: ReturnType<typeof buildProcessingState>;
+    latestScreenshotVariants: Array<{
+      artifactRunId: number;
+      variantKey: string;
+      configFingerprint: string | null;
+      status: string;
+      outputPath: string | null;
+      errorMessage: string | null;
+      toolName: string | null;
+      metadata: Record<string, unknown> | null;
+    }>;
     latestPageRun: {
       pageRunId: number;
       crawlRunId: number;
@@ -105,6 +119,8 @@ export class SitePageDetailQuery {
         artifactRunId: number;
         pageRunId: number;
         artifactType: string;
+        variantKey: string;
+        configFingerprint: string | null;
         status: string;
         outputPath: string | null;
         contentPreview: string;
@@ -197,6 +213,8 @@ export class SitePageDetailQuery {
     const latestArtifacts = await this.db.all<{
         id: number;
         artifact_type: string;
+        variant_key: string;
+        config_fingerprint: string | null;
         status: string;
         output_path: string | null;
         content: string | null;
@@ -204,7 +222,7 @@ export class SitePageDetailQuery {
         finished_at: string | null;
         meta_json: string | null;
       }>(
-        `SELECT id, artifact_type, status, output_path, content, error_message, finished_at, meta_json
+        `SELECT id, artifact_type, variant_key, config_fingerprint, status, output_path, content, error_message, finished_at, meta_json
          FROM artifact_runs
          WHERE site_page_id = ?
          ORDER BY id DESC`,
@@ -212,16 +230,28 @@ export class SitePageDetailQuery {
     );
 
     const latestArtifactByType = new Map<string, (typeof latestArtifacts)[number]>();
+    const latestArtifactByRequirement = new Map<string, (typeof latestArtifacts)[number]>();
     for (const artifact of latestArtifacts) {
       if (!latestArtifactByType.has(artifact.artifact_type)) {
         latestArtifactByType.set(artifact.artifact_type, artifact);
       }
+      const key = requirementKey({
+        artifactType: artifact.artifact_type as import('../../domain/types.js').ArtifactType,
+        variantKey: artifact.variant_key,
+        configFingerprint: artifact.config_fingerprint,
+      });
+      if (!latestArtifactByRequirement.has(key)) {
+        latestArtifactByRequirement.set(key, artifact);
+      }
     }
 
-    const requiredArtifacts =
+    const artifactRequirements =
       latestPageRun === null
         ? []
-        : (parseJson<string[]>(latestPageRun.required_artifacts_json) ?? []);
+        : parseArtifactRequirementsJson(latestPageRun.required_artifacts_json);
+    const requiredArtifacts = [
+      ...new Set(artifactRequirements.map((requirement) => requirement.artifactType)),
+    ];
     const decisionOutcome = latestPageRun?.decision_outcome ?? null;
     const pendingReason = latestPageRun?.pending_reason ?? page.last_pending_reason;
     const labelsObject =
@@ -281,6 +311,8 @@ export class SitePageDetailQuery {
         crawl_run_id: number;
         page_run_id: number;
         artifact_type: string;
+        variant_key: string;
+        config_fingerprint: string | null;
         status: string;
         output_path: string | null;
         content: string | null;
@@ -292,6 +324,8 @@ export class SitePageDetailQuery {
            crawl_run_id,
            page_run_id,
            artifact_type,
+           variant_key,
+           config_fingerprint,
            status,
            output_path,
            content,
@@ -339,8 +373,12 @@ export class SitePageDetailQuery {
           const pageRunLabels = parseJson<Record<string, string[]>>(
             pageRun.classification_labels_json,
           ) ?? {};
-          const pageRunRequiredArtifacts =
-            parseJson<string[]>(pageRun.required_artifacts_json) ?? [];
+          const pageRunRequiredArtifacts = [
+            ...new Set(
+              parseArtifactRequirementsJson(pageRun.required_artifacts_json)
+                .map((requirement) => requirement.artifactType),
+            ),
+          ];
 
           return {
             pageRunId: pageRun.id,
@@ -363,6 +401,8 @@ export class SitePageDetailQuery {
           artifactRunId: artifactRun.id,
           pageRunId: artifactRun.page_run_id,
           artifactType: artifactRun.artifact_type,
+          variantKey: artifactRun.variant_key,
+          configFingerprint: artifactRun.config_fingerprint,
           status: artifactRun.status,
           outputPath: artifactRun.output_path,
           contentPreview: (artifactRun.content ?? '').slice(0, 220),
@@ -437,6 +477,22 @@ export class SitePageDetailQuery {
         errorMessage: structuredArtifact?.error_message ?? null,
         toolName: toolNameFromMeta(structuredArtifact?.meta_json ?? null, 'structured'),
       }),
+      latestScreenshotVariants: artifactRequirements
+        .filter((requirement) => requirement.artifactType === 'screenshot')
+        .map((requirement) => {
+          const artifact = latestArtifactByRequirement.get(requirementKey(requirement));
+          const meta = parseJson<Record<string, unknown>>(artifact?.meta_json ?? null);
+          return {
+            artifactRunId: artifact?.id ?? 0,
+            variantKey: requirement.variantKey,
+            configFingerprint: requirement.configFingerprint,
+            status: artifact?.status ?? 'pending',
+            outputPath: artifact?.output_path ?? null,
+            errorMessage: artifact?.error_message ?? null,
+            toolName: toolNameFromMeta(artifact?.meta_json ?? null, 'screenshot'),
+            metadata: meta,
+          };
+        }),
       latestPageRun:
         latestPageRun === null
           ? null

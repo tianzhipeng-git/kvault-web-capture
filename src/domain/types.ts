@@ -2,6 +2,69 @@ export type ArtifactType = 'markdown' | 'screenshot' | 'structured';
 
 export type CaptureCapability = 'base' | ArtifactType;
 
+export interface ArtifactRequirement {
+  artifactType: ArtifactType;
+  variantKey: string;
+  configFingerprint: string | null;
+}
+
+export type ScreenshotMode = 'basic' | 'complete';
+
+export interface ScreenshotPreparationConfig {
+  waitForImages: boolean;
+  waitForFonts: boolean;
+  scrollDocument: boolean;
+  scrollContainers: boolean;
+  expandScrollContainers: boolean;
+  scrollStepRatio: number;
+  settleMs: number;
+  stableRounds: number;
+  maxScrollRounds: number;
+  maxCaptureHeight: number;
+  timeoutMs: number;
+  onLimit: 'truncate' | 'fail';
+}
+
+export type ScreenshotVariantConfig =
+  | {
+      key: string;
+      device: 'desktop';
+      viewport: { width: number; height: number };
+      deviceScaleFactor: number;
+    }
+  | {
+      key: string;
+      device: string;
+    };
+
+export interface ScreenshotConfig {
+  mode: ScreenshotMode;
+  preparation?: ScreenshotPreparationConfig;
+  variants?: ScreenshotVariantConfig[];
+}
+
+export interface ScreenshotMetadata {
+  protocolVersion: 1;
+  mode: ScreenshotMode;
+  variantKey: string;
+  configFingerprint: string;
+  device: string;
+  viewport: { width: number; height: number; deviceScaleFactor: number };
+  documentScrollCompleted: boolean;
+  scrollContainersFound: number;
+  scrollContainersCompleted: number;
+  scrollContainersExpanded: number;
+  imagesFound: number;
+  imagesPending: number;
+  fontsReady: boolean;
+  truncated: boolean;
+  limitReason: string | null;
+  preparationDurationMs: number;
+  captureWidth: number | null;
+  captureHeight: number | null;
+  warnings: string[];
+}
+
 export type RuleOutcome = 'allow' | 'deny' | 'pending';
 
 export type UrlRuleDecision = 'allow' | 'deny';
@@ -130,6 +193,7 @@ export interface SiteConfig {
   validation?: CaptureValidationConfig;
   proxyPolicy?: ProxyPolicyConfig;
   browser?: BrowserConfig;
+  screenshot?: ScreenshotConfig;
 }
 
 export interface RuleEvaluation {
@@ -159,6 +223,7 @@ export interface PageCaptureTask {
   needs: CaptureCapability[];
   pageRunId?: number;
   purpose?: 'discovery' | 'artifact' | 'refresh';
+  artifactRequirement?: ArtifactRequirement;
 }
 
 export type CrawlRequestUserData = PageCaptureTask;

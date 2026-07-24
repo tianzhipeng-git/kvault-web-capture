@@ -217,6 +217,25 @@ export class RunService {
     }
 
     const effectiveConfig = await this.buildEffectiveConfig(site.config, input.crawlMaxDepthOverride);
+    if (effectiveConfig.screenshot?.mode === 'complete') {
+      const profileTools =
+        effectiveConfig.captureProfile?.tools ?? this.defaultCaptureToolChain;
+      const customCompleteTool = this.captureTools?.some(
+        (tool) =>
+          tool.capabilities.includes('screenshot') &&
+          tool.name !== 'crawl4ai-page',
+      );
+      if (
+        !profileTools.some((name) =>
+          name === 'playwright-screenshot' || name === 'scrapling-page'
+        ) &&
+        !customCompleteTool
+      ) {
+        throw new Error(
+          'complete screenshot mode requires playwright-screenshot or scrapling-page in captureProfile.tools',
+        );
+      }
+    }
 
     await mkdir(site.storageRoot, { recursive: true });
 

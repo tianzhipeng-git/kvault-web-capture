@@ -16,6 +16,7 @@ export interface SiteConfigFormInput {
   validation?: SiteConfig['validation'];
   browser?: SiteConfig['browser'];
   proxyPolicy?: SiteConfig['proxyPolicy'];
+  screenshot?: SiteConfig['screenshot'];
 }
 
 export interface CrawlRunFormInput {
@@ -42,6 +43,7 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
     validation: input.validation,
     browser: input.browser,
     proxyPolicy: input.proxyPolicy,
+    screenshot: input.screenshot,
   });
 }
 

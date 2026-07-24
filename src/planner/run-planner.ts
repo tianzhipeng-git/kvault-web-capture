@@ -9,6 +9,7 @@ import { shouldEnqueueByUpdatePolicy } from './update-policy.js';
 import { buildBaseEnqueueDecision, buildStage2EnqueueDecision } from '../rules/rule-decision.js';
 import { normalizeUrl } from '../utils/url.js';
 import type { Clock } from '../utils/clock.js';
+import { expandArtifactRequirements } from '../domain/artifact-requirements.js';
 
 export class RunPlanner {
   constructor(
@@ -100,14 +101,43 @@ export class RunPlanner {
       nowIsoString: this.clock.now(),
       staleAfterMs: input.staleAfterMs,
     });
+    let completeScreenshotRequiresCapture = false;
+    if (
+      input.updatePolicy !== 'force_recrawl_all' &&
+      input.siteConfig.screenshot?.mode === 'complete' &&
+      currentStageDecision?.outcome === 'allow' &&
+      currentStageDecision.requiredArtifacts.includes('screenshot')
+    ) {
+      const requirements = expandArtifactRequirements(
+        currentStageDecision.requiredArtifacts,
+        input.siteConfig,
+      ).filter((requirement) => requirement.artifactType === 'screenshot');
+      for (const requirement of requirements) {
+        const latest = await this.sitePageRepository.getLatestRequirementStatus({
+          sitePageId,
+          requirement,
+        });
+        const stale =
+          input.updatePolicy === 'stale_after_duration' &&
+          latest !== null &&
+          new Date(this.clock.now()).getTime() -
+            new Date(latest.finishedAt).getTime() >= (input.staleAfterMs ?? 0);
+        if (latest?.status !== 'succeeded' || stale) {
+          completeScreenshotRequiresCapture = true;
+          break;
+        }
+      }
+    }
 
     return {
       siteId: input.siteId,
       sitePageId,
       normalizedUrl,
-      enqueue: policyDecision.enqueue,
+      enqueue: policyDecision.enqueue || completeScreenshotRequiresCapture,
       urlRuleDecision: 'allow',
-      planReason: "Update Policy: " + policyDecision.reason,
+      planReason: completeScreenshotRequiresCapture
+        ? 'complete screenshot requirements require variant-level planning'
+        : "Update Policy: " + policyDecision.reason,
     };
   }
 }

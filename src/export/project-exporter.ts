@@ -7,6 +7,7 @@ import { ZipFile } from 'yazl';
 
 import type { DbClient, DbValue } from '../db/database.js';
 import type { Clock } from '../utils/clock.js';
+import { parseArtifactRequirementsJson } from '../domain/artifact-requirements.js';
 
 interface ProjectRow {
   id: number;
@@ -67,6 +68,8 @@ interface ArtifactExportRow {
   page_run_id: number;
   site_page_id: number;
   artifact_type: string;
+  variant_key: string;
+  config_fingerprint: string | null;
   status: string;
   finished_at: string | null;
   output_path: string | null;
@@ -186,9 +189,32 @@ function urlDirectoryLabel(url: string): string {
 function latestArtifactMap(rows: ArtifactExportRow[]): Map<string, ArtifactExportRow> {
   const map = new Map<string, ArtifactExportRow>();
   for (const row of rows) {
-    map.set(`${row.site_page_id}:${row.artifact_type}`, row);
+    map.set(
+      `${row.site_page_id}:${row.artifact_type}:${row.variant_key}:${row.config_fingerprint ?? ''}`,
+      row,
+    );
   }
   return map;
+}
+
+function artifactsForPage(
+  artifacts: Map<string, ArtifactExportRow>,
+  sitePageId: number,
+  artifactType: string,
+): ArtifactExportRow[] {
+  return [...artifacts.values()].filter(
+    (artifact) =>
+      artifact.site_page_id === sitePageId && artifact.artifact_type === artifactType,
+  );
+}
+
+function firstArtifact(
+  artifacts: Map<string, ArtifactExportRow>,
+  sitePageId: number,
+  artifactType: string,
+): ArtifactExportRow | undefined {
+  const matching = artifactsForPage(artifacts, sitePageId, artifactType);
+  return matching.find((artifact) => artifact.variant_key === 'default') ?? matching[0];
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -216,7 +242,13 @@ function flattenLabels(value: string | null): string {
 }
 
 function requiredArtifacts(value: string | null): string {
-  return (parseJson<string[]>(value) ?? []).join(', ');
+  return parseArtifactRequirementsJson(value)
+    .map((requirement) =>
+      requirement.variantKey === 'default'
+        ? requirement.artifactType
+        : `${requirement.artifactType}/${requirement.variantKey}`,
+    )
+    .join(', ');
 }
 
 function normalizeExportArtifacts(artifacts: ProjectExportOptions['artifacts']): Set<ProjectExportArtifact> {
@@ -456,9 +488,9 @@ async function writePageListWorkbook(
   sheet.getRow(1).commit();
 
   for (const page of pages) {
-    const markdown = artifacts.get(`${page.id}:markdown`);
-    const screenshot = artifacts.get(`${page.id}:screenshot`);
-    const structured = artifacts.get(`${page.id}:structured`);
+    const markdown = firstArtifact(artifacts, page.id, 'markdown');
+    const screenshots = artifactsForPage(artifacts, page.id, 'screenshot');
+    const structured = firstArtifact(artifacts, page.id, 'structured');
     sheet.addRow({
       pageId: page.id,
       title: page.latest_title ?? page.title ?? '',
@@ -486,7 +518,7 @@ async function writePageListWorkbook(
       structuredAt: page.last_structured_at ?? '',
       baseSourcePath: page.base_capture_path ?? '',
       markdownSourcePath: markdown?.output_path ?? '',
-      screenshotSourcePath: screenshot?.output_path ?? '',
+      screenshotSourcePath: screenshots.map((item) => item.output_path).filter(Boolean).join('; '),
       structuredSourcePath: structured?.output_path ?? '',
       exportPageDir: pageDirById.get(page.id) ?? '',
     }).commit();
@@ -636,7 +668,7 @@ export class ProjectExporter {
         artifactFileCount += 1;
       }
 
-      const markdown = input.artifacts.get(`${page.id}:markdown`);
+      const markdown = firstArtifact(input.artifacts, page.id, 'markdown');
       if (
         input.selectedArtifacts.has('markdown') &&
         await addArtifactFileOrInlineContent(input.zip, {
@@ -648,19 +680,34 @@ export class ProjectExporter {
         artifactFileCount += 1;
       }
 
-      const screenshot = input.artifacts.get(`${page.id}:screenshot`);
-      if (
-        input.selectedArtifacts.has('screenshot') &&
-        await addArtifactFileOrInlineContent(input.zip, {
-          artifact: screenshot,
-          zipPath: `${pageRoot}/screenshot.png`,
-          readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
-        })
-      ) {
-        artifactFileCount += 1;
+      const screenshots = artifactsForPage(input.artifacts, page.id, 'screenshot');
+      if (input.selectedArtifacts.has('screenshot')) {
+        const manifest: Array<Record<string, unknown>> = [];
+        for (const screenshot of screenshots) {
+          const isDefault = screenshot.variant_key === 'default';
+          const zipPath = isDefault
+            ? `${pageRoot}/screenshot.png`
+            : `${pageRoot}/screenshots/${screenshot.variant_key}.png`;
+          if (await addArtifactFileOrInlineContent(input.zip, {
+            artifact: screenshot,
+            zipPath,
+            readContent: (artifactRunId) => this.getArtifactContent(artifactRunId),
+          })) {
+            artifactFileCount += 1;
+            manifest.push({
+              key: screenshot.variant_key,
+              path: zipPath.slice(pageRoot.length + 1),
+              fingerprint: screenshot.config_fingerprint,
+              ...parseJson<Record<string, unknown>>(screenshot.meta_json),
+            });
+          }
+        }
+        if (manifest.some((entry) => entry.key !== 'default')) {
+          addJson(input.zip, `${pageRoot}/screenshots/manifest.json`, manifest);
+        }
       }
 
-      const structured = input.artifacts.get(`${page.id}:structured`);
+      const structured = firstArtifact(input.artifacts, page.id, 'structured');
       if (
         input.selectedArtifacts.has('structured') &&
         await addArtifactFileOrInlineContent(input.zip, {
@@ -1026,6 +1073,8 @@ export class ProjectExporter {
            ar.page_run_id,
            ar.site_page_id,
            ar.artifact_type,
+           ar.variant_key,
+           ar.config_fingerprint,
            ar.status,
            ar.finished_at,
            ar.output_path,
@@ -1041,7 +1090,7 @@ export class ProjectExporter {
 
     const seen = new Set<string>();
     return rows.filter((row) => {
-      const key = `${row.site_page_id}:${row.artifact_type}`;
+      const key = `${row.site_page_id}:${row.artifact_type}:${row.variant_key}:${row.config_fingerprint ?? ''}`;
       if (seen.has(key)) {
         return false;
       }

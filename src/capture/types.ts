@@ -1,4 +1,10 @@
-import type { CaptureCapability, ExtractedPage, SiteConfig } from '../domain/types.js';
+import type {
+  ArtifactRequirement,
+  CaptureCapability,
+  ExtractedPage,
+  ScreenshotMetadata,
+  SiteConfig,
+} from '../domain/types.js';
 
 export type SendRequestLike = (url: string, options?: Record<string, unknown>) => Promise<unknown>;
 
@@ -22,6 +28,7 @@ export interface CaptureInput {
   needs: CaptureCapability[];
   siteConfig: SiteConfig;
   runtime: RuntimeContext;
+  artifactRequirement?: ArtifactRequirement;
 }
 
 export interface CaptureToolResult {
@@ -34,6 +41,7 @@ export interface CaptureToolResult {
   markdownToolName?: string;
   screenshot?: Buffer;
   screenshotExtension?: 'png';
+  screenshotMetadata?: ScreenshotMetadata;
   structured?: unknown;
   diagnostics?: Record<string, unknown>;
 }
@@ -59,6 +67,7 @@ export interface CaptureResult {
     data: Buffer;
     extension: 'png';
     toolName: string;
+    metadata?: ScreenshotMetadata;
   };
   structured?: unknown;
   diagnostics: CaptureDiagnostic[];
@@ -67,6 +76,7 @@ export interface CaptureResult {
 export interface CaptureTool {
   readonly name: string;
   readonly capabilities: readonly CaptureCapability[];
+  supports?(capability: CaptureCapability, input: CaptureInput): { supported: boolean; reason?: string };
   capture(input: CaptureInput): Promise<CaptureToolResult>;
 }
 

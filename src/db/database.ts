@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import pg from 'pg';
+import { parseArtifactRequirementsJson } from '../domain/artifact-requirements.js';
 
 const { Pool, types } = pg;
 
@@ -265,6 +266,8 @@ const baseTablesSchema = `
     page_run_id INTEGER NOT NULL,
     site_page_id INTEGER NOT NULL,
     artifact_type TEXT NOT NULL,
+    variant_key TEXT NOT NULL DEFAULT 'default',
+    config_fingerprint TEXT,
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT,
@@ -319,6 +322,9 @@ const indexesSchema = `
 
   CREATE INDEX IF NOT EXISTS idx_artifact_runs_site_page_run
     ON artifact_runs(site_page_id, crawl_run_id);
+
+  CREATE INDEX IF NOT EXISTS idx_artifact_runs_requirement_latest
+    ON artifact_runs(site_page_id, artifact_type, variant_key, config_fingerprint, id DESC);
 
   CREATE INDEX IF NOT EXISTS idx_run_logs_run
     ON run_logs(crawl_run_id);
@@ -430,6 +436,25 @@ async function migrateStoredCaptureProfiles(db: DbClient): Promise<void> {
   }
 }
 
+async function migrateArtifactRequirementSnapshots(db: DbClient): Promise<void> {
+  const rows = await db.all<{ id: number; required_artifacts_json: string }>(
+    'SELECT id, required_artifacts_json FROM page_runs',
+  );
+  for (const row of rows) {
+    const parsed = JSON.parse(row.required_artifacts_json) as unknown;
+    if (!Array.isArray(parsed) || !parsed.some((item) => typeof item === 'string')) {
+      continue;
+    }
+    await db.run(
+      'UPDATE page_runs SET required_artifacts_json = ? WHERE id = ?',
+      [
+        JSON.stringify(parseArtifactRequirementsJson(row.required_artifacts_json)),
+        row.id,
+      ],
+    );
+  }
+}
+
 export async function initializeSchema(db: DbClient): Promise<void> {
   await db.exec(db.dialect === 'postgres' ? postgresTablesSchema : baseTablesSchema);
 
@@ -444,6 +469,8 @@ export async function initializeSchema(db: DbClient): Promise<void> {
       : `ALTER TABLE sites ADD COLUMN favicon_data BLOB`,
     `ALTER TABLE sites ADD COLUMN favicon_content_type TEXT`,
     `ALTER TABLE sites ADD COLUMN favicon_updated_at TEXT`,
+    `ALTER TABLE artifact_runs ADD COLUMN variant_key TEXT NOT NULL DEFAULT 'default'`,
+    `ALTER TABLE artifact_runs ADD COLUMN config_fingerprint TEXT`,
     `DROP INDEX IF EXISTS idx_site_pages_site_latest_handled`,
   ];
 
@@ -458,6 +485,7 @@ export async function initializeSchema(db: DbClient): Promise<void> {
   }
 
   await migrateStoredCaptureProfiles(db);
+  await migrateArtifactRequirementSnapshots(db);
   await db.exec(indexesSchema);
   await db.run(
     `INSERT INTO system_settings (key, value, updated_at)

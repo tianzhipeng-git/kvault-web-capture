@@ -1,9 +1,11 @@
 import type {
   CaptureCapability,
   CaptureValidationRule,
+  ArtifactRequirement,
   SiteConfig,
 } from '../domain/types.js';
 import type { CaptureToolResult } from './types.js';
+import { devices } from 'playwright';
 
 const DEFAULT_REJECT_PATTERNS = [
   'Access Denied',
@@ -114,6 +116,7 @@ export class ResultValidator {
     capability: CaptureCapability;
     result: CaptureToolResult;
     siteConfig: SiteConfig;
+    artifactRequirement?: ArtifactRequirement;
   }): CapabilityValidationResult {
     const rules = this.rules(input.siteConfig);
     const retryBlockedResult = input.siteConfig.proxyPolicy?.mode === 'retry_on_failure';
@@ -153,6 +156,66 @@ export class ResultValidator {
         const minBytes = rules.screenshot?.minBytes ?? 1;
         if (!input.result.screenshot || input.result.screenshot.byteLength < minBytes) {
           return { accepted: false, message: `screenshot is below ${minBytes} bytes` };
+        }
+        if (input.siteConfig.screenshot?.mode !== 'complete') {
+          return { accepted: true };
+        }
+        const requirement = input.artifactRequirement;
+        const metadata = input.result.screenshotMetadata;
+        if (!requirement || !metadata) {
+          return { accepted: false, message: 'complete screenshot metadata is missing' };
+        }
+        if (
+          metadata.protocolVersion !== 1 ||
+          metadata.variantKey !== requirement.variantKey ||
+          metadata.configFingerprint !== requirement.configFingerprint
+        ) {
+          return { accepted: false, message: 'complete screenshot metadata does not match requirement' };
+        }
+        const variant = input.siteConfig.screenshot.variants?.find(
+          (item) => item.key === requirement.variantKey,
+        );
+        if (!variant) {
+          return { accepted: false, message: 'complete screenshot variant is not configured' };
+        }
+        const expectedViewport = 'viewport' in variant
+          ? {
+              ...variant.viewport,
+              deviceScaleFactor: variant.deviceScaleFactor,
+            }
+          : {
+              ...devices[variant.device].viewport,
+              deviceScaleFactor: devices[variant.device].deviceScaleFactor,
+            };
+        if (
+          metadata.device !== variant.device ||
+          metadata.viewport.width !== expectedViewport.width ||
+          metadata.viewport.height !== expectedViewport.height ||
+          metadata.viewport.deviceScaleFactor !== expectedViewport.deviceScaleFactor
+        ) {
+          return { accepted: false, message: 'complete screenshot device or viewport does not match' };
+        }
+        const preparation = input.siteConfig.screenshot.preparation;
+        if (!preparation) {
+          return { accepted: false, message: 'complete screenshot preparation config is missing' };
+        }
+        if (metadata.truncated) {
+          if (!metadata.limitReason || preparation.onLimit === 'fail') {
+            return { accepted: false, message: 'truncated screenshot is not accepted' };
+          }
+        } else if (
+          !metadata.documentScrollCompleted ||
+          (preparation.waitForImages && metadata.imagesPending > 0) ||
+          (preparation.waitForFonts && !metadata.fontsReady) ||
+          metadata.scrollContainersCompleted < metadata.scrollContainersFound
+        ) {
+          return { accepted: false, message: 'complete screenshot preparation did not finish' };
+        }
+        if (
+          metadata.captureHeight !== null &&
+          metadata.captureHeight > preparation.maxCaptureHeight
+        ) {
+          return { accepted: false, message: 'complete screenshot exceeds maxCaptureHeight' };
         }
         return { accepted: true };
       }

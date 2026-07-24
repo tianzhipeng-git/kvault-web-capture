@@ -35,6 +35,7 @@ export interface BrowserIdentity {
   engine: BrowserEngine;
   profileMode: BrowserProfileMode;
   profileKey?: string;
+  emulationFingerprint?: string;
 }
 
 export interface PageLease {
@@ -55,10 +56,12 @@ export interface BrowserManager {
     identity: BrowserIdentity;
     url: string;
     runtime: RuntimeContext;
+    emulation?: BrowserContextOptions;
   }): Promise<PageLease>;
   acquireCdpEndpoint(input: {
     identity: BrowserIdentity;
     runtime: RuntimeContext;
+    emulation?: BrowserContextOptions;
   }): Promise<CdpLease>;
   retireIdentity(identity: BrowserIdentity, reason: string): Promise<void>;
   close(): Promise<void>;
@@ -155,6 +158,7 @@ function contextKey(identity: BrowserIdentity, browserConfig?: BrowserConfig): s
     `session:${identity.sessionId ?? 'none'}`,
     `proxy:${identity.proxyKey ?? 'none'}`,
     `profile:${identity.profileKey ?? 'none'}`,
+    `emulation:${identity.emulationFingerprint ?? 'none'}`,
   ].join('|');
 }
 
@@ -215,6 +219,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
     identity: BrowserIdentity;
     url: string;
     runtime: RuntimeContext;
+    emulation?: BrowserContextOptions;
   }): Promise<PageLease> {
     const startedAt = Date.now();
     assertSupportedBrowserEngine(input.identity.engine);
@@ -468,6 +473,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
     identity: BrowserIdentity;
     url: string;
     runtime: RuntimeContext;
+    emulation?: BrowserContextOptions;
   }): Promise<BrowserContext> {
     const key = contextKey(input.identity, this.siteConfig?.browser);
     const existing = this.contexts.get(key);
@@ -476,7 +482,7 @@ export class PlaywrightBrowserManager implements BrowserManager {
     }
 
     const browser = await this.getBrowser(input.identity);
-    const options: BrowserContextOptions = {};
+    const options: BrowserContextOptions = { ...input.emulation };
     if (input.identity.proxyKey) {
       options.proxy = { server: input.identity.proxyKey };
     }

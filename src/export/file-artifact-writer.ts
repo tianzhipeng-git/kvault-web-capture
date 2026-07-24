@@ -37,12 +37,14 @@ export class FileArtifactWriter {
     sitePageId: number;
     content: string;
     extension: string;
+    variantKey?: string;
   }): Promise<ArtifactWriteResult> {
     const outputPath = this.buildPath(
       input.runId,
       input.sitePageId,
       input.artifactType,
       input.extension,
+      input.variantKey,
     );
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, input.content, 'utf8');
@@ -58,12 +60,14 @@ export class FileArtifactWriter {
     sitePageId: number;
     content: Buffer;
     extension: string;
+    variantKey?: string;
   }): Promise<ArtifactWriteResult> {
     const outputPath = this.buildPath(
       input.runId,
       input.sitePageId,
       input.artifactType,
       input.extension,
+      input.variantKey,
     );
     await mkdir(dirname(outputPath), { recursive: true });
     await writeFile(outputPath, input.content);
@@ -78,7 +82,18 @@ export class FileArtifactWriter {
     sitePageId: number,
     artifactType: ArtifactType,
     extension: string,
+    variantKey?: string,
   ): string {
+    if (artifactType === 'screenshot' && variantKey && variantKey !== 'default') {
+      return join(
+        this.siteStorageRoot,
+        'artifacts',
+        `run-${runId}`,
+        `page-${sitePageId}`,
+        'screenshots',
+        `${variantKey}.${extension}`,
+      );
+    }
     return join(
       this.siteStorageRoot,
       'artifacts',

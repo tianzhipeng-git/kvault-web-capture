@@ -268,6 +268,80 @@ describe('createPageCaptureRequestHandler – base task', () => {
     }
   });
 
+  it('expands complete screenshots into independent variant tasks', async () => {
+    const completeConfig = createDefaultSiteConfig('https://example.com');
+    completeConfig.rulesBeforeStage2Eq[0] = {
+      ...completeConfig.rulesBeforeStage2Eq[0],
+      artifacts: ['screenshot'],
+    };
+    completeConfig.screenshot = {
+      mode: 'complete',
+      preparation: {
+        waitForImages: true,
+        waitForFonts: true,
+        scrollDocument: true,
+        scrollContainers: true,
+        expandScrollContainers: true,
+        scrollStepRatio: 0.8,
+        settleMs: 500,
+        stableRounds: 2,
+        maxScrollRounds: 100,
+        maxCaptureHeight: 50_000,
+        timeoutMs: 90_000,
+        onLimit: 'truncate',
+      },
+      variants: [
+        {
+          key: 'desktop',
+          device: 'desktop',
+          viewport: { width: 1440, height: 900 },
+          deviceScaleFactor: 1,
+        },
+        { key: 'mobile', device: 'iPhone 15' },
+      ],
+    };
+    const { queue, calls } = makeNoopRequestQueue();
+    const pageRunCalls: Array<{ requiredArtifacts: unknown[] }> = [];
+    const artifactRuns = makeArtifactRunRepository({
+      latestStatus: async () => null,
+    });
+    const handler = createPageCaptureRequestHandler({
+      executor: {
+        capture: async () => makeSuccessBaseCaptureResult(),
+      } as unknown as PageCaptureExecutor,
+      classifier: new FakeClassifier(),
+      siteConfig: completeConfig,
+      runType: 'crawl_run',
+      updatePolicy: 'force_recrawl_all',
+      staleAfterMs: null,
+      pageCaptureQueue: queue,
+      artifactWriter: makeArtifactWriter().writer,
+      artifactRunRepository: artifactRuns,
+      pageRunRepository: makePageRunRepository({
+        create: async (input: unknown) => {
+          pageRunCalls.push(input as { requiredArtifacts: unknown[] });
+          return 999;
+        },
+      }),
+      sitePageRepository: makeSitePageRepository(),
+      runPlanner: makeNoopPlanner(),
+      captureTools: defaultTestCaptureTools,
+      runLog: noopRunLog,
+    });
+
+    await handler({ task: makeBaseTask(), runtime });
+
+    const artifactTasks = (calls as Array<{
+      uniqueKey: string;
+      userData: PageCaptureTask;
+    }>).filter((request) => request.userData.purpose === 'artifact');
+    expect(artifactTasks).toHaveLength(2);
+    expect(artifactTasks.map((request) => request.userData.artifactRequirement?.variantKey))
+      .toEqual(['desktop', 'mobile']);
+    expect(new Set(artifactTasks.map((request) => request.uniqueKey)).size).toBe(2);
+    expect(pageRunCalls[0].requiredArtifacts).toHaveLength(2);
+  });
+
   it('persists eager artifacts from a combined base task without enqueueing artifact tasks', async () => {
     const executorCaptureCalls: unknown[] = [];
     const executor = {

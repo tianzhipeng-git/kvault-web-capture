@@ -7,12 +7,17 @@ import type { FileArtifactWriter } from '../export/file-artifact-writer.js';
 import type { Classifier } from '../classification/classifier.js';
 import type {
   ArtifactRunStatus,
+  ArtifactRequirement,
   ArtifactType,
   PageCaptureTask,
   RunType,
   SiteConfig,
   UpdatePolicy,
 } from '../domain/types.js';
+import {
+  defaultArtifactRequirement,
+  expandArtifactRequirements,
+} from '../domain/artifact-requirements.js';
 import {
   ArtifactRunRepository,
   PageRunRepository,
@@ -79,6 +84,7 @@ function buildTask(input: {
   needs: PageCaptureTask['needs'];
   pageRunId?: number;
   purpose?: PageCaptureTask['purpose'];
+  artifactRequirement?: ArtifactRequirement;
 }): PageCaptureTask {
   return {
     stage: 'page_capture',
@@ -91,6 +97,7 @@ function buildTask(input: {
     needs: input.needs,
     pageRunId: input.pageRunId,
     purpose: input.purpose,
+    artifactRequirement: input.artifactRequirement,
   };
 }
 
@@ -133,6 +140,8 @@ async function recordArtifactResult(input: {
   artifactWriter: FileArtifactWriter;
   runLog: RunLogRepository;
 }): Promise<void> {
+  const requirement =
+    input.task.artifactRequirement ?? defaultArtifactRequirement(input.artifactType);
   if (input.artifactType === 'markdown') {
     if (!input.result.markdown) {
       throw new Error(`Markdown result missing for ${input.task.normalizedUrl}`);
@@ -140,6 +149,7 @@ async function recordArtifactResult(input: {
 
     const written = await input.artifactWriter.writeTextArtifact({
       artifactType: 'markdown',
+      variantKey: requirement.variantKey,
       runId: input.task.runId,
       sitePageId: input.task.sitePageId,
       content: input.result.markdown.content,
@@ -151,6 +161,8 @@ async function recordArtifactResult(input: {
       pageRunId: input.pageRunId,
       sitePageId: input.task.sitePageId,
       artifactType: 'markdown',
+      variantKey: requirement.variantKey,
+      configFingerprint: requirement.configFingerprint,
       status: 'succeeded',
       content: written.content,
       outputPath: written.outputPath,
@@ -190,6 +202,7 @@ async function recordArtifactResult(input: {
 
     const written = await input.artifactWriter.writeBinaryArtifact({
       artifactType: 'screenshot',
+      variantKey: requirement.variantKey,
       runId: input.task.runId,
       sitePageId: input.task.sitePageId,
       content: input.result.screenshot.data,
@@ -201,11 +214,16 @@ async function recordArtifactResult(input: {
       pageRunId: input.pageRunId,
       sitePageId: input.task.sitePageId,
       artifactType: 'screenshot',
+      variantKey: requirement.variantKey,
+      configFingerprint: requirement.configFingerprint,
       status: 'succeeded',
       content: written.content,
       outputPath: written.outputPath,
       errorMessage: null,
-      meta: { tool: input.result.screenshot.toolName },
+      meta: {
+        tool: input.result.screenshot.toolName,
+        ...input.result.screenshot.metadata,
+      },
     });
 
     await input.runLog.log({
@@ -220,6 +238,9 @@ async function recordArtifactResult(input: {
         tool: input.result.screenshot.toolName,
         outputPath: written.outputPath,
         artifactType: 'screenshot',
+        variantKey: requirement.variantKey,
+        configFingerprint: requirement.configFingerprint,
+        truncated: input.result.screenshot.metadata?.truncated ?? false,
         needs: input.task.needs,
         purpose: input.task.purpose ?? null,
         diagnostics: input.result.diagnostics,
@@ -241,6 +262,7 @@ async function recordArtifactResult(input: {
     const content = `${JSON.stringify(input.result.structured, null, 2)}\n`;
     const written = await input.artifactWriter.writeTextArtifact({
       artifactType: 'structured',
+      variantKey: requirement.variantKey,
       runId: input.task.runId,
       sitePageId: input.task.sitePageId,
       content,
@@ -252,6 +274,8 @@ async function recordArtifactResult(input: {
       pageRunId: input.pageRunId,
       sitePageId: input.task.sitePageId,
       artifactType: 'structured',
+      variantKey: requirement.variantKey,
+      configFingerprint: requirement.configFingerprint,
       status: 'succeeded',
       content: written.content,
       outputPath: written.outputPath,
@@ -290,6 +314,7 @@ async function recordArtifactResult(input: {
     runId: input.task.runId,
     artifactType: input.artifactType,
     status: 'succeeded',
+    pageRunId: input.pageRunId,
   });
 }
 
@@ -302,11 +327,15 @@ async function recordArtifactFailure(input: {
   sitePageRepository: SitePageRepository;
   runLog: RunLogRepository;
 }): Promise<void> {
+  const requirement =
+    input.task.artifactRequirement ?? defaultArtifactRequirement(input.artifactType);
   await input.artifactRunRepository.create({
     runId: input.task.runId,
     pageRunId: input.pageRunId,
     sitePageId: input.task.sitePageId,
     artifactType: input.artifactType,
+    variantKey: requirement.variantKey,
+    configFingerprint: requirement.configFingerprint,
     status: 'failed' satisfies ArtifactRunStatus,
     content: null,
     outputPath: null,
@@ -324,6 +353,8 @@ async function recordArtifactFailure(input: {
     message: `[${input.artifactType}] FAILED ${input.task.normalizedUrl}: ${input.error.message}`,
     meta: {
       artifactType: input.artifactType,
+      variantKey: requirement.variantKey,
+      configFingerprint: requirement.configFingerprint,
       needs: input.task.needs,
       purpose: input.task.purpose ?? null,
       stack: input.error.stack ?? null,
@@ -335,6 +366,7 @@ async function recordArtifactFailure(input: {
     runId: input.task.runId,
     artifactType: input.artifactType,
     status: 'failed',
+    pageRunId: input.pageRunId,
   });
 }
 
@@ -401,6 +433,7 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
     needs: task.needs,
     siteConfig: deps.siteConfig,
     runtime: deps.runtime,
+    artifactRequirement: task.artifactRequirement,
   });
 
   if (!result.extracted) {
@@ -439,6 +472,10 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
     classification,
     classificationError,
   });
+  const requirements = expandArtifactRequirements(
+    decision.requiredArtifacts,
+    deps.siteConfig,
+  );
   const baseCapture = await deps.artifactWriter.writeBaseCapture({
     runId: task.runId,
     sitePageId: task.sitePageId,
@@ -463,7 +500,7 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
     decisionOutcome: decision.pageOutcome,
     decisionReason: decision.reason,
     pendingReason: decision.pendingReason,
-    requiredArtifacts: decision.requiredArtifacts,
+    requiredArtifacts: requirements,
   });
 
   await deps.runLog.base_page_done({
@@ -558,34 +595,69 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
       capturedArtifacts.add(artifactType);
     }
 
-    const remainingArtifacts = decision.requiredArtifacts.filter((artifactType) => {
-      if (capturedArtifacts.has(artifactType)) {
-        return false;
+    const remainingRequirements: ArtifactRequirement[] = [];
+    for (const requirement of requirements) {
+      if (
+        requirement.variantKey === 'default' &&
+        capturedArtifacts.has(requirement.artifactType)
+      ) {
+        continue;
       }
-
-      return shouldEnqueueArtifactByUpdatePolicy({
-        policy: deps.updatePolicy,
-        history: historyBeforeCapture,
-        artifactType,
-        nowIsoString: new Date().toISOString(),
-        staleAfterMs: deps.staleAfterMs,
+      if (
+        requirement.artifactType !== 'screenshot' ||
+        deps.siteConfig.screenshot?.mode !== 'complete'
+      ) {
+        if (shouldEnqueueArtifactByUpdatePolicy({
+          policy: deps.updatePolicy,
+          history: historyBeforeCapture,
+          artifactType: requirement.artifactType,
+          nowIsoString: new Date().toISOString(),
+          staleAfterMs: deps.staleAfterMs,
+        })) {
+          remainingRequirements.push(requirement);
+        }
+        continue;
+      }
+      const latest = await deps.artifactRunRepository.latestStatus({
+        sitePageId: task.sitePageId,
+        requirement,
       });
-    });
+      const stale = latest
+        ? Date.now() - new Date(latest.finishedAt).getTime() >= (deps.staleAfterMs ?? 0)
+        : false;
+      if (
+        deps.updatePolicy === 'force_recrawl_all' ||
+        latest?.status !== 'succeeded' ||
+        (deps.updatePolicy === 'stale_after_duration' && stale)
+      ) {
+        remainingRequirements.push(requirement);
+      }
+    }
 
-    for (const artifactType of remainingArtifacts) {
+    for (const requirement of remainingRequirements) {
       await deps.pageCaptureQueue.addRequest({
         url: extracted.normalizedUrl,
-        uniqueKey: `artifact:${task.runId}:${task.sitePageId}:${artifactType}`,
+        uniqueKey: requirement.configFingerprint === null
+          ? `artifact:${task.runId}:${task.sitePageId}:${requirement.artifactType}`
+          : `artifact:${task.runId}:${task.sitePageId}:${requirement.artifactType}:${requirement.variantKey}:${requirement.configFingerprint}`,
         userData: buildTask({
           runId: task.runId,
           siteId: task.siteId,
           sitePageId: task.sitePageId,
           normalizedUrl: extracted.normalizedUrl,
           depth: task.depth,
-          needs: [artifactType],
+          needs: [requirement.artifactType],
           pageRunId,
           purpose: 'artifact',
+          artifactRequirement: requirement,
         }),
+      });
+    }
+    if (remainingRequirements.length === 0 && capturedArtifacts.size === 0) {
+      await deps.sitePageRepository.refreshArtifactStatus({
+        sitePageId: task.sitePageId,
+        runId: task.runId,
+        pageRunId,
       });
     }
   }
@@ -688,6 +760,7 @@ async function handleArtifactOnlyTask(input: PageCaptureHandlerInput): Promise<v
     needs: artifacts,
     siteConfig: deps.siteConfig,
     runtime: deps.runtime,
+    artifactRequirement: task.artifactRequirement,
   });
 
   for (const artifactType of artifacts) {

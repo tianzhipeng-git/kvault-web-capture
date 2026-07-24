@@ -200,6 +200,16 @@ export interface SitePageDetail {
   latestBase: ProcessingState;
   latestMarkdown: ProcessingState;
   latestScreenshot: ProcessingState;
+  latestScreenshotVariants: Array<{
+    artifactRunId: number;
+    variantKey: string;
+    configFingerprint: string | null;
+    status: string;
+    outputPath: string | null;
+    errorMessage: string | null;
+    toolName: string | null;
+    metadata: Record<string, unknown> | null;
+  }>;
   latestStructured: ProcessingState;
   latestPageRun: null | {
     pageRunId: number;
@@ -254,6 +264,8 @@ export interface SitePageDetail {
       artifactRunId: number;
       pageRunId: number;
       artifactType: string;
+      variantKey: string;
+      configFingerprint: string | null;
       status: string;
       outputPath: string | null;
       contentPreview: string;

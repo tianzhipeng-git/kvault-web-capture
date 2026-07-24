@@ -273,7 +273,10 @@ describe('crawl history planning', () => {
       expect(rerunPageRows).toEqual([
         {
           normalized_url: `${server.baseUrl}/product`,
-          required_artifacts_json: '["markdown","screenshot"]',
+          required_artifacts_json: JSON.stringify([
+            { artifactType: 'markdown', variantKey: 'default', configFingerprint: null },
+            { artifactType: 'screenshot', variantKey: 'default', configFingerprint: null },
+          ]),
         },
       ]);
       expect(rerunArtifactRows).toEqual([

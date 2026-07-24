@@ -2,6 +2,7 @@ import type { DbClient } from '../database.js';
 import type { ArtifactRunStatus, ArtifactType, CrawlRunCreateInput, RuleOutcome, RunStatus, SiteConfig, UpdatePolicy } from '../../domain/types.js';
 import type { Clock } from '../../utils/clock.js';
 import { hasCompleteArtifactSet, parseJson } from './helpers.js';
+import { parseArtifactRequirementsJson } from '../../domain/artifact-requirements.js';
 
 export interface CrawlRunRecord {
   id: number;
@@ -116,7 +117,8 @@ export class RunRepository {
            pr.decision_outcome,
            pr.required_artifacts_json,
            sp.last_markdown_status,
-           sp.last_screenshot_status
+           sp.last_screenshot_status,
+           sp.last_structured_status
          FROM page_runs pr
          INNER JOIN site_pages sp ON sp.id = pr.site_page_id
          WHERE pr.crawl_run_id = ?`,
@@ -127,6 +129,7 @@ export class RunRepository {
       required_artifacts_json: string;
       last_markdown_status: ArtifactRunStatus | null;
       last_screenshot_status: ArtifactRunStatus | null;
+      last_structured_status: ArtifactRunStatus | null;
     }>;
 
     const artifactRows = await this.db.all(
@@ -154,11 +157,16 @@ export class RunRepository {
       }
 
       return hasCompleteArtifactSet({
-        requiredArtifacts: parseJson<ArtifactType[]>(pageRun.required_artifacts_json),
+        requiredArtifacts: [
+          ...new Set(
+            parseArtifactRequirementsJson(pageRun.required_artifacts_json)
+              .map((requirement) => requirement.artifactType),
+          ),
+        ],
         artifactStatuses: {
           markdown: pageRun.last_markdown_status,
           screenshot: pageRun.last_screenshot_status,
-          ...(artifactStatuses.get(pageRun.id) ?? {}),
+          structured: pageRun.last_structured_status,
         },
       });
     }).length;

@@ -60,6 +60,7 @@ export function filterIntegratedEagerArtifacts(input: {
   }
 
   return input.prospectiveArtifacts.filter((artifact) =>
+    !(artifact === 'screenshot' && input.siteConfig.screenshot?.mode === 'complete') &&
     integratedTools.some((tool) => tool.capabilities.includes(artifact)),
   );
 }

@@ -79,6 +79,47 @@ function handleRequest(
     return;
   }
 
+  if (url === '/advanced-screenshot') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html>
+<html>
+  <head>
+    <title>Advanced Screenshot</title>
+    <style>
+      body { margin: 0; }
+      main { min-height: 1400px; padding: 16px; }
+      #scroll-container { height: 160px; overflow-y: auto; border: 1px solid black; }
+      .container-item { height: 120px; }
+      #lazy-marker { margin-top: 900px; height: 100px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="scroll-container">
+        <div class="container-item">Container item 1</div>
+        <div class="container-item">Container item 2</div>
+        <div class="container-item">Container item 3</div>
+        <div class="container-item">Container item 4</div>
+      </div>
+      <div id="lazy-marker">Scroll to load more content</div>
+    </main>
+    <script>
+      let loaded = false;
+      addEventListener('scroll', () => {
+        if (loaded || scrollY < 500) return;
+        loaded = true;
+        const content = document.createElement('section');
+        content.id = 'lazy-content';
+        content.style.height = '700px';
+        content.textContent = 'Lazy content loaded';
+        document.querySelector('main').appendChild(content);
+      });
+    </script>
+  </body>
+</html>`);
+    return;
+  }
+
   if (url === '/login') {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(

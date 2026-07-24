@@ -222,7 +222,10 @@ describe('full page-capture task integration', () => {
     expect(enqueueCalls).toHaveLength(0);
     expect(pageRunRows).toHaveLength(1);
     expect(pageRunRows[0].decision_outcome).toBe('allow');
-    expect(JSON.parse(pageRunRows[0].required_artifacts_json)).toEqual(['markdown', 'structured']);
+    expect(JSON.parse(pageRunRows[0].required_artifacts_json)).toEqual([
+      { artifactType: 'markdown', variantKey: 'default', configFingerprint: null },
+      { artifactType: 'structured', variantKey: 'default', configFingerprint: null },
+    ]);
     expect(existsSync(pageRunRows[0].base_capture_path)).toBe(true);
 
     expect(artifactRows).toEqual([

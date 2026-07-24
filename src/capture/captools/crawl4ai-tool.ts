@@ -21,6 +21,12 @@ export class Crawl4AITool implements CaptureTool {
 
   private readonly bridge: PythonBridge;
 
+  supports(capability: 'base' | 'markdown' | 'screenshot' | 'structured', input: CaptureInput) {
+    return capability === 'screenshot' && input.siteConfig.screenshot?.mode === 'complete'
+      ? { supported: false, reason: 'crawl4ai-page does not implement complete screenshots' }
+      : { supported: true };
+  }
+
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
     return this.bridge.capture(input);
   }

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { devices } from 'playwright';
 
 import {
   browserIdentityFromRuntime,
@@ -9,6 +10,7 @@ import {
 } from './browser-provider.js';
 import { PYTHON_BRIDGE_TIMEOUT_MS } from './python-bridge-config.js';
 import type { CaptureInput, CaptureToolResult } from './types.js';
+import type { ScreenshotMetadata, ScreenshotVariantConfig } from '../domain/types.js';
 import { logger } from '../utils/runtime-logger.js';
 
 export interface PythonBridgeOutput {
@@ -22,6 +24,7 @@ export interface PythonBridgeOutput {
   links?: string[];
   markdown?: string;
   screenshotBase64?: string;
+  screenshotMetadata?: ScreenshotMetadata;
   structured?: unknown;
   diagnostics?: Record<string, unknown>;
 }
@@ -91,6 +94,11 @@ export class PythonBridge {
   async capture(input: CaptureInput): Promise<CaptureToolResult> {
     const startedAt = Date.now();
     const cdpLease = await this.tryAcquireCdpLease(input);
+    const screenshotVariant = input.siteConfig.screenshot?.mode === 'complete'
+      ? input.siteConfig.screenshot.variants?.find(
+          (variant) => variant.key === input.artifactRequirement?.variantKey,
+        )
+      : undefined;
     const payload = JSON.stringify({
       url: input.url,
       normalizedUrl: input.normalizedUrl,
@@ -98,6 +106,12 @@ export class PythonBridge {
       proxyUrl: input.runtime.proxyInfo?.url ?? null,
       cdpHttpUrl: cdpLease?.cdpHttpUrl ?? null,
       cdpWebSocketUrl: cdpLease?.cdpWebSocketUrl ?? null,
+      artifactRequirement: input.artifactRequirement ?? null,
+      screenshotConfig: input.siteConfig.screenshot ?? null,
+      screenshotVariant: screenshotVariant ?? null,
+      screenshotContextOptions: screenshotVariant
+        ? screenshotContextOptions(screenshotVariant)
+        : null,
     });
     const command = this.options.pythonPath ?? resolvePythonCommand({ toolName: this.options.toolName });
     logger.info('Python bridge capture started', {
@@ -209,6 +223,7 @@ export class PythonBridge {
         ? Buffer.from(parsed.screenshotBase64, 'base64')
         : undefined,
       screenshotExtension: parsed.screenshotBase64 ? 'png' : undefined,
+      screenshotMetadata: parsed.screenshotMetadata,
       structured: parsed.structured,
       diagnostics: {
         ...parsed.diagnostics,
@@ -269,6 +284,19 @@ export class PythonBridge {
       throw error;
     }
   }
+}
+
+function screenshotContextOptions(variant: ScreenshotVariantConfig): Record<string, unknown> {
+  if ('viewport' in variant) {
+    return {
+      viewport: variant.viewport,
+      screen: variant.viewport,
+      deviceScaleFactor: variant.deviceScaleFactor,
+      isMobile: false,
+      hasTouch: false,
+    };
+  }
+  return { ...devices[variant.device] };
 }
 
 function summarizeText(value: string, maxLength = 2000): string | undefined {
