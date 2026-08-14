@@ -1,3 +1,5 @@
+import { devices } from 'playwright';
+
 import type { BrowserManager } from '../browser-provider.js';
 import { SCRAPLING_PYTHON_BRIDGE_TIMEOUT_MS } from '../python-bridge-config.js';
 import { PythonBridge } from '../python-bridge.js';
@@ -24,6 +26,15 @@ export class ScraplingTool implements CaptureTool {
   supports(capability: 'base' | 'markdown' | 'screenshot' | 'structured', input: CaptureInput) {
     if (capability !== 'screenshot' || input.siteConfig.screenshot?.mode !== 'complete') {
       return { supported: true };
+    }
+    const variant = input.siteConfig.screenshot.variants?.find(
+      (candidate) => candidate.key === input.artifactRequirement?.variantKey,
+    );
+    if (variant && !('viewport' in variant) && devices[variant.device].isMobile) {
+      return {
+        supported: false,
+        reason: 'Scrapling mobile screenshot contract has not been validated',
+      };
     }
     return {
       supported: input.artifactRequirement?.artifactType === 'screenshot',

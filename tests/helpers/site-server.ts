@@ -120,6 +120,30 @@ function handleRequest(
     return;
   }
 
+  if (url === '/advanced-screenshot-pending-image') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html>
+<html><body style="min-height: 1200px"><img src="/missing-image.png" alt="missing"></body></html>`);
+    return;
+  }
+
+  if (url === '/advanced-screenshot-stuck-container') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html>
+<html>
+  <body>
+    <div id="stuck" style="height: 100px; overflow-y: auto">
+      <div style="height: 800px">Virtualized content</div>
+    </div>
+    <script>
+      const stuck = document.querySelector('#stuck');
+      stuck.addEventListener('scroll', () => { stuck.scrollTop = 0; });
+    </script>
+  </body>
+</html>`);
+    return;
+  }
+
   if (url === '/login') {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(

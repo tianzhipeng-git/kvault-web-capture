@@ -185,6 +185,7 @@ async function recordArtifactResult(input: {
         needs: input.task.needs,
         purpose: input.task.purpose ?? null,
         diagnostics: input.result.diagnostics,
+        durationMs: input.result.durationMs ?? null,
       },
     });
     await logToolFallbackIfNeeded({
@@ -244,6 +245,7 @@ async function recordArtifactResult(input: {
         needs: input.task.needs,
         purpose: input.task.purpose ?? null,
         diagnostics: input.result.diagnostics,
+        durationMs: input.result.durationMs ?? null,
       },
     });
     await logToolFallbackIfNeeded({
@@ -297,6 +299,7 @@ async function recordArtifactResult(input: {
         needs: input.task.needs,
         purpose: input.task.purpose ?? null,
         diagnostics: input.result.diagnostics,
+        durationMs: input.result.durationMs ?? null,
       },
     });
     await logToolFallbackIfNeeded({
@@ -534,7 +537,7 @@ async function handleBaseTask(input: PageCaptureHandlerInput): Promise<void> {
     runId: task.runId,
     title: extracted.title,
     pageOutcome: decision.pageOutcome,
-    requiredArtifacts: decision.requiredArtifacts,
+    requiredArtifacts: requirements,
     pendingReason: decision.pendingReason,
   });
 

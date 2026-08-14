@@ -3,7 +3,10 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import pg from 'pg';
-import { parseArtifactRequirementsJson } from '../domain/artifact-requirements.js';
+import {
+  parseArtifactRequirementsJson,
+  parseStageDecisionSnapshotJson,
+} from '../domain/artifact-requirements.js';
 
 const { Pool, types } = pg;
 
@@ -193,6 +196,7 @@ const baseTablesSchema = `
     run_type TEXT NOT NULL,
     update_policy TEXT NOT NULL,
     target_success_count INTEGER,
+    stale_after_ms INTEGER,
     successful_page_count INTEGER NOT NULL DEFAULT 0,
     candidate_page_count INTEGER NOT NULL DEFAULT 0,
     pending_page_count INTEGER NOT NULL DEFAULT 0,
@@ -455,11 +459,28 @@ async function migrateArtifactRequirementSnapshots(db: DbClient): Promise<void> 
   }
 }
 
+async function migrateStageDecisionSnapshots(db: DbClient): Promise<void> {
+  const rows = await db.all<{ id: number; last_stage_decision_json: string }>(
+    'SELECT id, last_stage_decision_json FROM site_pages WHERE last_stage_decision_json IS NOT NULL',
+  );
+  for (const row of rows) {
+    const parsed = JSON.parse(row.last_stage_decision_json) as { requiredArtifacts?: unknown };
+    if (!Array.isArray(parsed.requiredArtifacts) || !parsed.requiredArtifacts.some((item) => typeof item === 'string')) {
+      continue;
+    }
+    await db.run(
+      'UPDATE site_pages SET last_stage_decision_json = ? WHERE id = ?',
+      [JSON.stringify(parseStageDecisionSnapshotJson(row.last_stage_decision_json)), row.id],
+    );
+  }
+}
+
 export async function initializeSchema(db: DbClient): Promise<void> {
   await db.exec(db.dialect === 'postgres' ? postgresTablesSchema : baseTablesSchema);
 
   const migrations = [
     `ALTER TABLE crawl_runs ADD COLUMN error_message TEXT`,
+    `ALTER TABLE crawl_runs ADD COLUMN stale_after_ms INTEGER`,
     `ALTER TABLE page_runs ADD COLUMN error_message TEXT`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_status TEXT`,
     `ALTER TABLE site_pages ADD COLUMN last_structured_run_id INTEGER`,
@@ -486,6 +507,7 @@ export async function initializeSchema(db: DbClient): Promise<void> {
 
   await migrateStoredCaptureProfiles(db);
   await migrateArtifactRequirementSnapshots(db);
+  await migrateStageDecisionSnapshots(db);
   await db.exec(indexesSchema);
   await db.run(
     `INSERT INTO system_settings (key, value, updated_at)

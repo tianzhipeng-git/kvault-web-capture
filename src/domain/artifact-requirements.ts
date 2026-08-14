@@ -2,11 +2,14 @@ import { createHash } from 'node:crypto';
 
 import type {
   ArtifactRequirement,
+  ArtifactRunStatus,
   ArtifactType,
   ScreenshotConfig,
   ScreenshotPreparationConfig,
   ScreenshotVariantConfig,
   SiteConfig,
+  StageDecisionSnapshot,
+  UpdatePolicy,
 } from './types.js';
 
 export const SCREENSHOT_PROTOCOL_VERSION = 1 as const;
@@ -113,4 +116,34 @@ export function parseArtifactRequirementsJson(value: string | null): ArtifactReq
     }
     return [];
   });
+}
+
+export function parseStageDecisionSnapshotJson(value: string): StageDecisionSnapshot {
+  const parsed = JSON.parse(value) as {
+    outcome: StageDecisionSnapshot['outcome'];
+    requiredArtifacts?: unknown;
+  };
+  return {
+    outcome: parsed.outcome,
+    requiredArtifacts: parseArtifactRequirementsJson(
+      JSON.stringify(Array.isArray(parsed.requiredArtifacts) ? parsed.requiredArtifacts : []),
+    ),
+  };
+}
+
+export function reusableHistoricalArtifactStatus(input: {
+  policy: UpdatePolicy;
+  status: ArtifactRunStatus;
+  finishedAt: string;
+  referenceTime: string;
+  staleAfterMs: number | null;
+}): ArtifactRunStatus | null {
+  if (input.policy === 'force_recrawl_all' || input.status !== 'succeeded') {
+    return null;
+  }
+  if (input.policy === 'skip_existing') {
+    return input.status;
+  }
+  const ageMs = new Date(input.referenceTime).getTime() - new Date(input.finishedAt).getTime();
+  return ageMs < (input.staleAfterMs ?? 0) ? input.status : null;
 }

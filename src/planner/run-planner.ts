@@ -89,7 +89,7 @@ export class RunPlanner {
 
           return {
             outcome: decision.pageOutcome,
-            requiredArtifacts: decision.requiredArtifacts,
+            requiredArtifacts: expandArtifactRequirements(decision.requiredArtifacts, input.siteConfig),
           };
         })();
 
@@ -106,12 +106,13 @@ export class RunPlanner {
       input.updatePolicy !== 'force_recrawl_all' &&
       input.siteConfig.screenshot?.mode === 'complete' &&
       currentStageDecision?.outcome === 'allow' &&
-      currentStageDecision.requiredArtifacts.includes('screenshot')
+      currentStageDecision.requiredArtifacts.some(
+        (requirement) => requirement.artifactType === 'screenshot',
+      )
     ) {
-      const requirements = expandArtifactRequirements(
-        currentStageDecision.requiredArtifacts,
-        input.siteConfig,
-      ).filter((requirement) => requirement.artifactType === 'screenshot');
+      const requirements = currentStageDecision.requiredArtifacts.filter(
+        (requirement) => requirement.artifactType === 'screenshot',
+      );
       for (const requirement of requirements) {
         const latest = await this.sitePageRepository.getLatestRequirementStatus({
           sitePageId,

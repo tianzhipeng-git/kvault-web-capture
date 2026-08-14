@@ -150,7 +150,7 @@ async function kvaultScreenshotPreparation(payload) {
       const atBottom = scrolling.scrollTop + window.innerHeight >= nextHeight - 2;
       const unchanged = Math.abs(nextHeight - previousHeight) <= 2 &&
         state.mutationCount === mutationsBefore &&
-        pendingImages().length === 0;
+        (!config.waitForImages || pendingImages().length === 0);
       stable = atBottom && unchanged ? stable + 1 : 0;
       previousHeight = nextHeight;
     }
@@ -175,8 +175,22 @@ async function kvaultScreenshotPreparation(payload) {
   const images = [...document.images];
   const imagesPending = pendingImages().length;
   if (!fontsReady && !limitReason) limitReason = 'fontsTimeout';
-  if (imagesPending > 0 && !limitReason) limitReason = 'imagesTimeout';
+  if (config.waitForImages && imagesPending > 0 && !limitReason) limitReason = 'imagesTimeout';
   if (!documentScrollCompleted && !limitReason) limitReason = 'documentUnstable';
+  if (completed.size < found.size && !limitReason) limitReason = 'scrollContainersIncomplete';
+
+  const crossOriginIframes = [...document.querySelectorAll('iframe')].filter((iframe) => {
+    if (!visible(iframe)) return false;
+    try {
+      return iframe.contentWindow?.document == null;
+    } catch {
+      return true;
+    }
+  });
+  if (crossOriginIframes.length > 0) {
+    warnings.push(`${crossOriginIframes.length} cross-origin iframe(s) could not be prepared`);
+    if (!limitReason) limitReason = 'crossOriginIframe';
+  }
 
   return {
     documentScrollCompleted,

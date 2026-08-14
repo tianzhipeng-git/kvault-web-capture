@@ -3,8 +3,11 @@ import type { ArtifactRequirement, ArtifactRunStatus, ArtifactType, BaseCaptureS
 import type { Clock } from '../../utils/clock.js';
 import { deriveInventoryStatus, parseJson } from './helpers.js';
 import {
+  defaultArtifactRequirement,
   parseArtifactRequirementsJson,
+  parseStageDecisionSnapshotJson,
   requirementKey,
+  reusableHistoricalArtifactStatus,
 } from '../../domain/artifact-requirements.js';
 
 export interface InventorySummary {
@@ -211,7 +214,7 @@ export class SitePageRepository {
       lastStageDecision:
         row.last_stage_decision_json === null
           ? null
-          : parseJson<StageDecisionSnapshot>(row.last_stage_decision_json),
+          : parseStageDecisionSnapshotJson(row.last_stage_decision_json),
       lastMarkdownStatus: row.last_markdown_status,
       lastMarkdownAt: row.last_markdown_at,
       lastScreenshotStatus: row.last_screenshot_status,
@@ -267,13 +270,17 @@ export class SitePageRepository {
     runId: number;
     title: string;
     pageOutcome: RuleOutcome;
-    requiredArtifacts: ArtifactType[];
+    requiredArtifacts: ArtifactRequirement[] | ArtifactType[];
     pendingReason: string | null;
   }): Promise<void> {
     const now = this.clock.now();
+    const requirements = input.requiredArtifacts.map((artifact) =>
+      typeof artifact === 'string' ? defaultArtifactRequirement(artifact) : artifact
+    );
+    const requiredTypes = [...new Set(requirements.map((requirement) => requirement.artifactType))];
     const inventoryStatus = deriveInventoryStatus({
       pageOutcome: input.pageOutcome,
-      requiredArtifacts: input.requiredArtifacts,
+      requiredArtifacts: requiredTypes,
       artifactStatuses: {},
     });
 
@@ -293,7 +300,7 @@ export class SitePageRepository {
         inventoryStatus,
         JSON.stringify({
           outcome: input.pageOutcome,
-          requiredArtifacts: input.requiredArtifacts,
+          requiredArtifacts: requirements,
         } satisfies StageDecisionSnapshot),
         input.pendingReason,
         input.runId,
@@ -356,7 +363,7 @@ export class SitePageRepository {
       throw new Error(`Missing stage decision for site page ${input.sitePageId}`);
     }
 
-    const stageDecision = parseJson<StageDecisionSnapshot>(row.last_stage_decision_json);
+    const stageDecision = parseStageDecisionSnapshotJson(row.last_stage_decision_json);
     const artifactStatuses: Partial<Record<ArtifactType, ArtifactRunStatus | null>> = {
       markdown: row.last_markdown_status,
       screenshot: row.last_screenshot_status,
@@ -365,7 +372,9 @@ export class SitePageRepository {
     };
     const inventoryStatus = deriveInventoryStatus({
       pageOutcome: stageDecision.outcome,
-      requiredArtifacts: stageDecision.requiredArtifacts,
+      requiredArtifacts: [...new Set(
+        stageDecision.requiredArtifacts.map((requirement) => requirement.artifactType),
+      )],
       artifactStatuses,
     });
     const now = this.clock.now();
@@ -437,6 +446,8 @@ export class SitePageRepository {
     const pageRun = await this.db.get<{
       required_artifacts_json: string;
       update_policy: string;
+      stale_after_ms: number | null;
+      run_started_at: string;
       last_stage_decision_json: string | null;
       last_markdown_status: ArtifactRunStatus | null;
       last_screenshot_status: ArtifactRunStatus | null;
@@ -445,6 +456,8 @@ export class SitePageRepository {
       `SELECT
          pr.required_artifacts_json,
          cr.update_policy,
+         cr.stale_after_ms,
+         cr.started_at AS run_started_at,
          sp.last_stage_decision_json,
          sp.last_markdown_status,
          sp.last_screenshot_status,
@@ -490,8 +503,11 @@ export class SitePageRepository {
         if (statuses.has(key)) {
           continue;
         }
-        const historical = await this.db.get<{ status: ArtifactRunStatus }>(
-          `SELECT status
+        const historical = await this.db.get<{
+          status: ArtifactRunStatus;
+          finished_at: string;
+        }>(
+          `SELECT status, finished_at
            FROM artifact_runs
            WHERE site_page_id = ?
              AND artifact_type = ?
@@ -500,7 +516,6 @@ export class SitePageRepository {
                config_fingerprint = ?
                OR (config_fingerprint IS NULL AND ? IS NULL)
              )
-             AND status = 'succeeded'
            ORDER BY id DESC
            LIMIT 1`,
           [
@@ -512,7 +527,16 @@ export class SitePageRepository {
           ],
         );
         if (historical) {
-          statuses.set(key, historical.status);
+          const reusable = reusableHistoricalArtifactStatus({
+            policy: pageRun.update_policy as import('../../domain/types.js').UpdatePolicy,
+            status: historical.status,
+            finishedAt: historical.finished_at,
+            referenceTime: pageRun.run_started_at,
+            staleAfterMs: pageRun.stale_after_ms,
+          });
+          if (reusable) {
+            statuses.set(key, reusable);
+          }
         }
       }
     }
@@ -536,7 +560,7 @@ export class SitePageRepository {
     const markdown = aggregate('markdown');
     const screenshot = aggregate('screenshot');
     const structured = aggregate('structured');
-    const stageDecision = parseJson<StageDecisionSnapshot>(pageRun.last_stage_decision_json);
+    const stageDecision = parseStageDecisionSnapshotJson(pageRun.last_stage_decision_json);
     const inventoryStatus = deriveInventoryStatus({
       pageOutcome: stageDecision.outcome,
       requiredArtifacts: requiredTypes,

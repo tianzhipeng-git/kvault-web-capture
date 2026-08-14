@@ -230,7 +230,7 @@ export type CrawlRequestUserData = PageCaptureTask;
 
 export interface StageDecisionSnapshot {
   outcome: RuleOutcome;
-  requiredArtifacts: ArtifactType[];
+  requiredArtifacts: ArtifactRequirement[];
 }
 
 export interface PlannedRequest {
@@ -263,6 +263,7 @@ export interface CrawlRunCreateInput {
   runType: RunType;
   updatePolicy: UpdatePolicy;
   targetSuccessCount: number | null;
+  staleAfterMs: number | null;
   configSnapshot: SiteConfig;
 }
 

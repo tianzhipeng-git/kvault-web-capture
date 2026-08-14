@@ -145,6 +145,7 @@ describe('project export', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: site.config,
     });
     const longUrl = `https://www.example.com/blogs/${'very-long-segment-'.repeat(12)}`;

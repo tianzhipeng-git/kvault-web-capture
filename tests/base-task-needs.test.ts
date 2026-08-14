@@ -172,7 +172,11 @@ describe('base task needs', () => {
         latestClassificationLabels: { content_type: ['docs'] },
         lastStageDecision: {
           outcome: 'allow',
-          requiredArtifacts: ['markdown'],
+          requiredArtifacts: [{
+            artifactType: 'markdown',
+            variantKey: 'default',
+            configFingerprint: null,
+          }],
         },
         lastMarkdownStatus: 'succeeded',
         lastMarkdownAt: '2026-01-01T00:00:00.000Z',

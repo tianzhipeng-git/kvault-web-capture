@@ -75,6 +75,7 @@ describe('repositories', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: site.config,
     });
     const sitePageId = await pages.upsertDiscovery({
@@ -189,6 +190,7 @@ describe('repositories', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: site.config,
     });
 
@@ -258,6 +260,7 @@ describe('repositories', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: site.config,
     });
     const sitePageId = await pages.upsertDiscovery({
@@ -362,6 +365,7 @@ describe('repositories', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: site.config,
     });
     const sitePageId = await pages.upsertDiscovery({

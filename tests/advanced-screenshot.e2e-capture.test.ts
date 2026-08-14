@@ -176,4 +176,43 @@ describe('advanced screenshot real browser capture', () => {
     expect(dimensions.width).toBe(metadata.captureWidth! * metadata.viewport.deviceScaleFactor);
     expect(dimensions.height).toBe(metadata.captureHeight! * metadata.viewport.deviceScaleFactor);
   });
+
+  it('ignores pending images when waitForImages is disabled', async () => {
+    server = await startTestSiteServer();
+    manager = new PlaywrightBrowserManager({ browser: browserConfig() });
+    const config = siteConfig(server.baseUrl);
+    config.screenshot!.preparation!.waitForImages = false;
+    config.screenshot!.preparation!.maxScrollRounds = 10;
+    config.screenshot!.variants = [config.screenshot!.variants![0]];
+    const requirement = expandArtifactRequirements(['screenshot'], config)[0];
+
+    const result = await new PlaywrightScreenshotTool(manager).capture(
+      captureInput(`${server.baseUrl}/advanced-screenshot-pending-image`, config, requirement),
+    );
+
+    expect(result.screenshotMetadata).toMatchObject({
+      imagesPending: 1,
+      truncated: false,
+      limitReason: null,
+    });
+  });
+
+  it('marks an unscrollable container as truncated', async () => {
+    server = await startTestSiteServer();
+    manager = new PlaywrightBrowserManager({ browser: browserConfig() });
+    const config = siteConfig(server.baseUrl);
+    config.screenshot!.variants = [config.screenshot!.variants![0]];
+    const requirement = expandArtifactRequirements(['screenshot'], config)[0];
+
+    const result = await new PlaywrightScreenshotTool(manager).capture(
+      captureInput(`${server.baseUrl}/advanced-screenshot-stuck-container`, config, requirement),
+    );
+
+    expect(result.screenshotMetadata).toMatchObject({
+      scrollContainersFound: 1,
+      scrollContainersCompleted: 0,
+      truncated: true,
+      limitReason: 'scrollContainersIncomplete',
+    });
+  });
 });

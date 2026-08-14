@@ -2,7 +2,9 @@ import type { DbClient } from '../../db/database.js';
 import {
   parseArtifactRequirementsJson,
   requirementKey,
+  reusableHistoricalArtifactStatus,
 } from '../../domain/artifact-requirements.js';
+import type { ArtifactRunStatus, UpdatePolicy } from '../../domain/types.js';
 
 export interface RunProgress {
   successfulPages: number;
@@ -15,14 +17,14 @@ export interface RunProgress {
 
 interface PageProgressRow {
   id: number;
+  site_page_id: number;
   crawl_run_id: number;
   update_policy: string;
+  stale_after_ms: number | null;
+  run_started_at: string;
   base_capture_status: string;
   decision_outcome: string;
   required_artifacts_json: string;
-  last_markdown_status: string | null;
-  last_screenshot_status: string | null;
-  last_structured_status: string | null;
 }
 
 interface ArtifactProgressRow {
@@ -33,6 +35,8 @@ interface ArtifactProgressRow {
   variant_key: string;
   config_fingerprint: string | null;
   status: string;
+  finished_at: string;
+  site_page_id: number;
 }
 
 function emptyProgress(): RunProgress {
@@ -58,54 +62,67 @@ export async function loadRunProgress(
   }
 
   const placeholders = uniqueRunIds.map(() => '?').join(', ');
-  const [pageRows, artifactRows] = await Promise.all([
-    db.all<PageProgressRow>(
+  const pageRows = await db.all<PageProgressRow>(
       `SELECT
          pr.id,
+         pr.site_page_id,
          pr.crawl_run_id,
          cr.update_policy,
+         cr.stale_after_ms,
+         cr.started_at AS run_started_at,
          pr.base_capture_status,
          pr.decision_outcome,
-         pr.required_artifacts_json,
-         sp.last_markdown_status,
-         sp.last_screenshot_status,
-         sp.last_structured_status
+         pr.required_artifacts_json
        FROM page_runs pr
        INNER JOIN crawl_runs cr ON cr.id = pr.crawl_run_id
-       INNER JOIN site_pages sp ON sp.id = pr.site_page_id
        WHERE pr.crawl_run_id IN (${placeholders})`,
       uniqueRunIds,
-    ),
-    db.all<ArtifactProgressRow>(
-      `SELECT id, crawl_run_id, page_run_id, artifact_type, variant_key, config_fingerprint, status
+    );
+  const artifactRows = pageRows.length === 0
+    ? []
+    : await db.all<ArtifactProgressRow>(
+      `SELECT id, crawl_run_id, page_run_id, site_page_id, artifact_type, variant_key,
+              config_fingerprint, status, finished_at
        FROM artifact_runs
-       WHERE crawl_run_id IN (${placeholders})
+       WHERE site_page_id IN (
+         SELECT DISTINCT site_page_id
+         FROM page_runs
+         WHERE crawl_run_id IN (${placeholders})
+       )
        ORDER BY id`,
       uniqueRunIds,
-    ),
-  ]);
+    );
 
   const artifactStatusByPageRun = new Map<number, Map<string, string>>();
+  const historicalStatusBySitePage = new Map<
+    number,
+    Map<string, Array<{ status: ArtifactRunStatus; finishedAt: string }>>
+  >();
 
   for (const artifact of artifactRows) {
     const progress = progressByRun.get(artifact.crawl_run_id);
-    if (!progress) {
-      continue;
+    if (progress) {
+      if (artifact.status === 'succeeded') {
+        progress.successfulArtifacts += 1;
+      } else if (artifact.status === 'failed') {
+        progress.failedArtifacts += 1;
+      }
     }
 
-    if (artifact.status === 'succeeded') {
-      progress.successfulArtifacts += 1;
-    } else if (artifact.status === 'failed') {
-      progress.failedArtifacts += 1;
-    }
-
-    const statuses = artifactStatusByPageRun.get(artifact.page_run_id) ?? new Map();
-    statuses.set(requirementKey({
+    const key = requirementKey({
       artifactType: artifact.artifact_type as import('../../domain/types.js').ArtifactType,
       variantKey: artifact.variant_key,
       configFingerprint: artifact.config_fingerprint,
-    }), artifact.status);
+    });
+    const statuses = artifactStatusByPageRun.get(artifact.page_run_id) ?? new Map();
+    statuses.set(key, artifact.status);
     artifactStatusByPageRun.set(artifact.page_run_id, statuses);
+    const historical = historicalStatusBySitePage.get(artifact.site_page_id) ?? new Map();
+    historical.set(key, [...(historical.get(key) ?? []), {
+      status: artifact.status as ArtifactRunStatus,
+      finishedAt: artifact.finished_at,
+    }]);
+    historicalStatusBySitePage.set(artifact.site_page_id, historical);
   }
 
   for (const page of pageRows) {
@@ -135,16 +152,25 @@ export async function loadRunProgress(
 
     const requirements = parseArtifactRequirementsJson(page.required_artifacts_json);
     const currentStatuses = artifactStatusByPageRun.get(page.id);
-    const statuses = requirements.map((requirement) => (
-      currentStatuses?.get(requirementKey(requirement))
-      ?? (page.update_policy === 'force_recrawl_all'
-        ? null
-        : requirement.artifactType === 'markdown'
-          ? page.last_markdown_status
-          : requirement.artifactType === 'screenshot'
-            ? page.last_screenshot_status
-            : page.last_structured_status)
-    ));
+    const historicalStatuses = historicalStatusBySitePage.get(page.site_page_id);
+    const statuses = requirements.map((requirement) => {
+      const key = requirementKey(requirement);
+      const current = currentStatuses?.get(key);
+      if (current) {
+        return current;
+      }
+      const historical = historicalStatuses?.get(key)
+        ?.findLast((candidate) => candidate.finishedAt <= page.run_started_at);
+      return historical
+        ? reusableHistoricalArtifactStatus({
+            policy: page.update_policy as UpdatePolicy,
+            status: historical.status,
+            finishedAt: historical.finishedAt,
+            referenceTime: page.run_started_at,
+            staleAfterMs: page.stale_after_ms,
+          })
+        : null;
+    });
 
     if (statuses.every((status) => status === 'succeeded')) {
       progress.successfulPages += 1;

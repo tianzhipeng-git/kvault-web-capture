@@ -244,6 +244,7 @@ export class RunService {
       runType: input.runType,
       updatePolicy: input.updatePolicy,
       targetSuccessCount: input.targetSuccessCount,
+      staleAfterMs: input.staleAfterMs,
       configSnapshot: effectiveConfig,
     });
 

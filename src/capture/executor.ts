@@ -318,6 +318,7 @@ export class PageCaptureExecutor {
         : new Error(failureMessage);
     }
 
+    result.durationMs = Date.now() - captureStartedAt;
     logger.info('Page capture executor succeeded', {
       runId: input.runId,
       siteId: input.siteId,
@@ -328,7 +329,7 @@ export class PageCaptureExecutor {
       finalUrl: result.finalUrl,
       statusCode: result.statusCode,
       diagnostics: result.diagnostics,
-      durationMs: Date.now() - captureStartedAt,
+      durationMs: result.durationMs,
     });
     const fallbackSummary = formatToolFallbackSummary(result.diagnostics);
     if (fallbackSummary) {
@@ -341,7 +342,7 @@ export class PageCaptureExecutor {
         profile: resolvedProfile.source,
         summary: fallbackSummary,
         diagnostics: result.diagnostics,
-        durationMs: Date.now() - captureStartedAt,
+        durationMs: result.durationMs,
       });
     }
     return result;

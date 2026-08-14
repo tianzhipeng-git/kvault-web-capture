@@ -147,6 +147,7 @@ describe('full page-capture task integration', () => {
       runType: 'crawl_run',
       updatePolicy: 'force_recrawl_all',
       targetSuccessCount: null,
+      staleAfterMs: null,
       configSnapshot: siteConfig,
     });
     const sitePageId = await sitePages.upsertDiscovery({

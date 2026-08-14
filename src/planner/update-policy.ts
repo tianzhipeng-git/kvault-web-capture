@@ -4,6 +4,7 @@ import type {
   StageDecisionSnapshot,
   UpdatePolicy,
 } from '../domain/types.js';
+import { requirementKey } from '../domain/artifact-requirements.js';
 
 function isOlderThan(lastAt: string | null, now: Date, staleAfterMs: number): boolean {
   if (lastAt === null) {
@@ -14,7 +15,9 @@ function isOlderThan(lastAt: string | null, now: Date, staleAfterMs: number): bo
 }
 
 function getRequiredArtifacts(history: HistoricalPageState): ArtifactType[] {
-  return history.lastStageDecision?.requiredArtifacts ?? [];
+  return [...new Set(
+    history.lastStageDecision?.requiredArtifacts.map((requirement) => requirement.artifactType) ?? [],
+  )];
 }
 
 function getArtifactStatus(history: HistoricalPageState, artifactType: ArtifactType): string | null {
@@ -59,7 +62,9 @@ function matchesStageDecision(
   return (
     left.outcome === right.outcome &&
     left.requiredArtifacts.length === right.requiredArtifacts.length &&
-    left.requiredArtifacts.every((artifactType) => right.requiredArtifacts.includes(artifactType))
+    left.requiredArtifacts.every((requirement) =>
+      right.requiredArtifacts.some((candidate) => requirementKey(candidate) === requirementKey(requirement))
+    )
   );
 }
 

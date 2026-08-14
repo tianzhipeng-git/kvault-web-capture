@@ -1,8 +1,12 @@
 import type { DbClient } from '../database.js';
 import type { ArtifactRunStatus, ArtifactType, CrawlRunCreateInput, RuleOutcome, RunStatus, SiteConfig, UpdatePolicy } from '../../domain/types.js';
 import type { Clock } from '../../utils/clock.js';
-import { hasCompleteArtifactSet, parseJson } from './helpers.js';
-import { parseArtifactRequirementsJson } from '../../domain/artifact-requirements.js';
+import { parseJson } from './helpers.js';
+import {
+  parseArtifactRequirementsJson,
+  requirementKey,
+  reusableHistoricalArtifactStatus,
+} from '../../domain/artifact-requirements.js';
 
 export interface CrawlRunRecord {
   id: number;
@@ -27,15 +31,17 @@ export class RunRepository {
           run_type,
           update_policy,
           target_success_count,
+          stale_after_ms,
           config_snapshot_json,
           status,
           started_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.siteId,
         input.runType,
         input.updatePolicy,
         input.targetSuccessCount,
+        input.staleAfterMs,
         JSON.stringify(input.configSnapshot),
         'running',
         now,
@@ -114,41 +120,66 @@ export class RunRepository {
     const pageRuns = await this.db.all(
         `SELECT
            pr.id,
+           pr.site_page_id,
            pr.decision_outcome,
            pr.required_artifacts_json,
-           sp.last_markdown_status,
-           sp.last_screenshot_status,
-           sp.last_structured_status
+           cr.update_policy,
+           cr.stale_after_ms,
+           cr.started_at AS run_started_at
          FROM page_runs pr
-         INNER JOIN site_pages sp ON sp.id = pr.site_page_id
+         INNER JOIN crawl_runs cr ON cr.id = pr.crawl_run_id
          WHERE pr.crawl_run_id = ?`,
       [runId],
     ) as Array<{
       id: number;
+      site_page_id: number;
       decision_outcome: RuleOutcome;
       required_artifacts_json: string;
-      last_markdown_status: ArtifactRunStatus | null;
-      last_screenshot_status: ArtifactRunStatus | null;
-      last_structured_status: ArtifactRunStatus | null;
+      update_policy: UpdatePolicy;
+      stale_after_ms: number | null;
+      run_started_at: string;
     }>;
 
-    const artifactRows = await this.db.all(
-        `SELECT page_run_id, artifact_type, status
+    const artifactRows = pageRuns.length === 0 ? [] : await this.db.all(
+        `SELECT page_run_id, site_page_id, artifact_type, variant_key, config_fingerprint,
+                status, finished_at
          FROM artifact_runs
-         WHERE crawl_run_id = ?`,
+         WHERE site_page_id IN (
+           SELECT site_page_id FROM page_runs WHERE crawl_run_id = ?
+         )
+         ORDER BY id`,
       [runId],
     ) as Array<{
       page_run_id: number;
+      site_page_id: number;
       artifact_type: ArtifactType;
+      variant_key: string;
+      config_fingerprint: string | null;
       status: ArtifactRunStatus;
+      finished_at: string;
     }>;
 
-    const artifactStatuses = new Map<number, Partial<Record<ArtifactType, ArtifactRunStatus>>>();
+    const currentStatuses = new Map<number, Map<string, ArtifactRunStatus>>();
+    const historicalStatuses = new Map<
+      number,
+      Map<string, Array<{ status: ArtifactRunStatus; finishedAt: string }>>
+    >();
 
     for (const artifactRow of artifactRows) {
-      const current = artifactStatuses.get(artifactRow.page_run_id) ?? {};
-      current[artifactRow.artifact_type] = artifactRow.status;
-      artifactStatuses.set(artifactRow.page_run_id, current);
+      const key = requirementKey({
+        artifactType: artifactRow.artifact_type,
+        variantKey: artifactRow.variant_key,
+        configFingerprint: artifactRow.config_fingerprint,
+      });
+      const current = currentStatuses.get(artifactRow.page_run_id) ?? new Map();
+      current.set(key, artifactRow.status);
+      currentStatuses.set(artifactRow.page_run_id, current);
+      const historical = historicalStatuses.get(artifactRow.site_page_id) ?? new Map();
+      historical.set(key, [
+        ...(historical.get(key) ?? []),
+        { status: artifactRow.status, finishedAt: artifactRow.finished_at },
+      ]);
+      historicalStatuses.set(artifactRow.site_page_id, historical);
     }
 
     const successfulCount = pageRuns.filter((pageRun) => {
@@ -156,18 +187,22 @@ export class RunRepository {
         return false;
       }
 
-      return hasCompleteArtifactSet({
-        requiredArtifacts: [
-          ...new Set(
-            parseArtifactRequirementsJson(pageRun.required_artifacts_json)
-              .map((requirement) => requirement.artifactType),
-          ),
-        ],
-        artifactStatuses: {
-          markdown: pageRun.last_markdown_status,
-          screenshot: pageRun.last_screenshot_status,
-          structured: pageRun.last_structured_status,
-        },
+      const requirements = parseArtifactRequirementsJson(pageRun.required_artifacts_json);
+      return requirements.every((requirement) => {
+        const key = requirementKey(requirement);
+        const current = currentStatuses.get(pageRun.id)?.get(key);
+        if (current) {
+          return current === 'succeeded';
+        }
+        const historical = historicalStatuses.get(pageRun.site_page_id)?.get(key)
+          ?.findLast((candidate) => candidate.finishedAt <= pageRun.run_started_at);
+        return historical !== undefined && reusableHistoricalArtifactStatus({
+          policy: pageRun.update_policy,
+          status: historical.status,
+          finishedAt: historical.finishedAt,
+          referenceTime: pageRun.run_started_at,
+          staleAfterMs: pageRun.stale_after_ms,
+        }) === 'succeeded';
       });
     }).length;
 

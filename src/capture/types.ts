@@ -71,6 +71,7 @@ export interface CaptureResult {
   };
   structured?: unknown;
   diagnostics: CaptureDiagnostic[];
+  durationMs?: number;
 }
 
 export interface CaptureTool {
