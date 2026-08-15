@@ -62,6 +62,8 @@
 
 `screenshot` 当前只使用 `minBytes`。`structured` 当前只检查是否存在和是否可 JSON 序列化。
 
+当 `screenshot.mode` 为 `complete` 时，系统还会自动校验 variant、设备 viewport、配置指纹、页面准备状态和 truncated 语义。相关配置见 [SiteConfig 截图与多变体配置](./site-config-screenshot.md)。
+
 ## 4. 内置拒绝模式
 
 base 和 markdown 默认会拒绝常见反爬/拦截页面。内置模式包括：

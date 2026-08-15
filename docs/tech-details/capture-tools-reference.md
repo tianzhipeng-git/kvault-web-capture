@@ -85,6 +85,7 @@ kickstarter-comments
 | 文档 | 内容 |
 | --- | --- |
 | [SiteConfig 抓取 Profile 配置](../user-guide/site-config-capture-profile.md) | profile 字段、执行规则、配置示例 |
+| [SiteConfig 截图与多变体配置](../user-guide/site-config-screenshot.md) | basic/complete、设备 variants、页面准备与截图产物 |
 | [SiteConfig 抓取结果校验](../user-guide/site-config-validation.md) | validator 规则 |
 | [Python 抓取工具安装](../user-guide/pytools-install.md) | crawl4ai-page / scrapling-page 环境 |
 | [技术与模块结构说明](../technical-module-structure.md) | CaptureTool 架构、Bridge、BrowserManager |

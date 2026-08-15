@@ -92,6 +92,8 @@
 | 某个路径下的页面一律抓截图 | `rulesBeforeStage2Eq` | URL whitelist + `artifacts: ["screenshot"]` |
 | 某类页面抓结构化 JSON | `rulesBeforeStage2Eq` | URL / label whitelist + `artifacts: ["structured"]` |
 
+规则只决定页面是否需要截图；单截图、多设备 variants 和完整页面准备由 [`SiteConfig.screenshot`](./site-config-screenshot.md) 配置。
+
 ## 2. 再选规则类型
 
 每条规则都有两个维度：

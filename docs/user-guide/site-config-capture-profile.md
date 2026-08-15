@@ -18,6 +18,8 @@
 
 `base` 用于页面基础抓取、链接发现和分类。`markdown`、`screenshot`、`structured` 是否需要，仍由 `rulesBeforeStage2Eq` 的规则结果决定。
 
+截图的 basic/complete 模式、多设备 variants 和页面准备参数见 [SiteConfig 截图与多变体配置](./site-config-screenshot.md)。
+
 若 profile 中存在同时支持 `base` 和 artifact 的一体化工具，例如 `scrapling-page`、`crawl4ai-page`，base task 可能将 artifact 一并写入 `needs`，让工具一次调用抓完。详见 [Base Task Needs 与 Eager Capture](../tech-details/base-task-needs-and-eager-capture.md)。
 
 ## 2. 配置格式

@@ -32,7 +32,7 @@ pnpm cli project:delete --project 1 --yes
 
 ## 配置、标签与规则
 
-站点配置和标签定义均使用 JSON 文件。配置格式见 [规则格式编写指南](./site-config-rule-format-guide.md)、[抓取 Profile 配置](./site-config-capture-profile.md) 和 [抓取结果校验](./site-config-validation.md)。
+站点配置和标签定义均使用 JSON 文件。配置格式见 [规则格式编写指南](./site-config-rule-format-guide.md)、[抓取 Profile 配置](./site-config-capture-profile.md)、[截图与多变体配置](./site-config-screenshot.md) 和 [抓取结果校验](./site-config-validation.md)。
 
 ```bash
 # 查看、写入或从另一站点复制完整配置
