@@ -71,7 +71,7 @@ export class ArtifactRunRepository {
          AND variant_key = ?
          AND (
            config_fingerprint = ?
-           OR (config_fingerprint IS NULL AND ? IS NULL)
+           OR (config_fingerprint IS NULL AND CAST(? AS TEXT) IS NULL)
          )
          ${input.runId === undefined ? '' : 'AND crawl_run_id = ?'}
        ORDER BY id DESC

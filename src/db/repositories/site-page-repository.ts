@@ -239,7 +239,7 @@ export class SitePageRepository {
          AND variant_key = ?
          AND (
            config_fingerprint = ?
-           OR (config_fingerprint IS NULL AND ? IS NULL)
+           OR (config_fingerprint IS NULL AND CAST(? AS TEXT) IS NULL)
          )
        ORDER BY id DESC
        LIMIT 1`,
@@ -514,7 +514,7 @@ export class SitePageRepository {
              AND variant_key = ?
              AND (
                config_fingerprint = ?
-               OR (config_fingerprint IS NULL AND ? IS NULL)
+               OR (config_fingerprint IS NULL AND CAST(? AS TEXT) IS NULL)
              )
            ORDER BY id DESC
            LIMIT 1`,
@@ -572,14 +572,14 @@ export class SitePageRepository {
       `UPDATE site_pages
        SET inventory_status = ?,
            last_markdown_status = ?,
-           last_markdown_run_id = CASE WHEN ? IS NULL THEN last_markdown_run_id ELSE ? END,
-           last_markdown_at = CASE WHEN ? IS NULL THEN last_markdown_at ELSE ? END,
+           last_markdown_run_id = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_markdown_run_id ELSE ? END,
+           last_markdown_at = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_markdown_at ELSE ? END,
            last_screenshot_status = ?,
-           last_screenshot_run_id = CASE WHEN ? IS NULL THEN last_screenshot_run_id ELSE ? END,
-           last_screenshot_at = CASE WHEN ? IS NULL THEN last_screenshot_at ELSE ? END,
+           last_screenshot_run_id = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_screenshot_run_id ELSE ? END,
+           last_screenshot_at = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_screenshot_at ELSE ? END,
            last_structured_status = ?,
-           last_structured_run_id = CASE WHEN ? IS NULL THEN last_structured_run_id ELSE ? END,
-           last_structured_at = CASE WHEN ? IS NULL THEN last_structured_at ELSE ? END,
+           last_structured_run_id = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_structured_run_id ELSE ? END,
+           last_structured_at = CASE WHEN CAST(? AS TEXT) IS NULL THEN last_structured_at ELSE ? END,
            updated_at = ?
        WHERE id = ?`,
       [
