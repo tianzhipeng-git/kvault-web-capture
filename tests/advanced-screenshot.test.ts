@@ -47,6 +47,7 @@ describe('advanced screenshot configuration', () => {
     });
 
     expect(siteConfig.screenshot?.preparation).toMatchObject({
+      dismissSelectors: [],
       waitForImages: true,
       scrollContainers: true,
       maxCaptureHeight: 50_000,
@@ -67,6 +68,23 @@ describe('advanced screenshot configuration', () => {
       'mobile-iphone-15',
     ]);
     expect(requirements[1].configFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('accepts bounded dismiss selectors and includes them in the fingerprint', () => {
+    const base = config({
+      mode: 'complete',
+      variants: [{ key: 'desktop', device: 'desktop', viewport: { width: 1440, height: 900 } }],
+    }).screenshot!;
+    const withDismiss = config({
+      mode: 'complete',
+      preparation: { dismissSelectors: ['#cookies-decline'] },
+      variants: [{ key: 'desktop', device: 'desktop', viewport: { width: 1440, height: 900 } }],
+    }).screenshot!;
+
+    expect(withDismiss.preparation?.dismissSelectors).toEqual(['#cookies-decline']);
+    expect(screenshotFingerprint(base, base.variants![0])).not.toBe(
+      screenshotFingerprint(withDismiss, withDismiss.variants![0]),
+    );
   });
 
   it('changes the fingerprint when effective preparation or viewport changes', () => {

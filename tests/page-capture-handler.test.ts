@@ -277,6 +277,7 @@ describe('createPageCaptureRequestHandler – base task', () => {
     completeConfig.screenshot = {
       mode: 'complete',
       preparation: {
+        dismissSelectors: [],
         waitForImages: true,
         waitForFonts: true,
         scrollDocument: true,

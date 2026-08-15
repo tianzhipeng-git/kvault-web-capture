@@ -39,6 +39,25 @@ async function kvaultScreenshotPreparation(payload) {
     const style = getComputedStyle(element);
     return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
   };
+  const invalidDismissSelectors = new Set();
+  const dismissVisible = async () => {
+    for (const selector of config.dismissSelectors) {
+      if (invalidDismissSelectors.has(selector)) continue;
+      let element;
+      try {
+        element = [...document.querySelectorAll(selector)].find(visible);
+      } catch {
+        invalidDismissSelectors.add(selector);
+        warnings.push(`invalid dismiss selector: ${selector}`);
+        continue;
+      }
+      if (!element) continue;
+      element.click();
+      await sleep(Math.min(config.settleMs, Math.max(0, deadline - performance.now())));
+      return;
+    }
+  };
+  await dismissVisible();
   const documentHeight = () => Math.max(
     document.documentElement.scrollHeight,
     document.body?.scrollHeight ?? 0,
@@ -65,6 +84,7 @@ async function kvaultScreenshotPreparation(payload) {
     if (!timedOut() && config.settleMs > 0) {
       await sleep(Math.min(config.settleMs, Math.max(0, deadline - performance.now())));
     }
+    await dismissVisible();
   };
   const containers = () => [...document.querySelectorAll('*')].filter((element) => {
     if (!(element instanceof HTMLElement) || element.matches('textarea,select')) return false;

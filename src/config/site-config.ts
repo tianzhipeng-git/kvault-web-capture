@@ -404,8 +404,17 @@ function parseScreenshotPreparation(
   };
   const onLimit = input.onLimit ?? DEFAULT_SCREENSHOT_PREPARATION.onLimit;
   assert(onLimit === 'truncate' || onLimit === 'fail', `${fieldName}.onLimit must be truncate or fail`);
+  const dismissSelectors = asStringArray(
+    input.dismissSelectors ?? DEFAULT_SCREENSHOT_PREPARATION.dismissSelectors,
+    `${fieldName}.dismissSelectors`,
+  );
+  assert(
+    dismissSelectors.length <= 20 && dismissSelectors.every((selector) => selector.length > 0 && selector.length <= 500),
+    `${fieldName}.dismissSelectors must contain at most 20 non-empty selectors of at most 500 characters`,
+  );
 
   return {
+    dismissSelectors,
     waitForImages: booleanValue('waitForImages'),
     waitForFonts: booleanValue('waitForFonts'),
     scrollDocument: booleanValue('scrollDocument'),

@@ -11,6 +11,7 @@ export interface ArtifactRequirement {
 export type ScreenshotMode = 'basic' | 'complete';
 
 export interface ScreenshotPreparationConfig {
+  dismissSelectors: string[];
   waitForImages: boolean;
   waitForFonts: boolean;
   scrollDocument: boolean;

@@ -12,6 +12,7 @@ import {
   DEFAULT_SCREENSHOT_PREPARATION,
   expandArtifactRequirements,
 } from '../src/domain/artifact-requirements.js';
+import { prepareScreenshot } from '../src/capture/screenshot-preparation.js';
 import type {
   ArtifactRequirement,
   BrowserConfig,
@@ -195,6 +196,34 @@ describe('advanced screenshot real browser capture', () => {
       truncated: false,
       limitReason: null,
     });
+  });
+
+  it('dismisses a visible consent overlay before scrolling', async () => {
+    server = await startTestSiteServer();
+    manager = new PlaywrightBrowserManager({ browser: browserConfig() });
+    const config = siteConfig(server.baseUrl);
+    const lease = await manager.acquirePage({
+      identity: {
+        siteId: 1,
+        runId: 1,
+        engine: 'chromium',
+        profileMode: 'ephemeral',
+      },
+      url: `${server.baseUrl}/advanced-screenshot-consent`,
+      runtime: runtime(),
+    });
+
+    try {
+      await lease.page.goto(`${server.baseUrl}/advanced-screenshot-consent`, { waitUntil: 'load' });
+      await prepareScreenshot(lease.page, {
+        ...config.screenshot!.preparation!,
+        dismissSelectors: ['#consent-decline'],
+      });
+      expect(await lease.page.evaluate(() => localStorage.getItem('consent'))).toBe('declined');
+      expect(await lease.page.locator('#consent-overlay').count()).toBe(0);
+    } finally {
+      await lease.release();
+    }
   });
 
   it('marks an unscrollable container as truncated', async () => {

@@ -15,6 +15,7 @@ import type {
 export const SCREENSHOT_PROTOCOL_VERSION = 1 as const;
 
 export const DEFAULT_SCREENSHOT_PREPARATION: ScreenshotPreparationConfig = {
+  dismissSelectors: [],
   waitForImages: true,
   waitForFonts: true,
   scrollDocument: true,

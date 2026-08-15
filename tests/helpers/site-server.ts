@@ -127,6 +127,26 @@ function handleRequest(
     return;
   }
 
+  if (url === '/advanced-screenshot-consent') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html>
+<html><body style="min-height: 1200px; overflow: hidden">
+  <main>Consent test</main>
+  <div id="consent-overlay" style="display: none; position: fixed; inset: 0; background: white">
+    <button id="consent-decline">Decline</button>
+  </div>
+  <script>
+    document.querySelector('#consent-decline').addEventListener('click', () => {
+      localStorage.setItem('consent', 'declined');
+      document.querySelector('#consent-overlay').remove();
+      document.body.style.overflow = '';
+    });
+    setTimeout(() => { document.querySelector('#consent-overlay').style.display = 'block'; }, 100);
+  </script>
+</body></html>`);
+    return;
+  }
+
   if (url === '/advanced-screenshot-stuck-container') {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(`<!doctype html>

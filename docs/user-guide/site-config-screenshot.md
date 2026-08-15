@@ -50,6 +50,7 @@ basic 保留现有 eager capture 和工具 fallback 行为，适合只需要一�
   "screenshot": {
     "mode": "complete",
     "preparation": {
+      "dismissSelectors": ["#cookies-decline", "button[aria-label='Close']"],
       "waitForImages": true,
       "waitForFonts": true,
       "scrollDocument": true,
@@ -132,6 +133,7 @@ complete 模式下，每个 variant 都是独立 artifact task。任一必需 va
 
 | 字段 | 类型 | 默认值 | 范围 | 说明 |
 | --- | --- | --- | --- | --- |
+| `dismissSelectors` | string[] | `[]` | 最多 20 个；单项 1–500 字符 | 按顺序查找可见元素，点击第一个命中的 selector，再开始等待与滚动 |
 | `waitForImages` | boolean | `true` | — | 等待已发现图片解码；关闭后 pending image 不阻塞完成 |
 | `waitForFonts` | boolean | `true` | — | 等待 `document.fonts.ready` |
 | `scrollDocument` | boolean | `true` | — | 分步滚动主文档，触发懒加载和动态内容 |
@@ -146,6 +148,8 @@ complete 模式下，每个 variant 都是独立 artifact task。任一必需 va
 | `onLimit` | string | `truncate` | `truncate` / `fail` | 达到上限或页面无法完整准备时的处理方式 |
 
 准备期间系统还会临时停止 CSS animation、transition 和平滑滚动，截图结束后恢复临时修改。
+
+`dismissSelectors` 适合 Cookie、地区或订阅遮罩的拒绝/关闭按钮。它按顺序尝试候选值，只点击第一个可见元素；找不到时继续截图。selector 必须指向安全的拒绝或关闭动作，不能指向购买、提交或其他有副作用的控件。若网站会把选择写入 Cookie 或 `localStorage`，搭配 `browser.contextReuse: "site_run"` 可让同一次运行中的后续页面复用该状态。
 
 ### `onLimit` 的选择
 
