@@ -261,6 +261,7 @@ export class RunSummaryQuery {
     runId: number;
     siteId: number;
     runTypeLabel: string;
+    status: string;
     statusLabel: string;
     startedAt: string;
     finishedAt: string | null;
@@ -331,6 +332,7 @@ export class RunSummaryQuery {
       runId: row.id,
       siteId: row.site_id,
       runTypeLabel: toRunTypeLabel(row.run_type),
+      status: row.status,
       statusLabel: toRunStatusLabel(row.status),
       startedAt: row.started_at,
       finishedAt: row.finished_at,

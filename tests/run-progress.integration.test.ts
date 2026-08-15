@@ -158,6 +158,7 @@ describe('live run progress', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      status: 'running',
       statusLabel: '进行中',
       successfulPages: 1,
       failedPages: 2,
