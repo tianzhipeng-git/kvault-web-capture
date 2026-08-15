@@ -92,7 +92,6 @@ export class SessionAuth {
     }
 
     request.isAuthenticated = true;
-    request.authSource = 'session';
     return true;
   }
 
@@ -115,7 +114,6 @@ export class SessionAuth {
     }
 
     request.isAuthenticated = true;
-    request.authSource = 'api_key';
     return true;
   }
 }
@@ -123,6 +121,5 @@ export class SessionAuth {
 declare module 'fastify' {
   interface FastifyRequest {
     isAuthenticated: boolean;
-    authSource?: 'session' | 'api_key';
   }
 }

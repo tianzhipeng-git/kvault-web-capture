@@ -4,7 +4,7 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 
 技术架构见[technical-module-structure](docs/technical-module-structure.md)
 
-外部系统对接简易采集入口见[简易采集 API 对接文档](docs/simple-capture-api.md)。
+外部系统和 Agent 对接见 [HTTP API 与自解释 Agent CLI](docs/user-guide/http-api.md)；只需简易采集时参考[简易采集 API 对接文档](docs/user-guide/simple-capture-api.md)。
 
 ## 核心业务概念
 

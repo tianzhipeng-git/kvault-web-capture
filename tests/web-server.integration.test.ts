@@ -65,6 +65,7 @@ describe('web server', () => {
       dbPath: join(dir, 'state.db'),
       adminPassword: 'secret',
       maxConcurrentRuns: 1,
+      apiKey: 'external-secret',
     });
     servers.push(webServer);
 
@@ -94,6 +95,17 @@ describe('web server', () => {
       sourceType: 'page',
       links: [`${siteServer.baseUrl}/product`],
     });
+
+    const apiKeyResponse = await webServer.inject({
+      method: 'POST',
+      url: '/api/links/expand',
+      headers: {
+        'x-api-key': 'external-secret',
+      },
+      payload: { url: `${siteServer.baseUrl}/docs` },
+    });
+    expect(apiKeyResponse.statusCode).toBe(200);
+    expect(apiKeyResponse.json()).toEqual(response.json());
   });
 
   it('serves authenticated project, site, config, and run flows', async () => {
@@ -883,7 +895,9 @@ describe('web server', () => {
         siteId: site.lastInsertId,
       },
     });
-    expect(setDefaultResponse.statusCode).toBe(403);
+    expect(setDefaultResponse.statusCode).toBe(200);
+    expect((setDefaultResponse.json() as { defaultSite: { siteId: number } }).defaultSite.siteId)
+      .toBe(site.lastInsertId);
 
     const sessionSetDefaultResponse = await webServer.inject({
       method: 'PUT',

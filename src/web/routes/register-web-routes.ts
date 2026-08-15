@@ -147,16 +147,6 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   };
 
-  const requireSessionAuth = (
-    request: FastifyRequest,
-    reply: FastifyReply,
-  ) => {
-    if (request.authSource !== 'session') {
-      reply.code(403);
-      throw new Error('该接口仅允许 Web UI 登录态访问。');
-    }
-  };
-
   const parseTargetProjectKey = (body: Record<string, unknown>): string => {
     const key = typeof body.targetProjectKey === 'string' ? body.targetProjectKey.trim() : '';
     if (!key) {
@@ -218,7 +208,6 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
   server.get('/api/auth/session', async (request) => auth.getSessionState(request));
 
   server.post('/api/links/expand', async (request, reply) => {
-    requireSessionAuth(request, reply);
     const body = (request.body ?? {}) as { url?: string };
     if (!body.url?.trim()) {
       reply.code(400);
@@ -269,15 +258,13 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   });
 
-  server.get('/api/system/default-site', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/system/default-site', async () => {
     return {
       defaultSite: await app.getDefaultSite(),
     };
   });
 
-  server.put('/api/system/default-site', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.put('/api/system/default-site', async (request) => {
     const body = (request.body ?? {}) as { siteId?: unknown };
     await app.setDefaultSite(parseOptionalSiteId(body.siteId));
     return {
@@ -286,15 +273,13 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   });
 
-  server.get('/api/system/default-markdown-site', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/system/default-markdown-site', async () => {
     return {
       defaultSite: await app.getDefaultMarkdownSite(),
     };
   });
 
-  server.put('/api/system/default-markdown-site', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.put('/api/system/default-markdown-site', async (request) => {
     const body = (request.body ?? {}) as { siteId?: unknown };
     await app.setDefaultMarkdownSite(parseOptionalSiteId(body.siteId));
     return {
@@ -303,15 +288,13 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   });
 
-  server.get('/api/system/config', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/system/config', async () => {
     return {
       config: await app.getSystemConfig(),
     };
   });
 
-  server.get('/api/vault-drive/projects', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/vault-drive/projects', async (request) => {
     const query = request.query as { key?: string };
 
     return {
@@ -321,22 +304,19 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     };
   });
 
-  server.get('/api/vault-drive/export-task', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/vault-drive/export-task', async () => {
     return {
       task: vaultExports.getSnapshot(),
     };
   });
 
-  server.get('/api/vault-drive/export-tasks', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.get('/api/vault-drive/export-tasks', async () => {
     return {
       items: vaultExports.listSnapshots(),
     };
   });
 
-  server.put('/api/system/url-normalization', async (request, reply) => {
-    requireSessionAuth(request, reply);
+  server.put('/api/system/url-normalization', async (request) => {
     const body = (request.body ?? {}) as {
       stripQueryParams?: unknown;
       stripQueryParamPrefixes?: unknown;

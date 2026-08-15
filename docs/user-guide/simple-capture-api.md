@@ -46,7 +46,7 @@ Authorization: Bearer your-secret-key
 - 默认站点：用于完整 artifact 采集，包括 `POST /api/simple-capture/runs` 未指定模式时，以及 `POST /api/simple-capture/submit-and-download`。
 - 默认 Markdown 站点：用于只跑 Markdown 的简易提交，包括 `POST /api/simple-capture/runs` 指定 `artifactMode: "markdown"` 时，以及 `POST /api/simple-capture/submit-markdown`。
 
-管理员可在 WebUI 或 [CLI](./cli.md) 中配置上述站点，例如 `system:default-site --set <site-id>`。外部调度方不需要、也不能通过本文档接口修改上述站点配置。
+管理员可在 WebUI、[CLI](./cli.md) 或 [HTTP API](./http-api.md) 中配置上述站点，例如 `PUT /api/system/default-site`。
 
 ## 分步接口
 
