@@ -17,6 +17,8 @@ Kvault Web Capture 用“先摸底、再配置、再正式采集、再复核迭�
 - 采集规则：根据 URL 或 label 决定页面是否继续采集，以及需要哪些 artifact。
 - Artifact：当前支持 `markdown` 和 `screenshot`。
 
+项目 Tag 的配置方法、字段说明和规则联动见[项目 Tag（分类标签）配置指南](docs/user-guide/project-label-configuration.md)。
+
 ## 典型工作流
 
 ```text

@@ -207,6 +207,8 @@ label 规则根据页面分类结果匹配，只能写在 `rulesBeforeStage2Eq` 
 
 条件字段说明：
 
+项目级 Tag 的创建、字段含义和完整示例见[项目 Tag（分类标签）配置指南](./project-label-configuration.md)。
+
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `key` | 是 | 分类 label 的键，例如 `content_type` |
