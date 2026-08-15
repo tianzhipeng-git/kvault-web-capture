@@ -1,4 +1,4 @@
-import { extractPageContentFromHtml } from '../html.js';
+import { extractPageContentFromHtml, extractPageContentFromText } from '../html.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
 
 export function responseBody(response: unknown): string {
@@ -30,6 +30,31 @@ export function responseFinalUrl(response: unknown, fallbackUrl: string): string
       : fallbackUrl;
 }
 
+export function responseContentType(response: unknown): string | undefined {
+  const headers = (response as { headers?: unknown }).headers;
+
+  if (!headers || typeof headers !== 'object') {
+    return undefined;
+  }
+
+  const get = (headers as { get?: unknown }).get;
+  if (typeof get === 'function') {
+    const value = get.call(headers, 'content-type');
+    return typeof value === 'string' ? value : undefined;
+  }
+
+  const record = headers as Record<string, unknown>;
+  const value = record['content-type'] ?? record['Content-Type'];
+  return Array.isArray(value)
+    ? typeof value[0] === 'string' ? value[0] : undefined
+    : typeof value === 'string' ? value : undefined;
+}
+
+export function isPlainTextContentType(contentType: string | undefined): boolean {
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'text/plain' || mediaType === 'text/markdown' || mediaType === 'text/x-markdown';
+}
+
 export class HttpBaseTool implements CaptureTool {
   readonly name = 'http-base';
   readonly capabilities = ['base'] as const;
@@ -44,13 +69,16 @@ export class HttpBaseTool implements CaptureTool {
 
     const html = responseBody(response);
     const finalUrl = responseFinalUrl(response, input.url);
+    const contentType = responseContentType(response);
 
     return {
       toolName: this.name,
       finalUrl,
       statusCode,
       html,
-      extracted: extractPageContentFromHtml(finalUrl, html, input.siteConfig.urlNormalization),
+      extracted: isPlainTextContentType(contentType)
+        ? extractPageContentFromText(finalUrl, html, input.siteConfig.urlNormalization)
+        : extractPageContentFromHtml(finalUrl, html, input.siteConfig.urlNormalization),
     };
   }
 }

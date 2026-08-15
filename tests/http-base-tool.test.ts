@@ -59,4 +59,34 @@ describe('HttpBaseTool', () => {
 
     expect(result.extracted?.normalizedUrl).toBe('https://example.com/docs?a=1');
   });
+
+  it('extracts plain text responses without parsing them as HTML', async () => {
+    const runtime: RuntimeContext = {
+      requestId: 'test-request',
+      async sendRequest() {
+        return {
+          statusCode: 200,
+          url: 'https://example.com/agents.md',
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+          body: '# Agents\n\nCrawler guidance.',
+        };
+      },
+    };
+
+    const result = await new HttpBaseTool().capture({
+      runId: 1,
+      siteId: 1,
+      url: 'https://example.com/agents.md',
+      normalizedUrl: 'https://example.com/agents.md',
+      needs: ['base'],
+      siteConfig: createDefaultSiteConfig('https://example.com'),
+      runtime,
+    });
+
+    expect(result.extracted).toMatchObject({
+      bodyText: '# Agents Crawler guidance.',
+      links: [],
+      title: '',
+    });
+  });
 });

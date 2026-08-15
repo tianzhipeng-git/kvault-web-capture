@@ -48,6 +48,21 @@ export function parseHtmlDocument(html: string): Document {
   return parseHTML(html).document;
 }
 
+export function extractPageContentFromText(
+  url: string,
+  text: string,
+  urlNormalization?: UrlNormalizationConfig,
+): ExtractedPage {
+  return {
+    url,
+    normalizedUrl: normalizeUrl(url, urlNormalization),
+    title: '',
+    metaDescription: '',
+    bodyText: cleanText(text),
+    links: [],
+  };
+}
+
 export function extractPageContentFromHtml(
   url: string,
   html: string,

@@ -57,6 +57,23 @@ describe('DefuddleMarkdownTool', () => {
     expect(result.markdown).toContain('Hello markdown world.');
     expect(result.markdownToolName).toBe('defuddle-markdown');
   });
+
+  it('preserves fetched plain text markdown', async () => {
+    const runtime: RuntimeContext = {
+      requestId: 'test-request',
+      sendRequest: async () => ({
+        statusCode: 200,
+        url: 'https://example.com/agents.md',
+        headers: { 'content-type': 'text/markdown; charset=utf-8' },
+        body: '# Agents\n\nCrawler guidance.\n',
+      }),
+    };
+
+    const result = await new DefuddleMarkdownTool().capture(makeInput({ runtime }));
+
+    expect(result.markdown).toBe('# Agents\n\nCrawler guidance.\n');
+    expect(result.markdownToolName).toBe('defuddle-markdown');
+  });
 });
 
 describe('LightpandaMarkdownTool', () => {

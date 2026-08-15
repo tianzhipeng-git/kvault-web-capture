@@ -7,7 +7,13 @@ import {
 } from '../browser-provider.js';
 import { parseHtmlDocument } from '../html.js';
 import type { CaptureInput, CaptureTool, CaptureToolResult } from '../types.js';
-import { responseBody, responseFinalUrl, responseStatusCode } from './http-base-tool.js';
+import {
+  isPlainTextContentType,
+  responseBody,
+  responseContentType,
+  responseFinalUrl,
+  responseStatusCode,
+} from './http-base-tool.js';
 
 const JINA_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -29,6 +35,16 @@ export class DefuddleMarkdownTool implements CaptureTool {
     const response = await input.runtime.sendRequest(input.url);
     const html = responseBody(response);
     const finalUrl = responseFinalUrl(response, input.url);
+    if (isPlainTextContentType(responseContentType(response))) {
+      return {
+        toolName: this.name,
+        finalUrl,
+        statusCode: responseStatusCode(response),
+        html,
+        markdown: requireNonEmptyMarkdown(html, this.name),
+        markdownToolName: this.name,
+      };
+    }
     const document = parseHtmlDocument(html);
     const result = await Defuddle(document, finalUrl, {
       markdown: true,
