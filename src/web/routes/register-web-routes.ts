@@ -139,6 +139,7 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
       runInput: {
         siteId: defaultSite.siteId,
         updatePolicy: runInput.updatePolicy,
+        skipBase: runInput.skipBase,
         targetSuccessCount: runInput.targetSuccessCount,
         staleAfterMs: runInput.staleAfterMs,
         initialUrls: parseSimpleCaptureUrls(body.urls),

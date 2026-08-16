@@ -183,6 +183,7 @@ describe('crawl history planning', () => {
     const secondRun = await app.runCrawl({
       siteId,
       updatePolicy: 'skip_existing',
+      skipBase: false,
       targetSuccessCount: null,
       staleAfterMs: null,
     });
@@ -191,6 +192,31 @@ describe('crawl history planning', () => {
     expect(firstRun.artifactRuns).toBe(4);
     expect(secondRun.pageRuns).toBe(0);
     expect(secondRun.artifactRuns).toBe(0);
+  });
+
+  it('captures base for new URLs and reuses it by default on later runs', async () => {
+    const dir = createTempDir('kvault-skip-base-');
+    const server = await startTestSiteServer();
+    servers.push(server);
+    const { app, siteId } = await createConfiguredApp({ dir, server });
+    apps.push(app);
+
+    const initialRun = await app.runCrawl({
+      siteId,
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      staleAfterMs: null,
+    });
+    const artifactOnlyRun = await app.runCrawl({
+      siteId,
+      updatePolicy: 'force_recrawl_all',
+      targetSuccessCount: null,
+      staleAfterMs: null,
+    });
+
+    expect(initialRun.pageRuns).toBe(2);
+    expect(artifactOnlyRun.pageRuns).toBe(0);
+    expect(artifactOnlyRun.artifactRuns).toBe(4);
   });
 
   it('replans only screenshot when skip_existing sees a page gain screenshot in config', async () => {
@@ -223,6 +249,7 @@ describe('crawl history planning', () => {
     const secondRun = await app.runCrawl({
       siteId,
       updatePolicy: 'skip_existing',
+      skipBase: false,
       targetSuccessCount: null,
       staleAfterMs: null,
     });
@@ -313,6 +340,7 @@ describe('crawl history planning', () => {
     const crawlRun = await app.runCrawl({
       siteId,
       updatePolicy: 'skip_existing',
+      skipBase: false,
       targetSuccessCount: null,
       staleAfterMs: null,
     });
@@ -337,6 +365,7 @@ describe('crawl history planning', () => {
     const rerun = await app.runCrawl({
       siteId,
       updatePolicy: 'force_recrawl_all',
+      skipBase: false,
       targetSuccessCount: null,
       staleAfterMs: null,
     });
@@ -379,6 +408,7 @@ describe('crawl history planning', () => {
     const rerun = await app.runCrawl({
       siteId,
       updatePolicy: 'stale_after_duration',
+      skipBase: false,
       targetSuccessCount: null,
       staleAfterMs: 60_000,
     });

@@ -51,6 +51,7 @@ import {
 import { RunPlanner } from '../planner/run-planner.js';
 import { resolveBaseTaskNeeds } from '../planner/base-task-needs.js';
 import { expandStartupUrlCandidates } from '../planner/startup-url-expander.js';
+import { planArtifactsWithoutBase } from '../planner/skip-base-planner.js';
 
 import { FeishuSimpleBot, type FeishuPostContent } from '../utils/feishu-simple-bot.js';
 import { isRunCancelledError, throwIfAborted } from '../utils/cancellation.js';
@@ -159,6 +160,7 @@ export class RunService {
   async runCrawl(input: {
     siteId: number;
     updatePolicy: UpdatePolicy;
+    skipBase?: boolean;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
@@ -169,6 +171,7 @@ export class RunService {
       siteId: input.siteId,
       runType: 'crawl_run',
       updatePolicy: input.updatePolicy,
+      skipBase: input.skipBase ?? true,
       targetSuccessCount: input.targetSuccessCount,
       staleAfterMs: input.staleAfterMs,
       initialUrls: input.initialUrls ?? null,
@@ -204,6 +207,7 @@ export class RunService {
     siteId: number;
     runType: RunType;
     updatePolicy: UpdatePolicy;
+    skipBase?: boolean;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
@@ -260,6 +264,7 @@ export class RunService {
         logger.info('Runtime log initialized', {
           runType: input.runType,
           updatePolicy: input.updatePolicy,
+          skipBase: input.skipBase ?? false,
           siteId: site.id,
         });
         throwIfAborted(input.abortSignal);
@@ -307,6 +312,7 @@ export class RunService {
     siteId: number;
     runType: RunType;
     updatePolicy: UpdatePolicy;
+    skipBase?: boolean;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
@@ -471,6 +477,52 @@ export class RunService {
       }
 
       const history = await this.sitePages.getHistoricalState(site.id, planned.normalizedUrl);
+      if (input.skipBase) {
+        const artifactPlan = await planArtifactsWithoutBase({
+          siteId: site.id,
+          sitePageId: planned.sitePageId,
+          normalizedUrl: planned.normalizedUrl,
+          siteConfig: effectiveConfig,
+          updatePolicy: input.updatePolicy,
+          staleAfterMs: input.staleAfterMs,
+          history,
+          pageRuns: this.pageRuns,
+          artifactRuns: this.artifactRuns,
+          nowIsoString: new Date().toISOString(),
+        });
+        if (artifactPlan.reason === 'missing_base') {
+          logger.info('Base capture required because no reusable historical result exists', {
+            runId,
+            siteId: site.id,
+            sitePageId: planned.sitePageId,
+            normalizedUrl: planned.normalizedUrl,
+          });
+        } else {
+          for (const requirement of artifactPlan.requirements) {
+            await pageCaptureQueue.addRequest({
+              url: planned.normalizedUrl,
+              uniqueKey: requirement.configFingerprint === null
+                ? `artifact:${runId}:${planned.sitePageId}:${requirement.artifactType}`
+                : `artifact:${runId}:${planned.sitePageId}:${requirement.artifactType}:${requirement.variantKey}:${requirement.configFingerprint}`,
+              userData: {
+                stage: 'page_capture',
+                runId,
+                siteId: site.id,
+                sitePageId: planned.sitePageId,
+                normalizedUrl: planned.normalizedUrl,
+                url: planned.normalizedUrl,
+                depth: 0,
+                needs: [requirement.artifactType],
+                pageRunId: artifactPlan.pageRunId,
+                purpose: 'artifact',
+                artifactRequirement: requirement,
+              } satisfies PageCaptureTask,
+            });
+          }
+          continue;
+        }
+      }
+
       const captureNeeds = resolveBaseTaskNeeds({
         url: planned.normalizedUrl,
         siteConfig: effectiveConfig,

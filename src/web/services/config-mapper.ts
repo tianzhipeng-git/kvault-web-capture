@@ -21,6 +21,7 @@ export interface SiteConfigFormInput {
 
 export interface CrawlRunFormInput {
   updatePolicy?: UpdatePolicy;
+  skipBase?: boolean;
   targetSuccessCount?: number | null;
   staleAfterMs?: number | null;
   initialUrls?: string[];
@@ -49,6 +50,7 @@ export function mapConfigFormToSiteConfig(input: SiteConfigFormInput): SiteConfi
 
 export function mapRunForm(input: CrawlRunFormInput): {
   updatePolicy: UpdatePolicy;
+  skipBase: boolean;
   targetSuccessCount: number | null;
   staleAfterMs: number | null;
   initialUrls: string[] | null;
@@ -56,6 +58,7 @@ export function mapRunForm(input: CrawlRunFormInput): {
 } {
   return {
     updatePolicy: input.updatePolicy ?? 'force_recrawl_all',
+    skipBase: input.skipBase !== false,
     targetSuccessCount: input.targetSuccessCount ?? null,
     staleAfterMs: input.staleAfterMs ?? null,
     initialUrls: Array.isArray(input.initialUrls) && input.initialUrls.length > 0

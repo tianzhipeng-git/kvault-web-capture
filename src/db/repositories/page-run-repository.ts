@@ -74,18 +74,20 @@ export class PageRunRepository {
   }
 
   async getLatestSuccessfulBase(siteId: number, sitePageId: number): Promise<{
+    pageRunId: number;
     url: string;
     title: string;
     metaDescription: string;
     bodyText: string;
   } | null> {
     const row = await this.db.get<{
+      id: number;
       normalized_url: string;
       title: string;
       meta_description: string;
       body_text: string;
     }>(
-      `SELECT sp.normalized_url, pr.title, pr.meta_description, pr.body_text
+      `SELECT pr.id, sp.normalized_url, pr.title, pr.meta_description, pr.body_text
        FROM page_runs pr
        INNER JOIN site_pages sp ON sp.id = pr.site_page_id
        WHERE sp.site_id = ?
@@ -98,6 +100,7 @@ export class PageRunRepository {
 
     return row
       ? {
+          pageRunId: row.id,
           url: row.normalized_url,
           title: row.title,
           metaDescription: row.meta_description,

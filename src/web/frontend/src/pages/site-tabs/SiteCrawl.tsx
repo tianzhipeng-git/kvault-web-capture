@@ -60,6 +60,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"pages" | "logs">("pages");
   const [updatePolicy, setUpdatePolicy] = useState("skip_existing");
+  const [skipBase, setSkipBase] = useState(true);
   const [targetSuccessCount, setTargetSuccessCount] = useState("");
   const [staleAfterDays, setStaleAfterDays] = useState("");
   const [cancellingRunId, setCancellingRunId] = useState<number | null>(null);
@@ -110,6 +111,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
       const staleAfterMs = staleAfterDays ? Number(staleAfterDays) * 24 * 60 * 60 * 1000 : null;
       const result = await api.startCrawlRun(siteId, {
         updatePolicy,
+        skipBase,
         targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
         staleAfterMs,
       });
@@ -147,7 +149,7 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
             对允许采集的页面执行完整 artifact 阶段，并用目标成功数和更新策略控制范围。
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto]">
+        <CardContent className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
           <div className="space-y-2">
             <Label>更新策略</Label>
             <select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={updatePolicy} onChange={(event) => setUpdatePolicy(event.target.value)}>
@@ -164,6 +166,10 @@ export function SiteCrawl({ siteId }: { siteId: number }) {
             <Label>过期天数</Label>
             <Input type="number" min="1" placeholder="仅更新策略为过期时使用" value={staleAfterDays} onChange={(event) => setStaleAfterDays(event.target.value)} />
           </div>
+          <label className="flex items-end gap-2 pb-2 text-sm">
+            <input type="checkbox" checked={skipBase} onChange={(event) => setSkipBase(event.target.checked)} />
+            跳过 Base（复用已有结果）
+          </label>
           <div className="flex items-end">
             <Button className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white" onClick={startCrawl} disabled={isStarting}>
               {isStarting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

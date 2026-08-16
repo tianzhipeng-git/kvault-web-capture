@@ -87,6 +87,8 @@ pnpm cli run:runtime-log --run 42 --tail 500
 
 `run:crawl --urls` 会把 `initialUrls` 设置为传入 URL，并将最大深度固定为 `0`，等价于 WebUI 的选中页面重跑。
 
+正式采集默认复用已有成功 base，并按当前 Stage 2 规则生成 artifact 任务；没有历史成功 base 的 URL 仍会正常执行 base。需要强制所有 URL 重新抓取 base 时，可增加 `--no-skip-base`。
+
 本地 CLI 可取消没有活动 worker 的孤儿运行：
 
 ```bash

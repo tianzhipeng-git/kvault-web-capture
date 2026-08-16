@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseSiteConfig } from '../src/config/site-config.js';
-import { mapConfigFormToSiteConfig } from '../src/web/services/config-mapper.js';
+import { mapConfigFormToSiteConfig, mapRunForm } from '../src/web/services/config-mapper.js';
 
 describe('web config mapper', () => {
+  it('enables skipBase by default and allows explicitly disabling it', () => {
+    expect(mapRunForm({}).skipBase).toBe(true);
+    expect(mapRunForm({ skipBase: true }).skipBase).toBe(true);
+    expect(mapRunForm({ skipBase: false }).skipBase).toBe(false);
+  });
+
   it('maps business form fields into SiteConfig', () => {
     const config = mapConfigFormToSiteConfig({
       seedUrls: ['https://example.com/docs'],

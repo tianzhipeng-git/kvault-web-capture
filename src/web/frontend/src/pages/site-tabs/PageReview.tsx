@@ -588,6 +588,7 @@ export function PageReview({
   const [viewSelectedOpen, setViewSelectedOpen] = useState(false);
   const [confirmRecrawlOpen, setConfirmRecrawlOpen] = useState(false);
   const [recrawlUpdatePolicy, setRecrawlUpdatePolicy] = useState<UpdatePolicy>("force_recrawl_all");
+  const [recrawlSkipBase, setRecrawlSkipBase] = useState(true);
   const [recrawlStaleAfterDays, setRecrawlStaleAfterDays] = useState("");
   const [recrawlUrlsInput, setRecrawlUrlsInput] = useState("");
   const [isSubmittingRecrawl, setIsSubmittingRecrawl] = useState(false);
@@ -691,6 +692,7 @@ export function PageReview({
     try {
       await api.startCrawlRun(siteId, {
         updatePolicy: recrawlUpdatePolicy,
+        skipBase: recrawlSkipBase,
         targetSuccessCount: null,
         staleAfterMs,
         initialUrls,
@@ -1219,6 +1221,10 @@ export function PageReview({
                 onChange={(event) => setRecrawlStaleAfterDays(event.target.value)}
               />
             </div>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={recrawlSkipBase} onChange={(event) => setRecrawlSkipBase(event.target.checked)} />
+              跳过 Base（复用已有结果）
+            </label>
             <div className="space-y-2">
               <Label htmlFor="recrawl-urls">URL 列表</Label>
               <textarea

@@ -147,7 +147,7 @@ Equivalent raw commands:
   node --import tsx src/cli.ts site:import-config --site <site-id> --file <config.json> [--db ./.local/state.db]
   node --import tsx src/cli.ts site:clone-config --from-site <site-id> --to-site <site-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts run:seed --site <site-id> [--target-success-count <n>] [--db ./.local/state.db]
-  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--target-success-count <n>] [--stale-after-ms <n>] [--urls <url,url>] [--db ./.local/state.db]
+  node --import tsx src/cli.ts run:crawl --site <site-id> --update-policy <policy> [--no-skip-base] [--target-success-count <n>] [--stale-after-ms <n>] [--urls <url,url>] [--db ./.local/state.db]
   node --import tsx src/cli.ts run:list --site <site-id> [--type seed_run|crawl_run] [--page <n>] [--page-size <n>] [--db ./.local/state.db]
   node --import tsx src/cli.ts run:get --run <run-id> [--db ./.local/state.db]
   node --import tsx src/cli.ts run:cancel --run <run-id> [--web-url <url> --api-key <key>] [--db ./.local/state.db]
@@ -358,6 +358,7 @@ async function main(): Promise<void> {
           const result = await app.runCrawl({
             siteId: Number(getRequiredArg('--site')),
             updatePolicy,
+            skipBase: !process.argv.includes('--no-skip-base'),
             targetSuccessCount: targetSuccessCount ? Number(targetSuccessCount) : null,
             staleAfterMs: staleAfterMs ? Number(staleAfterMs) : null,
             initialUrls: getArgList('--urls'),

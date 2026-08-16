@@ -189,6 +189,7 @@ export class CaptureApp {
   runCrawl(input: {
     siteId: number;
     updatePolicy: UpdatePolicy;
+    skipBase?: boolean;
     targetSuccessCount: number | null;
     staleAfterMs: number | null;
     initialUrls?: string[] | null;
