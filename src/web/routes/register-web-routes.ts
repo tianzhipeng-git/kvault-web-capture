@@ -191,7 +191,14 @@ export function registerWebRoutes(options: RegisterWebRoutesOptions): void {
     }
   });
 
-  server.post('/api/auth/login', async (request, reply) => {
+  server.post('/api/auth/login', {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 minute',
+      }
+    }
+  }, async (request, reply) => {
     const body = (request.body ?? {}) as { password?: string };
     auth.login(request, reply, body.password ?? '');
     return {
