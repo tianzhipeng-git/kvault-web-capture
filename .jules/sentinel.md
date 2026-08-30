@@ -1,0 +1,1 @@
+## 2026-08-29 - [Added Rate Limiting]\n**Vulnerability:** Missing rate limit on sensitive endpoints (e.g., login)\n**Learning:** The /api/auth/login endpoint was susceptible to brute force attacks without any rate limit configuration.\n**Prevention:** Added global rate limiting with @fastify/rate-limit and specific, strict rate limiting to login endpoint.

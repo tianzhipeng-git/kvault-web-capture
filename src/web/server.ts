@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 
 import Fastify, { type FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 
 import { CaptureApp } from '../app/capture-app.js';
 import { openDatabase } from '../db/database.js';
@@ -75,6 +76,11 @@ export async function createWebServer(options: WebServerOptions): Promise<Fastif
   });
   const exportDownloads = new ExportDownloadStore();
   const vaultExports = new VaultExportManager();
+
+  await server.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+  });
 
   await auth.register(server);
 

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^11.2.0",
     "cloakbrowser": "^0.3.30",
     "crawlee": "^3.13.8",
     "defuddle": "^0.18.1",
